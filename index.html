@@ -31,6 +31,7 @@
   }
   .wrap{max-width:1120px;margin:0 auto;padding:0 34px}
   .serif{font-family:'Instrument Serif',Georgia,serif;font-weight:400}
+
   /* ============ HERO ============ */
   .hero{position:relative;background:var(--ink);color:var(--stone);overflow:hidden;
         padding:34px 0 0;min-height:92vh;display:flex;flex-direction:column}
@@ -91,14 +92,12 @@
   a.entry:hover .icon circle,a.entry:hover .icon line{stroke:var(--adriatic)}
   a.entry:hover .host{border-bottom-color:var(--adriatic)}
   a:focus-visible{outline:2px solid var(--adriatic);outline-offset:6px}
-
   /* ============ REACH ============ */
   .reach{background:var(--stone-deep);padding:82px 0}
   .regions{display:flex;flex-wrap:wrap;gap:10px 0;margin:26px 0 0;padding:0;list-style:none}
   .regions li{font-family:'Instrument Serif',Georgia,serif;font-size:clamp(22px,2.6vw,30px);
               line-height:1.35;padding-right:26px;margin-right:26px;border-right:1px solid var(--rule)}
   .regions li:last-child{border-right:0;margin-right:0;padding-right:0}
-
   /* ============ CONTACT ============ */
   .contact{background:var(--ink);color:var(--stone);padding:92px 0 76px}
   .contact h2{font-family:'Instrument Serif',Georgia,serif;font-weight:400;
@@ -109,7 +108,6 @@
   .lines .place{color:var(--dim)}
   .base{border-top:1px solid #2A3230;margin-top:64px;padding-top:24px;
         display:flex;justify-content:space-between;font-size:14px;color:var(--dim)}
-
   @media (max-width:860px){
     .grid3{grid-template-columns:1fr}
     .split{grid-template-columns:1fr;gap:28px}
@@ -130,3 +128,150 @@
 </style>
 </head>
 <body>
+<header class="hero">
+  <div class="wrap topbar fade">
+    <span class="logo">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="1" y="1" width="24" height="24" fill="none" stroke="#E6E7E1" stroke-width="1"/>
+        <path d="M8 6.5v13M8 13l7-6.5M8 13l7.5 6.5" fill="none" stroke="#E6E7E1" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+      <span>Korsakov Group</span>
+    </span>
+    <span class="where">Tivat, Montenegro</span>
+  </div>
+  <div class="wrap hero-mid">
+    <h1 class="statement serif fade d1">A house can be<span class="shift"><em>engineered</em>, not inherited.</span></h1>
+  </div>
+  <div class="wrap hero-foot fade d2">
+    <p>A holding company for independent ventures in property, software and craft. We look for constraints an industry treats as permanent, and check whether they actually are.</p>
+    <a class="scroll" href="#ventures">See the ventures</a>
+  </div>
+  <svg class="ridge" viewBox="0 0 1440 150" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 150 L0 96 L118 62 L206 88 L322 34 L444 78 L560 44 L668 92 L790 52 L902 86 L1010 40 L1130 74 L1246 48 L1348 82 L1440 58 L1440 150 Z"
+          fill="none" stroke="#2F3835" stroke-width="1"/>
+    <path d="M0 150 L0 120 L140 100 L268 122 L390 86 L512 116 L640 92 L766 124 L890 96 L1014 120 L1140 90 L1266 116 L1380 98 L1440 112 L1440 150 Z"
+          fill="none" stroke="#252D2B" stroke-width="1"/>
+  </svg>
+</header>
+<main>
+  <!-- ===== approach ===== -->
+  <section class="sec">
+    <div class="wrap split">
+      <div>
+        <p class="kicker">The group</p>
+        <p class="lead serif">Different industries. One question, asked the same way.</p>
+      </div>
+      <div>
+        <p>Korsakov Group starts companies in places where the obvious solution doesn't exist yet. The businesses look unrelated from the outside, and they are, deliberately. What connects them is not a market but a method.</p>
+        <p>Each one begins with a rule everybody follows without checking it. A building has to stay where it was built. Good design work is only affordable at scale. A craft tradition dies because it stopped paying. In every case the rule turned out to be a habit rather than a law.</p>
+        <p>The companies are independent. Each has its own product, its own customers and its own economics, and none subsidises another. The group gives them shared standards, shared infrastructure and a longer horizon than any single business could justify alone.</p>
+      </div>
+    </div>
+  </section>
+  <!-- ===== principles ===== -->
+  <section class="sec dark">
+    <div class="wrap">
+      <p class="kicker">How we work</p>
+      <div class="grid3">
+        <div class="cell">
+          <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+            <circle cx="17" cy="17" r="12.5" fill="none" stroke="#93A48D" stroke-width="1.2"/>
+            <path d="M17 4.5v25M4.5 17h25" stroke="#93A48D" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <h3>Own the constraint</h3>
+          <p>We pick problems where the limit is physical or regulatory, not a matter of taste. Those limits can be measured, and moving one changes an entire economics.</p>
+        </div>
+        <div class="cell">
+          <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+            <rect x="4.5" y="7" width="25" height="20" fill="none" stroke="#93A48D" stroke-width="1.2"/>
+            <path d="M4.5 14h25M13 14v13" stroke="#93A48D" stroke-width="1.2"/>
+          </svg>
+          <h3>Ship before it is safe</h3>
+          <p>Every venture is expected to reach a real customer early, at a smaller scale than is comfortable. A first sale settles arguments that a plan cannot.</p>
+        </div>
+        <div class="cell">
+          <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+            <path d="M6 26V12l11-6 11 6v14" fill="none" stroke="#93A48D" stroke-width="1.2" stroke-linejoin="round"/>
+            <path d="M13 26v-8h8v8" fill="none" stroke="#93A48D" stroke-width="1.2"/>
+          </svg>
+          <h3>Build it to be moved</h3>
+          <p>Assets that can relocate, teams that are not tied to one country, structures that survive a change of jurisdiction. Nothing we build assumes a permanent address.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- ===== ventures ===== -->
+  <section class="sec" id="ventures">
+    <div class="wrap">
+      <p class="kicker">Ventures</p>
+      <a class="entry" href="https://tinymansion.korsakovgroup.com">
+        <svg class="icon" viewBox="0 0 56 56" aria-hidden="true">
+          <path d="M8 30 28 14l20 16"/>
+          <rect x="13" y="30" width="30" height="16"/>
+          <path d="M13 46h30M20 46v-9h7v9"/>
+          <path d="M6 50h44"/>
+        </svg>
+        <div>
+          <h3>Tiny Mansion</h3>
+          <p>Premium off-grid residences that arrive complete and can be relocated. Built as a real asset with a long life, operated as hospitality.</p>
+          <span class="host">tinymansion.korsakovgroup.com</span>
+        </div>
+        <p class="meta"><b>Property</b>Raising capital</p>
+      </a>
+      <a class="entry" href="https://tinyarc.korsakovgroup.com">
+        <svg class="icon" viewBox="0 0 56 56" aria-hidden="true">
+          <rect x="9" y="9" width="38" height="38"/>
+          <path d="M9 21h38M21 9v38"/>
+          <path d="M28 28l12 12M28 40l12-12"/>
+        </svg>
+        <div>
+          <h3>Cloud Bureau</h3>
+          <p>An AI workspace for architecture and engineering. It turns a brief into drawings, and drawings into something a builder can actually price.</p>
+          <span class="host">tinyarc.korsakovgroup.com</span>
+        </div>
+        <p class="meta"><b>Software</b>In development</p>
+      </a>
+      <a class="entry" href="https://katunheritage.com">
+        <svg class="icon" viewBox="0 0 56 56" aria-hidden="true">
+          <path d="M10 28c4-8 8-8 12 0s8 8 12 0 8-8 12 0"/>
+          <path d="M10 40c4-8 8-8 12 0s8 8 12 0 8-8 12 0"/>
+          <path d="M10 16c4-8 8-8 12 0s8 8 12 0 8-8 12 0"/>
+        </svg>
+        <div>
+          <h3>Katun</h3>
+          <p>A home for traditional craft. Makers sell their work on fair terms, and the techniques behind it get recorded before the last person who knows them stops working.</p>
+          <span class="host">katunheritage.com</span>
+        </div>
+        <p class="meta"><b>Craft</b>Live</p>
+      </a>
+    </div>
+  </section>
+  <!-- ===== reach ===== -->
+  <section class="reach">
+    <div class="wrap">
+      <p class="kicker">Where we work</p>
+      <ul class="regions">
+        <li>Montenegro</li>
+        <li>The Balkans</li>
+        <li>The Caucasus</li>
+        <li>Central Asia</li>
+      </ul>
+    </div>
+  </section>
+</main>
+<footer class="contact">
+  <div class="wrap">
+    <h2>If any of this is close to what you do, write.</h2>
+    <ul class="lines">
+      <li><a href="mailto:yuri@korsakovgroup.com">yuri@korsakovgroup.com</a></li>
+      <li><a href="https://www.linkedin.com/company/korsakov-group/">LinkedIn</a></li>
+      <li class="place">Tivat, Montenegro</li>
+    </ul>
+    <div class="base">
+      <span>Korsakov Group</span>
+      <span>2026</span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
