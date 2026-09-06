@@ -1,1 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Korsakov Group</title>
+<meta name="description" content="Korsakov Group builds movable buildings and the systems around them. Based in Tivat, Montenegro.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --stone:#E6E7E1;
+    --stone-deep:#D8DAD2;
+    --ink:#1B211F;
+    --ink-soft:#4C534F;
+    --olive:#4A5A44;
+    --adriatic:#2E5560;
+    --rule:#C7CAC1;
+    --rule-dark:#39423F;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--stone);
+    color:var(--ink);
+    font-family:'Archivo',system-ui,sans-serif;
+    font-size:17px;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 32px}
 
+  /* ---------- hero ---------- */
+  .hero{
+    background:var(--ink);
+    color:var(--stone);
+    padding:80px 0 96px;
+  }
+  .mark{
+    font-family:'Instrument Serif',Georgia,serif;
+    font-size:22px;
+    letter-spacing:.01em;
+    margin:0 0 22vh;
+    color:var(--stone);
+  }
+  .statement{
+    font-family:'Instrument Serif',Georgia,serif;
+    font-weight:400;
+    font-size:clamp(40px,7.4vw,88px);
+    line-height:1.04;
+    letter-spacing:-.015em;
+    margin:0;
+    max-width:16ch;
+  }
+  .statement .shift{display:block;padding-left:8%}
+  .statement em{font-style:italic}
+  .hero-note{
+    margin:40px 0 0;
+    max-width:46ch;
+    color:#B9BFB9;
+    font-size:17px;
+  }
+  .fade{opacity:0;transform:translateY(14px);animation:rise .9s cubic-bezier(.22,.61,.36,1) forwards}
+  .fade:nth-child(2){animation-delay:.12s}
+  .fade:nth-child(3){animation-delay:.24s}
+  @keyframes rise{to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){
+    .fade{animation:none;opacity:1;transform:none}
+    html{scroll-behavior:auto}
+  }
+  /* ---------- about ---------- */
+  .about{padding:88px 0 72px}
+  .cols{display:grid;grid-template-columns:minmax(0,7.5rem) minmax(0,1fr);gap:48px}
+  .cols h2{
+    font-family:'Instrument Serif',Georgia,serif;
+    font-weight:400;
+    font-size:26px;
+    line-height:1.2;
+    margin:6px 0 0;
+    color:var(--olive);
+  }
+  .prose p{margin:0 0 20px;max-width:62ch}
+  .prose p:last-child{margin-bottom:0}
+  /* ---------- projects ---------- */
+  .projects{padding:16px 0 40px}
+  .entry{
+    display:grid;
+    grid-template-columns:minmax(0,7.5rem) minmax(0,1fr);
+    gap:48px;
+    padding:34px 0;
+    border-top:1px solid var(--rule);
+    text-decoration:none;
+    color:inherit;
+  }
+  .entry:last-of-type{border-bottom:1px solid var(--rule)}
+  .status{
+    font-size:14px;
+    color:var(--ink-soft);
+    margin:10px 0 0;
+  }
+  .entry-body h3{
+    font-family:'Instrument Serif',Georgia,serif;
+    font-weight:400;
+    font-size:clamp(28px,3.6vw,40px);
+    line-height:1.1;
+    margin:0 0 10px;
+  }
+  .entry-body p{margin:0;max-width:58ch;color:var(--ink-soft)}
+  .host{
+    display:inline-block;
+    margin-top:14px;
+    font-size:15px;
+    color:var(--adriatic);
+    border-bottom:1px solid rgba(46,85,96,.35);
+    padding-bottom:2px;
+  }
+  a.entry:hover h3{color:var(--adriatic)}
+  a.entry:hover .host{border-bottom-color:var(--adriatic)}
+  a:focus-visible,.entry:focus-visible{
+    outline:2px solid var(--adriatic);
+    outline-offset:6px;
+  }
+  /* ---------- contact ---------- */
+  .contact{
+    background:var(--stone-deep);
+    margin-top:64px;
+    padding:72px 0;
+  }
+  .contact h2{
+    font-family:'Instrument Serif',Georgia,serif;
+    font-weight:400;
+    font-size:clamp(30px,4vw,44px);
+    line-height:1.1;
+    margin:0 0 28px;
+    max-width:20ch;
+  }
+  .lines{display:flex;flex-wrap:wrap;gap:14px 56px;margin:0;padding:0;list-style:none}
+  .lines a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--rule);padding-bottom:2px}
+  .lines a:hover{border-bottom-color:var(--ink)}
+  .place{color:var(--ink-soft)}
+  footer{padding:28px 0 40px;font-size:14px;color:var(--ink-soft)}
+  @media (max-width:720px){
+    .wrap{padding:0 22px}
+    .hero{padding:52px 0 64px}
+    .mark{margin-bottom:16vh}
+    .statement .shift{padding-left:0}
+    .cols,.entry{grid-template-columns:1fr;gap:12px}
+    .entry{padding:28px 0}
+    .status{margin:0 0 6px;order:-1}
+    .about{padding:60px 0 48px}
+    .contact{padding:56px 0}
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="mark fade">Korsakov Group</p>
+    <h1 class="statement fade">A house can be<span class="shift"><em>engineered</em>, not inherited.</span></h1>
+    <p class="hero-note fade">We build movable buildings and the systems around them, from Tivat, Montenegro.</p>
+  </div>
+</header>
+<main>
+  <section class="about">
+    <div class="wrap cols">
+      <h2>The group</h2>
+      <div class="prose">
+        <p>Korsakov Group started with a single question: what does a home look like when it doesn't need land, a mortgage, or a permit that takes three years?</p>
+        <p>The answer turned into a family of businesses. Some make buildings, some make the software that designs them, some keep the crafts that furnish them alive. Each runs on its own, and each one feeds the others.</p>
+      </div>
+    </div>
+  </section>
+  <section class="projects">
+    <div class="wrap">
