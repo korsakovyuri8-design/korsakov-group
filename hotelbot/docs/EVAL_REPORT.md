@@ -1,8 +1,8 @@
 # HOTELBOT evaluation report
 
-Generated 2026-10-05 19:42 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
+Generated 2026-10-05 21:47 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
 
-**TOTAL 60 · PASS 56 · FAIL 4**
+**TOTAL 115 · PASS 111 · FAIL 4**
 
 | Category | Pass |
 |---|---|
@@ -14,6 +14,8 @@ Generated 2026-10-05 19:42 UTC by `python -m evals`. Deterministic: no LLM unles
 | memory | 5/5 |
 | conversation | 6/6 |
 | languages | 8/8 |
+| transactions | 32/32 |
+| local | 23/23 |
 
 ## Scenarios
 
@@ -68,6 +70,29 @@ Generated 2026-10-05 19:42 UTC by `python -m evals`. Deterministic: no LLM unles
 | ✅ | `russian_service_request` | languages |  |
 | ✅ | `russian_emergency` | languages | yes |
 | ✅ | `russian_knowledge_with_language_note` | languages |  |
+| ✅ | `local_pharmacy_nearest` | local | yes |
+| ✅ | `local_pharmacy_closed_at_night` | local | yes |
+| ✅ | `local_atm_cnr` | local |  |
+| ✅ | `local_sim_ru` | local |  |
+| ✅ | `local_groceries` | local |  |
+| ✅ | `local_emergency_wins` | local | yes |
+| ✅ | `local_property_knowledge_first` | local | yes |
+| ✅ | `local_restaurant_open_now` | local | yes |
+| ✅ | `local_vegan_hard_constraint` | local | yes |
+| ✅ | `local_after_midnight` | local |  |
+| ✅ | `local_lively_not_quiet` | local |  |
+| ✅ | `local_expired_event_hidden` | local | yes |
+| ✅ | `local_jazz_events_and_places` | local |  |
+| ✅ | `local_save_and_view_plan` | local |  |
+| ✅ | `local_not_bookable_honest` | local | yes |
+| ✅ | `local_book_from_results` | local | yes |
+| ✅ | `local_plan_empty_day` | local |  |
+| ✅ | `local_ski_capacity_respected` | local | yes |
+| ✅ | `local_guide_unavailable_alternatives` | local | yes |
+| ✅ | `local_flagship_trip_selective` | local | yes |
+| ✅ | `local_flagship_ambiguous_yes` | local | yes |
+| ✅ | `local_flagship_ru_book_all` | local | yes |
+| ✅ | `local_targeted_cancel` | local | yes |
 | ✅ | `stated_party_size` | memory | yes |
 | ✅ | `stated_arrival_date` | memory |  |
 | ✅ | `inferred_not_fact` | memory | yes |
@@ -79,6 +104,38 @@ Generated 2026-10-05 19:42 UTC by `python -m evals`. Deterministic: no LLM unles
 | ✅ | `follow_up_ellipsis_cnr` | conversation |  |
 | ✅ | `language_continuation` | conversation |  |
 | ✅ | `language_switching` | conversation |  |
+| ✅ | `txn_quote_obtained` | transactions | yes |
+| ✅ | `txn_missing_information` | transactions |  |
+| ✅ | `txn_no_invented_values` | transactions | yes |
+| ✅ | `txn_explicit_confirmation` | transactions | yes |
+| ✅ | `txn_ambiguous_non_confirmation` | transactions | yes |
+| ✅ | `txn_quote_declined` | transactions | yes |
+| ✅ | `txn_quote_expired` | transactions | yes |
+| ✅ | `txn_quote_modification` | transactions | yes |
+| ✅ | `txn_consent_scoped_to_offer` | transactions | yes |
+| ✅ | `txn_provider_received_then_accepted` | transactions | yes |
+| ✅ | `txn_provider_rejected` | transactions | yes |
+| ✅ | `txn_provider_timeout` | transactions | yes |
+| ✅ | `txn_transient_failure_then_success` | transactions | yes |
+| ✅ | `txn_invalid_request_not_retried` | transactions | yes |
+| ✅ | `txn_failure_after_acceptance` | transactions | yes |
+| ✅ | `txn_duplicate_consent` | transactions | yes |
+| ✅ | `txn_duplicate_callback` | transactions | yes |
+| ✅ | `txn_callback_same_state_new_event` | transactions |  |
+| ✅ | `txn_invalid_callback_signature` | transactions | yes |
+| ✅ | `txn_callback_replay` | transactions | yes |
+| ✅ | `txn_callback_unknown_reference` | transactions | yes |
+| ✅ | `txn_illegal_callback_transition` | transactions | yes |
+| ✅ | `txn_completed_lifecycle` | transactions | yes |
+| ✅ | `txn_guest_cancels` | transactions | yes |
+| ✅ | `txn_cancel_refused` | transactions |  |
+| ✅ | `txn_change_after_confirmation` | transactions | yes |
+| ✅ | `txn_unsupported_external_capability` | transactions | yes |
+| ✅ | `txn_llm_claims_booking_before_accepted` | transactions | yes |
+| ✅ | `txn_status_before_acceptance` | transactions | yes |
+| ✅ | `txn_quote_is_not_a_booking_status` | transactions | yes |
+| ✅ | `txn_russian_arrival_transfer` | transactions |  |
+| ✅ | `txn_montenegrin_flow` | transactions |  |
 
 ## Failures
 

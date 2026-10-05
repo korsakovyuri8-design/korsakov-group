@@ -1,8 +1,8 @@
-# HOTELBOT: AI guest operations layer (prototype, iteration 2)
+# HOTELBOT: AI guest operations layer (prototype, iteration 3)
 
 A WhatsApp-first guest-operations agent for any accommodation (hotels, hostels, resorts, vacation rentals, apartments, glamping). Hotel Aleksandar (Žabljak, Montenegro) will be the first real property; in the core it is just one `Property` with `property_type: hotel`.
 
-> ⚠️ **All bundled property data is SYNTHETIC.** `data/hotel/example_hotel.yaml` ("Demo Mountain Hotel") and `data/properties/demo_apartment.yaml` ("Demo Lakeside Apartment") are fictional. Nothing in them is a fact about Hotel Aleksandar. While they are loaded, every API reply carries `"knowledge_synthetic": true`.
+> ⚠️ **All bundled property data is SYNTHETIC.** `data/hotel/example_hotel.yaml` ("Demo Mountain Hotel"), `data/properties/demo_apartment.yaml` ("Demo Lakeside Apartment") and `data/regions/zabljak_demo.yaml` (demo places, events, providers) are fictional. Nothing in them is a fact about Hotel Aleksandar. While they are loaded, every API reply carries `"knowledge_synthetic": true`.
 
 ## Product invariants
 
@@ -11,6 +11,8 @@ A WhatsApp-first guest-operations agent for any accommodation (hotels, hostels, 
 3. **Capabilities, not assumptions.** The bot only acts where the property declares a capability. Anything else is explained, never faked.
 4. **Guest statements are not facts.** "We are 2 adults" is remembered on the stay as `confirmed: false`. Only staff or an integration sets authoritative stay data.
 5. **Humans are first-class.** A handoff gives the conversation to staff; the bot stays silent except for emergencies.
+6. **A quote is not a booking.** Third-party services go QUOTE → explicit CONSENT (to that offer) → TRANSACTION → provider confirmation. "ok" is not consent; "yes" with several open offers books nothing.
+7. **Places come from data.** Restaurants, pharmacies, events, hours, distances and availability come only from structured region data or a provider - never from a model. Open/closed is computed; expired events never appear.
 
 ## Domain
 
@@ -34,14 +36,16 @@ Guest ──< Stay >── Property ──< KnowledgeDocument
 | WhatsApp | Meta Cloud API webhook: verification, HMAC, idempotent on `wamid`. Routes to a property by the receiving phone number. A mock transport is included. |
 | LLM | `none` / `openai` (any OpenAI-compatible API) / `anthropic` |
 | Persistence | PostgreSQL (or SQLite). Alembic migrations run automatically on startup; Core v1 databases are upgraded in place. |
-| Evaluation | 60 deterministic product scenarios; invariant scenarios are gates (see below). |
+| Transactions | Quotes, explicit scoped consent, provider adapters (mock, signed webhook), idempotent submission via a PostgreSQL job queue with retries/backoff, signed replay-protected callbacks, honest failure + staff handoff. See [`docs/PROVIDER_INTEGRATION.md`](docs/PROVIDER_INTEGRATION.md). |
+| Local travel | Region packs of places / events / offerings / inventory; discovery ("open now", "still serving at 22:30", "after midnight", vegan, wheelchair, pets, lively); save / book from results; trip plan with per-item status; multi-part trip requests. See [`docs/LOCAL_TRAVEL.md`](docs/LOCAL_TRAVEL.md). |
+| Evaluation | 115 deterministic product scenarios; invariant scenarios (65) are gates (see below). |
 
 ## Quick start
 
 ```bash
 cd hotelbot
 pip install -r requirements-dev.txt
-pytest                                      # 390 tests (SQLite)
+pytest                                      # 514 tests (SQLite)
 python -m evals                             # product evaluation summary
 uvicorn app.main:create_app --factory --reload
 ```
@@ -52,6 +56,14 @@ curl -s localhost:8000/api/chat -H 'content-type: application/json' \
 curl -s localhost:8000/api/chat -H 'content-type: application/json' \
   -d '{"guest_id":"demo-001","message":"Book me a taxi to the airport","property":"demo-apartment"}'
 python -m app.cli --verbose --property demo-apartment
+```
+
+Flagship multi-part trip (synthetic Žabljak region data; skis are in season from mid-December, so try it with a January date in mind):
+
+```bash
+curl -s localhost:8000/api/chat -H 'content-type: application/json' -d '{"guest_id":"trip-1","message":
+  "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. Find somewhere local for dinner that is still serving when we arrive. We want skis Saturday morning. Find a Russian-speaking guide for Sunday. And suggest somewhere lively for drinks Saturday night."}'
+curl -s localhost:8000/api/chat -H 'content-type: application/json' -d '{"guest_id":"trip-1","message":"book the transfer"}'
 ```
 
 Docker Compose (PostgreSQL + both demo properties): `cp .env.example .env && docker compose up --build`.
@@ -112,6 +124,9 @@ Packs listed in `HOTELBOT_KNOWLEDGE_PATH` + `HOTELBOT_EXTRA_PACK_PATHS` are inge
 | `GET /api/staff/conversations`, `GET /api/staff/conversations/{id}`, `POST .../{id}/messages` | conversations, staff replies |
 | `GET /api/staff/handoffs`, `POST .../{id}/accept`, `POST .../{id}/resolve` | handoffs |
 | `GET /api/staff/requests`, `POST /api/staff/requests/{id}/resolve` | Core v1 compatibility view of actions |
+| `GET /api/staff/quotes`, `GET /api/staff/transactions`, `GET /api/staff/jobs[?job_status=]` | offers, provider transactions, job queue |
+| `GET /api/staff/stays/{id}/plan` | the guest's trip plan with per-item status |
+| `POST /api/providers/{property}/{provider}/callbacks` | signed provider callbacks (HMAC, 300 s replay window, idempotent on `event_id`) |
 
 Staff endpoints require `X-Staff-Token` (they are open without one only when `HOTELBOT_ENV=dev`).
 
@@ -123,11 +138,11 @@ python -m evals --category authority
 python -m evals --markdown docs/EVAL_REPORT.md --json eval.json
 ```
 
-Scenarios live in `evals/scenarios/*.yaml` (grounding, actions, authority, handoff, safety, memory, conversation, languages). Each one runs through a fresh real container: real packs plus scenario edits, an optional scripted LLM, and an optional mocked partner endpoint. Every bot message is also checked against the authority invariant. `gate: true` scenarios are product invariants: they run in pytest, and the CLI exits 1 if one fails. Latest report: [`docs/EVAL_REPORT.md`](docs/EVAL_REPORT.md). Retrieval findings: [`docs/RETRIEVAL_ANALYSIS.md`](docs/RETRIEVAL_ANALYSIS.md).
+Scenarios live in `evals/scenarios/*.yaml` (grounding, actions, authority, handoff, safety, memory, conversation, languages, transactions, local). Each one runs through a fresh real container: real packs plus scenario edits, an optional scripted LLM, and an optional mocked partner endpoint. Every bot message is also checked against the authority invariant. `gate: true` scenarios are product invariants: they run in pytest, and the CLI exits 1 if one fails. Latest report: [`docs/EVAL_REPORT.md`](docs/EVAL_REPORT.md). Retrieval findings: [`docs/RETRIEVAL_ANALYSIS.md`](docs/RETRIEVAL_ANALYSIS.md).
 
 ## Migrations
 
-New databases are created from the models and stamped. Existing databases are upgraded with Alembic on startup (`HOTELBOT_AUTO_MIGRATE=true`); Core v1 databases (no version table) are detected and upgraded. Manual alternative: `HOTELBOT_AUTO_MIGRATE=false alembic upgrade head`. `0002_stay_engine` is forward-only, so **back up first** (`pg_dump`).
+New databases are created from the models and stamped. Existing databases are upgraded with Alembic on startup (`HOTELBOT_AUTO_MIGRATE=true`); Core v1 databases (no version table) are detected and upgraded. Manual alternative: `HOTELBOT_AUTO_MIGRATE=false alembic upgrade head`. `0002_stay_engine` is forward-only; `0003_transactions` and `0004_local_travel` are additive. **Back up first** - see [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for backup, restore and worker operations.
 
 ## Testing
 
@@ -146,9 +161,14 @@ app/
   capabilities/ registry
   stays/        service
   knowledge/    schemas (pack format), ingest, service (retriever)
-  llm/  tools/  db/  whatsapp/  api/  schemas/
-migrations/     Alembic (0001_core_v1, 0002_stay_engine)
+  transactions/ catalog, slots, consent, service, dialogue, callbacks, format, providers/ (mock, webhook)
+  jobs/         queue (outbox, SKIP LOCKED, retries), handlers
+  places/       taxonomy, hours, geo, freshness, availability, pack (region ingest)
+  discovery/    nlu, engine, render
+  trip/         itinerary, concierge (discovery, save/book, plan, multi-part trips)
+  llm/  tools/  db/  whatsapp/  api/  schemas/   worker.py, clock.py
+migrations/     Alembic (0001_core_v1, 0002_stay_engine, 0003_transactions, 0004_local_travel)
 evals/          harness, report, scenarios/
-data/           hotel/example_hotel.yaml, properties/demo_apartment.yaml   (SYNTHETIC)
-docs/           DECISIONS.md, EVAL_REPORT.md, RETRIEVAL_ANALYSIS.md
+data/           hotel/example_hotel.yaml, properties/demo_apartment.yaml, regions/zabljak_demo.yaml   (SYNTHETIC)
+docs/           DECISIONS.md, EVAL_REPORT.md, RETRIEVAL_ANALYSIS.md, PROVIDER_INTEGRATION.md, OPERATIONS.md, LOCAL_TRAVEL.md
 ```

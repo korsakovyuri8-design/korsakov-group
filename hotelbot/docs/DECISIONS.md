@@ -338,3 +338,207 @@ Scenario authoring rule: expectations describe *desired product behaviour*. A fa
 **Decision.** The lexical coverage retriever stays. Evidence is in `docs/RETRIEVAL_ANALYSIS.md`. After fixing one real lexical bug (stopword-stem collision), the remaining grounding failures (4 of 12) are paraphrases. Precision scenarios (unsupported facts, false premise, removed knowledge, conflicts) pass 100%. That is the safety-relevant side that a semantic retriever tends to weaken.
 
 **Consequences.** Next: grow the paraphrase set from real guest messages, then compare against the same harness: (a) curated pack keywords, (b) LLM query rewriting into pack vocabulary, (c) hybrid lexical + embeddings, with lexical kept as the measured baseline and the precision scenarios as a gate.
+
+---
+
+# Iteration 3: external service transactions and the local travel layer
+
+## D-031 - Quotes are first-class and are not bookings
+
+**Decision.** Every provider-backed service goes REQUEST → QUOTE → CONSENT → TRANSACTION. A `Quote` belongs to one conversation and has a 4-letter code, a price, conditions, `valid_until`, and a status: OFFERED, ACCEPTED_BY_GUEST, DECLINED_BY_GUEST, EXPIRED or SUPERSEDED. Only an accepted quote creates an `Action` (executor `provider`) and an `ExternalTransaction`, and they reuse the Action state machine (PROPOSED → SUBMITTED → ACCEPTED → IN_PROGRESS → COMPLETED | REJECTED | FAILED | CANCELLED).
+
+**Reason.** A price offer must never read as a booking. Reusing the Action lifecycle keeps one authority model, one staff view and one set of status templates.
+
+**Alternatives considered.** A separate booking state machine was rejected: it duplicates authority templates and staff tooling. Booking straight from a request ("book a taxi" → SUBMITTED) was rejected: the guest has not seen or accepted a price.
+
+**Consequences.** "Is my transfer booked?" while only a quote exists gets "there is a price offer (CODE), nothing is booked". The ExternalTransaction is unique per action and per quote, which makes double-acceptance impossible at the database level.
+
+---
+
+## D-032 - Consent is explicit, scoped and strict
+
+**Decision.** Consent counts only if:
+
+- the whole message is an explicit affirmative ("yes", "book it", "da, rezervišite", "да, бронируйте"), optionally with the code;
+- it refers to an offer the bot presented in its previous message, or one the guest names by code or service word ("book the transfer and the skis");
+- the offer has not expired.
+
+The following are never consent:
+
+- "ok", "ok maybe", "sounds good?" and emoji;
+- anything that changes details (that produces a new offer);
+- a bare "yes" when several offers are open (the bot asks which).
+
+"Book all" accepts every open offer. A targeted decline ("cancel only the guide") declines that offer only.
+
+**Reason.** Consent creates a real obligation with a third party. False positives are far more expensive than one extra question.
+
+**Alternatives considered.** An LLM consent classifier was rejected as non-deterministic and impossible to audit. Accepting "ok" was rejected because it is too often filler.
+
+**Consequences.** Consent is recorded on the quote (message id, text, timestamp) and on the action audit trail.
+
+---
+
+## D-033 - Provider adapters: one interface, mock and webhook implementations
+
+**Decision.** `ProviderAdapter` has four methods: `request_quote`, `submit`, `cancel` and `get_status`.
+
+- `MockExternalProvider` is deterministic, with configurable pricing and failure behaviours (timeout, unavailable, invalid, auth, flaky:N, rejected, received). It deduplicates by idempotency key.
+- `WebhookExternalProvider` implements a documented HTTP/JSON contract (`docs/PROVIDER_INTEGRATION.md`). Requests are HMAC-signed with a timestamp and carry an `Idempotency-Key` header.
+
+Errors are classified:
+
+- Retryable: `ProviderTimeout`, `ProviderUnavailable` (5xx, 429, network, malformed body).
+- Permanent: `ProviderInvalidRequest`, `ProviderAuthError`.
+
+Secrets live only in environment variables named by `*_env` keys. The pack schema rejects secret-looking keys.
+
+**Reason.** New verticals and partners should be configuration plus an adapter, never orchestrator changes.
+
+**Consequences.** A real partner either speaks the webhook contract or gets a small adapter class registered in `ProviderRegistry`.
+
+---
+
+## D-034 - Reliability: transactional outbox on PostgreSQL, no Redis
+
+**Decision.** Side effects run as jobs in a `jobs` table:
+
+- provider submit and cancel;
+- guest notifications;
+- WhatsApp inbound processing and replies.
+
+Jobs are enqueued in the same database transaction as the state change (outbox). Workers claim with `FOR UPDATE SKIP LOCKED` under a 5-minute lease. Retries use bounded exponential backoff (5 s doubling, capped at 300 s, with a per-kind `max_attempts`). After that a job is DEAD and runs its `on_dead` hook: the transaction becomes FAILED, the guest gets an honest message, and staff get a handoff.
+
+Idempotency keys: `txn-{quote}` (provider), `submit:{txn}`, `cancel:{txn}`, `notify:{action}:{status}`, `inbound:{wamid}` and `reply:{wamid}`.
+
+**Reason.** One datastore, exactly-once *effects* through idempotency (not exactly-once delivery), and crash safety without extra infrastructure.
+
+**Alternatives considered.** Redis/RQ or Celery add an extra moving part and a second source of truth. In-request provider calls block the webhook and lose work on a crash.
+
+**Consequences.** On SQLite a single worker is assumed (tests and demo). PostgreSQL supports several `python -m app.worker` processes; a concurrency test proves no job runs twice. Handler side effects roll back with the failed attempt.
+
+---
+
+## D-035 - Provider callbacks: signed, fresh, idempotent, legal
+
+**Decision.** Endpoint: `POST /api/providers/{property}/{provider}/callbacks`.
+
+- The body must be signed with HMAC-SHA256 over `"{timestamp}.{body}"`, using the provider's `callback_secret_env`.
+- Timestamps outside a 300 s window are rejected.
+- `(provider, event_id)` is unique and is claimed *before* acting, so concurrent duplicates cannot both apply.
+- An unknown reference gets 404. An illegal transition (e.g. COMPLETED → ACCEPTED) gets 409 and changes nothing.
+
+Every event is stored as a `ProviderEvent` with its outcome.
+
+**Reason.** Callbacks are the only way provider state enters the system, so they are a security boundary and an audit trail.
+
+**Consequences.** Without a configured secret, callbacks for that provider are refused (503), never accepted unsigned.
+
+---
+
+## D-036 - Language policy for fixed messages
+
+**Decision.** Operational messages (quotes, statuses, failures) are manual templates in en / cnr / ru. `cnr-Cyrl` is derived by transliteration with placeholder protection. Packs do not need Russian content. Provider-supplied text (conditions, offering titles) is shown verbatim, as data.
+
+**Consequences.** The authority guard can check every template. Guests may see a provider's conditions in the provider's language.
+
+---
+
+## D-037 - Local travel layer: generic entities, not one engine per vertical
+
+**Decision.** The layer has five generic tables:
+
+- `Place` (venues, shops, services, attractions);
+- `Event` (dated happenings);
+- `Offering` (something bookable at or by a provider);
+- `AvailabilitySlot` (inventory);
+- `ItineraryItem` (the trip plan).
+
+Variation lives in `category` (19 top-level values), a `subcategory` from a code taxonomy (`app/places/taxonomy.py`, localized labels and keywords), and structured JSON `attributes` (cuisine, diet, accessibility, pets, noise, age limits, cover charge...). There are no per-subcategory columns. Every row carries provenance: `source`, `last_verified_at`, `confidence`, `provider_owned`, `is_synthetic`.
+
+Region data is a YAML **region pack** (`data/regions/*.yaml`) with places, events, offerings and region-scoped providers. `ExternalProvider` gains a `region` and an optional `property_id`.
+
+**Reason.** Restaurants, ski rental, guides, pharmacies and events differ in data, not in mechanics. A new vertical should be data + a provider adapter + a capability + policies.
+
+**Alternatives considered.** Separate restaurant / rental / event engines would mean duplicated hours, availability and booking logic. A free-form "points of interest" text corpus for RAG was rejected because it cannot answer "open now" or "fits 4 people" reliably.
+
+**Consequences.** Times in packs are local and stored as UTC. Hours are structured (weekly, kitchen, seasonal, special days, temporary closures, last entry), so OPEN / OPEN_LATER / CLOSED is computed, never guessed. Freshness (fresh / stale / unverified) is shown as a caveat.
+
+---
+
+## D-038 - Discovery: retrieve → filter → rank → explain, from structured data only
+
+**Decision.** Discovery requests are parsed deterministically (en / cnr / ru) into a `DiscoveryQuery`:
+
+- **Hard constraints:** categories, exclusions, diet, accessibility, pets, open-at, kitchen-serving-at, open-after-midnight, distance.
+- **Soft preferences:** lively / quiet, local, tags.
+
+Hard constraints filter. Ranking only orders what passed, and a soft preference never returns its opposite ("lively" never yields a place recorded as quiet). Every reason and caveat in a result is derived from stored fields: hours, distance (haversine from the property), attributes, freshness. Past events are never shown.
+
+The property's own knowledge goes first when its pack answers the same kind of need ("Where is the parking?"), unless the guest uses an explicit outside cue ("nearby", "in town", "recommend").
+
+**Reason.** "The LLM never defines reality" applies to places too: names, hours and distances from a model's memory are exactly the hallucinations a travel product cannot afford.
+
+**Consequences.** If nothing matches, the bot says so and offers staff, without guessing. Health results add the property's emergency number only (never an invented one); emergencies themselves are handled by the safety path before discovery runs.
+
+---
+
+## D-039 - DISCOVERY, RESERVATION, TRANSACTION and CONFIRMATION stay separate
+
+**Decision.** The four stages are separate steps, and the guest can see where each item is:
+
+1. Discovery shows options ("save 1", "book 1"). Saving creates a SAVED plan item, never a reservation.
+2. "Book N" on a venue with a reservation offering starts a reservation, which is a quote.
+3. Consent creates the transaction.
+4. Only a provider response or callback confirms it.
+
+A place without a reservation channel is "can't be reserved through me (walk-ins welcome)", never "booked".
+
+**Consequences.** `ItineraryItem` statuses linked to a quote or action are read from the source row, so the plan can never disagree with the transaction.
+
+---
+
+## D-040 - Availability is recorded inventory or the provider's word
+
+**Decision.** `AvailabilitySlot` rows hold capacity. Units are people by default; `unit: group` counts whole bookings, up to the offering's `max_party`. Accepting a quote holds the units, and REJECTED / CANCELLED / FAILED release them. A quote is matched to the first offering that fits: capacity, language and party size. Otherwise `NoAvailability(reason, alternatives)` returns the nearest real slots. Possible reasons: `no_capacity`, `not_offered_at_that_time`, `language_unavailable`, `party_too_large`.
+
+If an offering has no modelled inventory, the provider decides at quote or submit time.
+
+**Consequences.** The flagship example works from data alone. "Skis for 4" skips a shop holding 3 sets. "Russian guide Sunday" picks the guide who works Sundays. A group of 8 gets real alternatives instead of a fake slot.
+
+---
+
+## D-041 - Multi-part trip requests become independent plan items
+
+**Decision.** A message with several requests is split into sentences. Each sentence becomes an independent item:
+
+- a provider service (quote, or the one missing detail to ask for);
+- or a discovery shortlist.
+
+Trip context is extracted once and applied only where the item lacks it:
+
+- arrival day and time;
+- party size;
+- for transfers: pickup time = arrival, destination = property (both shown as part of the offer).
+
+The ETA is arrival plus the transport provider's `estimated_duration_minutes`, shown as an estimate. "Still serving when we arrive" filters kitchens at the ETA. All offered codes are awaiting consent together. A missing detail ("What time on 17.01?") is kept as a draft, and its answer goes to that draft even while other offers are open.
+
+**Reason.** Guests write like this, and each item has its own provider, price, availability and status. One failing item must not block the others.
+
+**Alternatives considered.** A single "trip booking" transaction was rejected: there would be no partial success and no selective consent.
+
+**Consequences.** Segmentation is sentence-based. Several requests inside one sentence ("a taxi and a table") are not yet split (see the known limitations).
+
+---
+
+## D-042 - Traveller preferences and contextual recommendations: architecture only
+
+**Decision.** Preferences come only from what the guest says explicitly (Stay facts and Guest.preferences, as before). Nothing is inferred from behaviour. Contextual recommendations (weather, time of day, plan gaps) and a direct tourist mode (no property) are designed to plug in as additional `DiscoveryQuery` producers. The engine already takes `near`, `at` and region without a property, but they are not built in this iteration.
+
+---
+
+## D-043 - Timestamps: local in packs, UTC in the database
+
+**Decision.** Region pack times (events, slots, verification dates) and plan item times are converted from the region timezone to UTC at write time.
+
+**Reason.** SQLite drops offsets. Storing local wall time silently shifted every event by the zone offset; the evals caught it ("DJ night 01:00" instead of 23:00). File-based SQLite also needed explicit BEGIN handling for correct SAVEPOINT rollback; the in-memory test engine shares one connection and documents that limitation.

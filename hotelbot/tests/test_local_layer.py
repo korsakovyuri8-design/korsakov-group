@@ -258,3 +258,10 @@ def test_itinerary_status_comes_from_source(container, chat):
 def test_frozen_clock_is_used_for_region_freshness():
     clock = FrozenClock(datetime(2027, 1, 11, 9, 0, tzinfo=timezone.utc))
     assert clock.now().year == 2027
+
+
+def test_staff_can_read_a_guest_plan(client, chat, staff_headers):
+    reply = chat("What events are happening this week?")
+    chat("save 1")
+    rows = client.get(f"/api/staff/stays/{reply.stay_id}/plan", headers=staff_headers).json()
+    assert [(r["title"], r["status"]) for r in rows] == [("DJ night", "saved")]

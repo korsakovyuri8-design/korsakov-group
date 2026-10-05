@@ -6,6 +6,8 @@ compatibility; /api/staff/actions is the Stay Engine API."""
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -314,3 +316,15 @@ def list_jobs(job_status: JobStatus | None = None, limit: int = 100,
     if job_status:
         q = q.where(Job.status == job_status)
     return [JobOut.model_validate({**j.__dict__, "status": j.status.value}) for j in session.scalars(q)]
+
+
+@router.get("/stays/{stay_id}/plan")
+def stay_plan(stay_id: str, session: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    """The guest's trip plan: each item with its own status (read from the
+    linked quote/action where there is one)."""
+    from app.trip.itinerary import plan
+
+    return [{"id": e.item.id, "kind": e.item.kind, "title": e.item.title, "status": e.status,
+             "starts_at": e.starts_at.isoformat() if e.starts_at else None, "quote_id": e.item.quote_id,
+             "action_id": e.item.action_id, "place_id": e.item.place_id, "event_id": e.item.event_id}
+            for e in plan(session, stay_id)]
