@@ -34,33 +34,26 @@ capabilities:
     booking_inquiry:       {executor: staff}
     staff_question:        {executor: staff}
   # External, transactional services: quote -> explicit guest consent -> provider.
+  # Providers are discovered among the region's shared providers
+  # (data/regions/zabljak_demo.yaml) by fit, availability and price;
+  # `provider_relationships` below shape the choice.
   services:
-    airport_transfer: {provider: demo-transfers}
-    taxi:             {provider: demo-transfers}
-    # Fulfilled by region-scoped providers (data/regions/zabljak_demo.yaml)
+    airport_transfer: {}
+    taxi: {}
+    intercity_transfer: {}
     restaurant_reservation: {}
     bar_table: {}
-    ski_rental: {}
+    rental: {}
     guide_booking: {}
   integrations: [human_staff]
   external_services: [transport, activities]
 
-# External providers (SYNTHETIC). Secrets are referenced by env-var name only.
-providers:
-  - slug: demo-transfers
-    name: "Demo Transfers (synthetic)"
-    provider_type: transport
-    integration_type: mock
-    services: [airport_transfer, taxi]
-    config:
-      currency: EUR
-      pricing: {base: 30, per_extra_person: 5, night_surcharge: 10}
-      # Synthetic: typical Podgorica airport -> Žabljak journey, used only to
-      # estimate arrival for a trip plan (always shown as an estimate).
-      estimated_duration_minutes: 150
-      validity_minutes: 15
-      conditions: "Price per vehicle. Free cancellation up to 2 hours before pickup."
-      callback_secret_env: DEMO_TRANSFERS_CALLBACK_SECRET
+# How this property works with the region's shared providers (SYNTHETIC).
+# default/preferred rank first among SUITABLE providers; exclusive = the only
+# one for those services; blocked = never used.
+provider_relationships:
+  - {provider: demo-transfers, relation: default, services: [airport_transfer, taxi, intercity_transfer]}
+  - {provider: demo-peak-guides, relation: preferred, services: [guide_booking]}
 
 # Conversation policy (see FailurePolicy). Omitted keys use deployment defaults.
 policy:

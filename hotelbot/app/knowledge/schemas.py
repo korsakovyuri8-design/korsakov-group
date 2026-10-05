@@ -11,7 +11,8 @@ they get property_type "hotel" and the legacy all-staff capability set.
 
 from __future__ import annotations
 
-from typing import Any
+from decimal import Decimal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -108,6 +109,12 @@ class ProviderSpec(BaseModel):
     services: list[str]
     active: bool = True
     config: dict[str, Any] = Field(default_factory=dict)
+    # Marketplace profile: languages, service area, location, description...
+    profile: dict[str, Any] = Field(default_factory=dict)
+    # Default policies for its offerings (cancellation, deposit, ID, age...).
+    policies: dict[str, Any] = Field(default_factory=dict)
+    commission_type: str | None = None          # percent | fixed | markup | none
+    commission_value: Decimal | None = None
 
     @model_validator(mode="after")
     def _check(self) -> ProviderSpec:
@@ -132,6 +139,16 @@ class ProviderSpec(BaseModel):
         return self
 
 
+class ProviderRelationshipSpec(BaseModel):
+    """How this property relates to a shared (region) provider or its own."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    relation: Literal["preferred", "default", "exclusive", "blocked"]
+    services: list[str] = Field(default_factory=list)   # empty = all services
+
+
 class KnowledgePack(BaseModel):
     pack: PackInfo
     items: list[KnowledgeItem]
@@ -139,6 +156,7 @@ class KnowledgePack(BaseModel):
     capabilities: CapabilitySpec | None = None
     policy: PolicySpec = Field(default_factory=PolicySpec)
     providers: list[ProviderSpec] = Field(default_factory=list)
+    provider_relationships: list[ProviderRelationshipSpec] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _declared_providers_offer_service(self) -> KnowledgePack:

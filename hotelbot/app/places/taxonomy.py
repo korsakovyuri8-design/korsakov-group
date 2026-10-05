@@ -147,6 +147,8 @@ SUBCATEGORIES: dict[str, Subcategory] = {s.key: s for s in [
        "najam skija", "skije", "лыж*", "прокат лыж*"),
     _s("bike_rental", C.RENTAL, "bike rental", "rent-a-bike", "прокат велосипедов", "bike*", "bicycle*", "bicikl*",
        "велосипед*"),
+    _s("car_rental", C.RENTAL, "car rental", "rent-a-car", "прокат автомобилей", "car rental", "rent a car",
+       "rent-a-car", "прокат авто*"),
     _s("guide", C.GUIDE, "guide", "vodič", "гид", "guide", "vodic*", "гид*", "экскурсовод*"),
     _s("rafting", C.ACTIVITY, "rafting", "rafting", "рафтинг", "rafting", "рафтинг*"),
     _s("hiking", C.ACTIVITY, "hiking", "planinarenje", "поход", "hike", "hiking", "trek*", "planinar*", "поход*"),

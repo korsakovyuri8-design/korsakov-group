@@ -14,8 +14,10 @@ config:
   behavior:
     quote:  ok | timeout | unavailable
     submit: accepted | received | rejected | timeout | unavailable | invalid | auth | flaky:N
-            (flaky:N = N timeouts, then accepted)
+            (flaky:N = N timeouts, then accepted; weather-dependent offerings are
+            accepted_conditional instead of accepted)
     cancel: cancelled | refused | timeout
+    modify: accepted | rejected | timeout   (only with supports_modification: true)
 """
 
 from __future__ import annotations
@@ -56,6 +58,18 @@ class MockExternalProvider:
             raise ProviderTimeout("mock quote timeout")
         if mode == "unavailable":
             raise ProviderUnavailable("mock quote unavailable")
+        offering = request.offering or {}
+        if offering.get("pricing"):     # catalogued offering: price from its declared pricing
+            from app.marketplace.pricing import compute
+
+            amount = compute(offering["pricing"], request.details, tz=self.config.get("timezone", "Europe/Podgorica"))
+            digest = hashlib.sha1(repr(sorted(map(str, request.details.items()))).encode()).hexdigest()[:8].upper()
+            return QuoteResult(
+                amount=amount, currency=offering.get("currency") or self.config.get("currency", "EUR"),
+                description=offering.get("title") or request.service_type.replace("_", " "),
+                conditions=self.config.get("conditions"),
+                valid_until=self.clock.now() + timedelta(minutes=int(self.config.get("validity_minutes", 15))),
+                provider_reference=f"Q-{digest}")
         pricing = self.config.get("pricing") or {}
         amount = Decimal(str(pricing.get("base", 30)))
         people = int(request.details.get("party_size") or 1)
@@ -97,6 +111,8 @@ class MockExternalProvider:
             raise ProviderAuthError("mock provider credentials rejected")
         reference = "MOCK-" + hashlib.sha1(request.idempotency_key.encode()).hexdigest()[:8].upper()
         status = {"accepted": "accepted", "received": "received", "rejected": "rejected"}[mode]
+        if status == "accepted" and request.details.get("weather_dependent"):
+            status = "accepted_conditional"     # outdoor service: confirmed only once the weather allows
         if status != "rejected":
             self.bookings[request.idempotency_key] = {"reference": reference, "status": status,
                                                       "details": request.details}
@@ -116,6 +132,23 @@ class MockExternalProvider:
                 booking["status"] = "cancelled"
         return ProviderOutcome(status="cancelled", reference=reference)
 
+    def modify(self, request: SubmitRequest) -> ProviderOutcome:
+        """Change an existing booking in place (idempotent on the key)."""
+        self.submit_calls += 1
+        if request.idempotency_key in self.bookings:
+            b = self.bookings[request.idempotency_key]
+            return ProviderOutcome(status=b["status"], reference=b["reference"], message="duplicate")
+        mode = self.behavior.get("modify", "accepted")
+        if mode == "timeout":
+            raise ProviderTimeout("mock modify timeout")
+        if mode == "rejected":
+            return ProviderOutcome(status="rejected", reference=request.modifies_reference, message="cannot change")
+        for key, booking in list(self.bookings.items()):
+            if booking["reference"] == request.modifies_reference:
+                booking["details"] = request.details
+                self.bookings[request.idempotency_key] = booking   # same booking, new key -> idempotent retries
+        return ProviderOutcome(status="accepted", reference=request.modifies_reference, message="modified")
+
     def get_status(self, reference: str) -> ProviderOutcome:
         for booking in self.bookings.values():
             if booking["reference"] == reference:
@@ -124,4 +157,5 @@ class MockExternalProvider:
 
     @property
     def active_bookings(self) -> int:
-        return sum(1 for b in self.bookings.values() if b["status"] != "cancelled")
+        unique = {b["reference"]: b for b in self.bookings.values()}
+        return sum(1 for b in unique.values() if b["status"] != "cancelled")

@@ -19,7 +19,8 @@ from __future__ import annotations
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -32,7 +33,6 @@ from app.clock import Clock, as_utc
 from app.db.models import (
     Action,
     ActionEvent,
-    AvailabilitySlot,
     ActionStatus,
     Conversation,
     ExternalProvider,
@@ -47,19 +47,23 @@ from app.db.models import (
 from app.db.repositories import ConversationRepository
 from app.jobs.queue import PermanentJobError, RetryableJobError, enqueue
 from app.observability import log_event
+from app.marketplace import pricing
 from app.places import availability
 from app.transactions.format import format_price, format_summary
 from app.transactions.providers.base import ProviderError, QuoteRequest, SubmitRequest
 from app.transactions.providers.registry import ProviderRegistry
 from app.whatsapp.base import MessageTransport
 
+if TYPE_CHECKING:
+    from app.marketplace.discovery import Candidate
+
 S = ActionStatus
-CANCELLABLE = (S.PROPOSED, S.SUBMITTED, S.ACCEPTED)
-ACTIVE = (S.PROPOSED, S.SUBMITTED, S.ACCEPTED, S.IN_PROGRESS)
+CANCELLABLE = (S.PROPOSED, S.SUBMITTED, S.PENDING_CONDITION, S.ACCEPTED)
+ACTIVE = (S.PROPOSED, S.SUBMITTED, S.PENDING_CONDITION, S.ACCEPTED, S.IN_PROGRESS)
 _CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ"   # no I/O: not confusable with digits
 
 _OUTCOME_STATUS = {
-    "accepted": S.ACCEPTED, "rejected": S.REJECTED, "in_progress": S.IN_PROGRESS, "completed": S.COMPLETED,
+    "accepted": S.ACCEPTED, "accepted_conditional": S.PENDING_CONDITION, "rejected": S.REJECTED, "in_progress": S.IN_PROGRESS, "completed": S.COMPLETED,
     "failed": S.FAILED, "cancelled": S.CANCELLED,
 }
 
@@ -105,45 +109,61 @@ class TransactionService:
 
     # ---------------------------------------------------------------- quotes
     def request_quote(self, *, stay: Stay, conv: Conversation, provider: ExternalProvider, service_type: str,
-                      details: dict[str, Any], locale: str) -> Quote:
-        """Check modelled inventory, then ask the provider for a price.
-        Raises NoAvailability (with real alternatives) or ProviderError."""
+                      details: dict[str, Any], locale: str, candidate: Candidate | None = None,
+                      supersede: bool = True, replaces: ExternalTransaction | None = None) -> Quote:
+        """Hold the inventory the candidate needs, then ask the provider for a
+        price. The hold expires with the quote. Raises NoAvailability (the
+        last unit went to someone else a moment ago) or ProviderError."""
         details = dict(details)
-        match = self._match_inventory(provider, service_type, details)
-        if match is not None:
-            details["_offering_id"], details["_slot_id"] = match.offering.id, match.slot.id
-            details["offering"] = (match.offering.title or {}).get("en") or match.offering.slug
+        offering = candidate.offering if candidate else None
+        if candidate is not None:
+            details.update(candidate.resolved)
+        if offering is not None:
+            details["_offering_id"] = offering.id
+            details["offering"] = (offering.title or {}).get("en") or offering.slug
+            if (offering.attributes or {}).get("weather_dependent"):
+                details["weather_dependent"] = True
+        now = self.clock.now()
+        validity = timedelta(minutes=int((provider.config or {}).get("validity_minutes", 15)))
+        holds = []
+        if candidate is not None and offering is not None and candidate.start is not None and candidate.need:
+            holds = availability.hold(self.s, offering, candidate.start, candidate.end or candidate.start,
+                                      candidate.need, now=now, expires_at=now + validity,
+                                      ignore_transaction=replaces.id if replaces else None)
         provider_details = {k: v for k, v in details.items() if not k.startswith("_")}
-        result = self.deps.providers.adapter(provider).request_quote(QuoteRequest(service_type, provider_details,
-                                                                                  locale))
-        self.supersede_open(conv.id, service_type)
+        offering_info = None
+        if offering is not None:
+            offering_info = {"slug": offering.slug, "title": (offering.title or {}).get("en"),
+                             "pricing": offering.pricing, "currency": offering.currency,
+                             "attributes": offering.attributes}
+        try:
+            result = self.deps.providers.adapter(provider).request_quote(
+                QuoteRequest(service_type, provider_details, locale, offering_info))
+        except ProviderError:
+            for h in holds:
+                self.s.delete(h)
+            raise
+        if supersede:
+            self.supersede_open(conv.id, service_type)
+        terms = dict(candidate.terms) if candidate else {}
         quote = Quote(
             code="".join(secrets.choice(_CODE_ALPHABET) for _ in range(4)),
             property_id=stay.property_id, stay_id=stay.id, guest_id=stay.guest_id, conversation_id=conv.id,
             provider_id=provider.id, service_type=service_type, request=details, currency=result.currency,
             amount=result.amount, description=result.description, conditions=result.conditions,
             valid_until=result.valid_until, provider_reference=result.provider_reference, status=QuoteStatus.OFFERED,
-            consent={}, created_at=self.clock.now(),
+            consent={}, terms=terms, offering_id=offering.id if offering else None,
+            commercial=pricing.commission(offering or provider, result.amount),
+            replaces_transaction_id=replaces.id if replaces else None, created_at=now,
         )
         self.s.add(quote)
         self.s.flush()
+        for h in holds:
+            h.quote_id, h.expires_at = quote.id, as_utc(quote.valid_until)
         log_event("quote_offered", quote_id=quote.id, provider=provider.slug, service_type=service_type,
-                  amount=str(quote.amount), currency=quote.currency)
+                  amount=str(quote.amount), currency=quote.currency, offering=offering.slug if offering else None,
+                  held=sum(h.quantity for h in holds))
         return quote
-
-    def _match_inventory(self, provider: ExternalProvider, service_type: str, details: dict[str, Any]):
-        from datetime import datetime as _dt
-
-        from app.transactions.catalog import SERVICE_CATALOG
-
-        spec = SERVICE_CATALOG[service_type]
-        when_key = next((f.key for f in spec.fields if f.kind == "datetime"), None)
-        if not when_key or not details.get(when_key):
-            return None
-        offerings = availability.offerings_for(self.s, provider.id, service_type, details.get("_venue_id"))
-        party = int(details.get("party_size") or 1)
-        return availability.find_slot(self.s, offerings, _dt.fromisoformat(details[when_key]), party,
-                                      details.get("language"))
 
     def open_quotes(self, conversation_id: str) -> list[Quote]:
         return list(self.s.scalars(select(Quote).where(Quote.conversation_id == conversation_id,
@@ -163,6 +183,7 @@ class TransactionService:
             q = q.where(Quote.service_type == service_type)
         for quote in self.s.scalars(q):
             quote.status, quote.decided_at = QuoteStatus.SUPERSEDED, self.clock.now()
+            availability.release_quote(self.s, quote.id)
 
     def is_expired(self, quote: Quote) -> bool:
         return as_utc(quote.valid_until) <= self.clock.now()
@@ -170,10 +191,12 @@ class TransactionService:
     def expire(self, quote: Quote) -> None:
         if quote.status == QuoteStatus.OFFERED:
             quote.status, quote.decided_at = QuoteStatus.EXPIRED, self.clock.now()
+            availability.release_quote(self.s, quote.id)
             log_event("quote_expired", quote_id=quote.id)
 
     def decline(self, quote: Quote) -> None:
         quote.status, quote.decided_at = QuoteStatus.DECLINED_BY_GUEST, self.clock.now()
+        availability.release_quote(self.s, quote.id)
         log_event("quote_declined", quote_id=quote.id)
 
     def accept(self, quote: Quote, *, message_id: str | None, text: str) -> ExternalTransaction:
@@ -184,22 +207,16 @@ class TransactionService:
         if self.is_expired(quote):
             self.expire(quote)
             raise QuoteExpired(quote.id)
-        hold_info = None
-        if quote.request.get("_slot_id"):
-            slot = self.s.get(AvailabilitySlot, quote.request["_slot_id"])
-            if slot is None:
-                raise availability.NoAvailability("slot_gone")
-            units = availability.hold(slot, int(quote.request.get("party_size") or 1))
-            hold_info = {"slot_id": slot.id, "units": units}
         quote.status, quote.decided_at = QuoteStatus.ACCEPTED_BY_GUEST, self.clock.now()
         quote.consent = {"message_id": message_id, "text": text, "at": self.clock.now().isoformat(),
-                         "amount": str(quote.amount), "currency": quote.currency, "code": quote.code}
+                         "amount": str(quote.amount), "currency": quote.currency, "code": quote.code,
+                         "terms": quote.terms or {}}
         action = ActionService(self.s, self.deps.executors).propose(
             property_id=quote.property_id, stay_id=quote.stay_id, conversation_id=quote.conversation_id,
             action_type=quote.service_type, executor="provider",
             summary=f"{quote.service_type} via provider, {format_price(quote.amount, quote.currency)}",
             params={"quote_id": quote.id, "details": quote.request, "amount": str(quote.amount),
-                    "currency": quote.currency, "hold": hold_info},
+                    "currency": quote.currency, "replaces": quote.replaces_transaction_id},
         )
         txn = ExternalTransaction(action_id=action.id, provider_id=quote.provider_id, quote_id=quote.id,
                                   idempotency_key=f"txn-{quote.id}",
@@ -208,6 +225,8 @@ class TransactionService:
                                   created_at=self.clock.now())
         self.s.add(txn)
         self.s.flush()
+        if not availability.confirm(self.s, quote.id, txn.id, self.clock.now()):
+            raise availability.NoAvailability("slot_gone")
         enqueue(self.s, "provider_submit", {"transaction_id": txn.id}, f"submit:{txn.id}", clock=self.clock)
         log_event("quote_accepted", quote_id=quote.id, transaction_id=txn.id, action_id=action.id)
         return txn
@@ -222,18 +241,32 @@ class TransactionService:
                               .order_by(ExternalTransaction.created_at.desc()))
         return list(rows)
 
-    def request_cancel(self, txn: ExternalTransaction) -> bool:
+    def request_cancel(self, txn: ExternalTransaction, template: str | None = None) -> bool:
         if txn.action.status not in CANCELLABLE:
             return False
         if txn.action.status == S.PROPOSED:
             # Not yet sent: cancel locally; the pending submit job becomes a no-op.
-            self.apply_status(txn, S.CANCELLED, "guest", "cancelled before submission")
+            self.apply_status(txn, S.CANCELLED, "guest", "cancelled before submission", template)
         else:
-            enqueue(self.s, "provider_cancel", {"transaction_id": txn.id}, f"cancel:{txn.id}", clock=self.clock)
+            enqueue(self.s, "provider_cancel", {"transaction_id": txn.id, "template": template},
+                    f"cancel:{txn.id}", clock=self.clock)
         return True
 
+    def cancellation_policy(self, txn: ExternalTransaction) -> CancelPolicy:
+        """What cancelling now means under the provider's stated policy -
+        checked BEFORE promising anything to the guest."""
+        terms = txn.quote.terms or {}
+        hours = terms.get("free_cancellation_hours")
+        start = _start_of(txn.request)
+        if hours is None or start is None:
+            return CancelPolicy("unknown", None, terms.get("cancellation_fee"))
+        deadline = start - timedelta(hours=float(hours))
+        if self.clock.now() <= deadline:
+            return CancelPolicy("free", deadline, None)
+        return CancelPolicy("fee", deadline, terms.get("cancellation_fee") or "per the provider's policy")
+
     def apply_status(self, txn: ExternalTransaction, target: ActionStatus, actor: str,
-                     detail: str | None = None) -> str:
+                     detail: str | None = None, template: str | None = None) -> str:
         """Move the transaction's action through the state machine; queue the
         guest notification; escalate failures to staff."""
         action = txn.action
@@ -245,12 +278,16 @@ class TransactionService:
             log_event("transaction_invalid_transition", transaction_id=txn.id, current=action.status.value,
                       target=target.value, actor=actor)
             return "invalid_transition"
-        self.queue_notification(action, target)
+        self.queue_notification(action, target, template)
         if target in (S.REJECTED, S.CANCELLED, S.FAILED):
-            hold_info = (action.params or {}).get("hold")
-            if hold_info:
-                availability.release(self.s, hold_info["slot_id"], hold_info["units"])
-                action.params = {**action.params, "hold": None}
+            availability.release_transaction(self.s, txn.id)
+        replaces = (action.params or {}).get("replaces")
+        if target == S.ACCEPTED and replaces and not (action.params or {}).get("modified_in_place"):
+            # The new booking is confirmed: only now is the old one cancelled,
+            # so a failed change never leaves the guest with nothing.
+            old = self.s.get(ExternalTransaction, replaces)
+            if old is not None:
+                self.request_cancel(old, template="txn_replaced")
         if target == S.FAILED:
             self._escalate(txn, detail)
         return "applied"
@@ -276,15 +313,27 @@ class TransactionService:
         if txn.action.status != S.PROPOSED:
             return  # already submitted, or cancelled before submission
         quote = txn.quote
+        adapter = self.deps.providers.adapter(txn.provider)
+        old = self.s.get(ExternalTransaction, quote.replaces_transaction_id) if quote.replaces_transaction_id else None
+        modify = (old is not None and old.provider_id == txn.provider_id and old.provider_reference
+                  and (txn.provider.config or {}).get("supports_modification") and hasattr(adapter, "modify")
+                  and old.action.status in CANCELLABLE)
+        request = SubmitRequest(
+            idempotency_key=txn.idempotency_key, service_type=quote.service_type, details=txn.request,
+            quote_reference=quote.provider_reference, amount=quote.amount, currency=quote.currency,
+            customer_reference=txn.action.stay_id or txn.id,
+            offering_ref=quote.request.get("_offering_id"),
+            modifies_reference=old.provider_reference if modify and old else None,
+        )
         try:
-            outcome = self.deps.providers.adapter(txn.provider).submit(SubmitRequest(
-                idempotency_key=txn.idempotency_key, service_type=quote.service_type, details=txn.request,
-                quote_reference=quote.provider_reference, amount=quote.amount, currency=quote.currency,
-                customer_reference=txn.action.stay_id or txn.id,
-            ))
+            outcome = adapter.modify(request) if modify else adapter.submit(request)
         except ProviderError as exc:
             raise (RetryableJobError if exc.retryable else PermanentJobError)(f"{exc.kind}: {exc}") from exc
         actor = f"provider:{txn.provider.slug}"
+        if modify and old is not None and outcome.status == "accepted":
+            # Modified in place: the old record ends as replaced, no cancellation call.
+            txn.action.params = {**(txn.action.params or {}), "modified_in_place": True}
+            self.apply_status(old, S.CANCELLED, actor, "replaced by a modification", template="txn_replaced")
         txn.provider_reference = outcome.reference or txn.provider_reference
         txn.submitted_at = self.clock.now()
         ActionService(self.s, self.deps.executors).transition(txn.action, S.SUBMITTED, actor)
@@ -305,7 +354,7 @@ class TransactionService:
         txn.action.error = error
         self.apply_status(txn, S.FAILED, "system:retries_exhausted", error)
 
-    def run_cancel(self, transaction_id: str) -> None:
+    def run_cancel(self, transaction_id: str, template: str | None = None) -> None:
         txn = self.s.get(ExternalTransaction, transaction_id)
         if txn is None or txn.action.status not in CANCELLABLE or not txn.provider_reference:
             return
@@ -314,7 +363,7 @@ class TransactionService:
         except ProviderError as exc:
             raise (RetryableJobError if exc.retryable else PermanentJobError)(f"{exc.kind}: {exc}") from exc
         if outcome.status == "cancelled":
-            self.apply_status(txn, S.CANCELLED, f"provider:{txn.provider.slug}", outcome.message)
+            self.apply_status(txn, S.CANCELLED, f"provider:{txn.provider.slug}", outcome.message, template)
         else:
             self.queue_notification(txn.action, txn.action.status, template="txn_cancel_refused")
             self._escalate(txn, f"cancellation refused: {outcome.message}")
@@ -353,7 +402,11 @@ class TransactionService:
         was_accepted = self.s.scalar(select(ActionEvent.id).where(
             ActionEvent.action_id == action.id, ActionEvent.to_status == S.ACCEPTED).limit(1)) is not None
         provider_name = txn.provider.name if txn else prop.name
-        details = txn.request if txn else {}
+        details = {k: v for k, v in (txn.request if txn else {}).items() if k != "weather_dependent"}
+        if action.action_type == "rental" and details.get("category"):
+            from app.transactions.catalog import rental_label
+
+            details["category"] = rental_label(details["category"], locale)
         return TxnView(
             status=action.status,
             service_type=action.action_type,
@@ -363,6 +416,20 @@ class TransactionService:
             reference=(txn.provider_reference if txn else None) or "-",
             was_accepted=was_accepted,
         )
+
+
+@dataclass(frozen=True)
+class CancelPolicy:
+    status: str                    # free | fee | unknown
+    deadline: datetime | None
+    fee: str | None
+
+
+def _start_of(details: dict[str, Any]) -> datetime | None:
+    for key in ("pickup_time", "start_time", "reservation_time", "delivery_time"):
+        if details.get(key):
+            return as_utc(datetime.fromisoformat(details[key]))
+    return None
 
 
 @dataclass(frozen=True)

@@ -6,6 +6,7 @@ Contract (documented in docs/PROVIDER_INTEGRATION.md):
     POST {base_url}/bookings                -> 200/201/202 {status: received|accepted|rejected, reference, message?}
          header Idempotency-Key: <key>         (same key => same booking, no duplicate)
     POST {base_url}/bookings/{ref}/cancel   -> 200 {status: cancelled|rejected, message?}
+    POST {base_url}/bookings/{ref}/modify   -> 200 {status: accepted|rejected, reference}   (if supported)
     GET  {base_url}/bookings/{ref}          -> 200 {status, reference}
 
 Every request carries X-HotelBot-Timestamp and
@@ -38,7 +39,8 @@ from app.transactions.providers.base import (
     SubmitRequest,
 )
 
-_STATUSES = {"received", "accepted", "rejected", "in_progress", "completed", "failed", "cancelled"}
+_STATUSES = {"received", "accepted", "accepted_conditional", "rejected", "in_progress", "completed", "failed",
+             "cancelled"}
 
 
 class WebhookExternalProvider:
@@ -120,7 +122,8 @@ class WebhookExternalProvider:
     # ------------------------------------------------------------- interface
     def request_quote(self, request: QuoteRequest) -> QuoteResult:
         data = self._call("POST", "/quotes", {"service_type": request.service_type, "details": request.details,
-                                              "locale": request.locale})
+                                              "locale": request.locale,
+                                              "offering_ref": (request.offering or {}).get("slug")})
         try:
             return QuoteResult(
                 amount=Decimal(str(data["amount"])).quantize(Decimal("0.01")),
@@ -141,6 +144,13 @@ class WebhookExternalProvider:
             "amount": str(request.amount),
             "currency": request.currency,
             "customer_reference": request.customer_reference,
+            "offering_ref": request.offering_ref,
+        }, idempotency_key=request.idempotency_key))
+
+    def modify(self, request: SubmitRequest) -> ProviderOutcome:
+        return self._outcome(self._call("POST", f"/bookings/{request.modifies_reference}/modify", {
+            "service_type": request.service_type, "details": request.details, "amount": str(request.amount),
+            "currency": request.currency, "offering_ref": request.offering_ref,
         }, idempotency_key=request.idempotency_key))
 
     def cancel(self, reference: str, idempotency_key: str) -> ProviderOutcome:

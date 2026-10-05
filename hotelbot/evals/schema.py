@@ -28,7 +28,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CATEGORIES = ("grounding", "actions", "authority", "handoff", "safety", "memory", "conversation", "languages",
-              "transactions", "local")
+              "transactions", "local", "marketplace")
 
 
 class _Strict(BaseModel):

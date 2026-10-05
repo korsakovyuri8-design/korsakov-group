@@ -12,10 +12,20 @@
 #   - Restoran Demo Ponoć keeps its kitchen open until midnight Fri/Sat
 #   - Restoran Demo Jezero requires a reservation; fully vegetarian/vegan-friendly
 #   - Bar Demo Koktel is open late (last entry 01:30) and lively
-#   - Ski Demo Mali rents only 3 ski sets per slot; Ski Demo Savin has 20
-#   - Guide Mila (Russian) is unavailable on Sundays; guide Ivan (Russian/English) is
 #   - Demo Apoteka Centar is closed on Sundays; Demo Apoteka Sjever is open
 #   - "New Year concert" is in the past and must never be recommended
+#  Marketplace (providers are shared by every property in the region):
+#   - Demo Transfers: cheap sedans (max 4 passengers, 4 bags), NO child seats
+#   - Demo Premium Transfers: dearer minivan (8 passengers, 10 bags, 2 child
+#     seats), only ONE minivan; supports in-place modification
+#   - Demo Ski & Board: skis + snowboards by length; the Mali shop has 3 sets,
+#     Savin Kuk has more (170 cm: 3 sets); winter season only
+#   - Demo Bike & Trek: bicycles / e-bikes (half days), hiking + camping gear;
+#     bikes only April-November
+#   - Demo Car Hire: cars only, minimum 24 h, deposit, driver 21+
+#   - Nobody rents scooters/motorbikes
+#   - Guides: Peak Guides (EN/ME, group hike or private), Durmitor Private
+#     (EN/RU, private, max 6, weather-dependent), Culture Walks (EN/DE, hourly)
 # =============================================================================
 
 region:
@@ -49,26 +59,108 @@ providers:
       pricing: {base: 0}
       validity_minutes: 15
       conditions: "Minimum spend 40 EUR per table."
-  - slug: demo-ski-rental
-    name: "Demo Ski Rental (synthetic)"
-    provider_type: ski_rental
+  # ------------------------------------------------------------ transport
+  - slug: demo-transfers
+    name: "Demo Transfers (synthetic)"
+    provider_type: transport
     integration_type: mock
-    services: [ski_rental]
+    services: [airport_transfer, taxi, intercity_transfer]
+    profile: {languages: [en, cnr, ru], service_area: "Durmitor region, Podgorica, coast", vehicles: [sedan]}
+    policies: {free_cancellation_hours: 2, cancellation_fee: "full price"}
+    commission_type: percent
+    commission_value: 10
     config:
       currency: EUR
-      pricing: {base: 25, per_extra_person: 25}
+      pricing: {base: 30, per_extra_person: 5, night_surcharge: 10}
       validity_minutes: 15
-      conditions: "Per person per day: skis, boots and poles. ID required at pickup."
-  - slug: demo-guides
-    name: "Demo Mountain Guides (synthetic)"
+      conditions: "Price per vehicle. Free cancellation up to 2 hours before pickup."
+      callback_secret_env: DEMO_TRANSFERS_CALLBACK_SECRET
+      # Synthetic: typical Podgorica airport -> Žabljak journey, used only to
+      # estimate arrival in a trip plan (always shown as an estimate).
+      estimated_duration_minutes: 150
+  - slug: demo-premium-transfers
+    name: "Demo Premium Transfers (synthetic)"
+    provider_type: transport
+    integration_type: mock
+    services: [airport_transfer, taxi, intercity_transfer]
+    profile: {languages: [en, cnr, de], service_area: "Montenegro", vehicles: [minivan]}
+    policies: {free_cancellation_hours: 6, cancellation_fee: "50% of the price"}
+    commission_type: percent
+    commission_value: 12
+    config:
+      currency: EUR
+      validity_minutes: 15
+      conditions: "Price per vehicle, child seats included in the price shown."
+      callback_secret_env: DEMO_PREMIUM_CALLBACK_SECRET
+      supports_modification: true
+      estimated_duration_minutes: 150
+  # -------------------------------------------------------------- rentals
+  - slug: demo-ski-rental
+    name: "Demo Ski & Board (synthetic)"
+    provider_type: rental
+    integration_type: mock
+    services: [rental]
+    profile: {categories: [ski, snowboard], locations: [ski-demo-mali, ski-demo-savin]}
+    policies: {id_required: true, damage_deposit: {amount: 100, currency: EUR}, return_rules: "same day by 16:30",
+               late_return_fee: "10 EUR per hour", free_cancellation_hours: 12, cancellation_fee: "one day's rental"}
+    commission_type: percent
+    commission_value: 15
+    config: {currency: EUR, validity_minutes: 15, callback_secret_env: DEMO_RENTALS_CALLBACK_SECRET}
+  - slug: demo-bike-trek
+    name: "Demo Bike & Trek (synthetic)"
+    provider_type: rental
+    integration_type: mock
+    services: [rental]
+    profile: {categories: [bicycle, e_bike, hiking_equipment, camping_equipment], delivery: false}
+    policies: {id_required: true, free_cancellation_hours: 2}
+    commission_type: percent
+    commission_value: 15
+    config: {currency: EUR, validity_minutes: 15}
+  - slug: demo-car-hire
+    name: "Demo Car Hire (synthetic)"
+    provider_type: rental
+    integration_type: mock
+    services: [rental]
+    profile: {categories: [car], pickup: "Žabljak town centre"}
+    policies: {id_required: true, driving_licence: "held for 2+ years", min_age: 21, min_duration_hours: 24,
+               deposit: {amount: 300, currency: EUR}, return_rules: "same fuel level", late_return_fee: "one extra day",
+               free_cancellation_hours: 48, cancellation_fee: "one day's rental"}
+    commission_type: fixed
+    commission_value: 15
+    config: {currency: EUR, validity_minutes: 15}
+  # --------------------------------------------------------------- guides
+  - slug: demo-peak-guides
+    name: "Demo Peak Guides (synthetic)"
     provider_type: guide
     integration_type: mock
     services: [guide_booking]
-    config:
-      currency: EUR
-      pricing: {base: 120, per_extra_person: 10}
-      validity_minutes: 15
-      conditions: "Full day (6 hours). Free cancellation up to 24 hours before."
+    profile: {languages: [en, cnr], specialties: [hiking, mountain, nature, durmitor],
+              certifications: ["UIMLA mountain leader (synthetic)"], service_area: "Durmitor National Park"}
+    policies: {free_cancellation_hours: 24, cancellation_fee: "50% of the price"}
+    commission_type: percent
+    commission_value: 15
+    config: {currency: EUR, validity_minutes: 15, callback_secret_env: DEMO_GUIDES_CALLBACK_SECRET}
+  - slug: demo-durmitor-private
+    name: "Demo Durmitor Private Tours (synthetic)"
+    provider_type: guide
+    integration_type: mock
+    services: [guide_booking]
+    profile: {languages: [en, ru], specialties: [durmitor, mountain, hiking, nature], max_group_size: 6,
+              certifications: ["licensed national park guide (synthetic)"]}
+    policies: {free_cancellation_hours: 24, cancellation_fee: "full price"}
+    commission_type: percent
+    commission_value: 15
+    config: {currency: EUR, validity_minutes: 15, callback_secret_env: DEMO_GUIDES_CALLBACK_SECRET}
+  - slug: demo-culture-walks
+    name: "Demo Culture Walks (synthetic)"
+    provider_type: guide
+    integration_type: mock
+    services: [guide_booking]
+    profile: {languages: [en, de], specialties: [cultural], service_area: "Žabljak town"}
+    policies: {free_cancellation_hours: 4}
+    commission_type: percent
+    commission_value: 10
+    config: {currency: EUR, validity_minutes: 15}
 
 places:
   # ------------------------------------------------------------------ FOOD
@@ -396,6 +488,17 @@ places:
                   sat: [["08:00", "16:30"]], sun: [["08:00", "16:30"]]}}]
       weekly: {}
 
+  - slug: bike-demo-centar
+    name: "Demo Bike & Trek shop"
+    subcategory: bike_rental
+    location: {lat: 43.1547, lon: 19.1219, address: "Demo street 9, Žabljak"}
+    hours: {weekly: {mon: [["09:00", "18:00"]], tue: [["09:00", "18:00"]], wed: [["09:00", "18:00"]], thu: [["09:00", "18:00"]], fri: [["09:00", "18:00"]], sat: [["09:00", "18:00"]], sun: [["09:00", "18:00"]]}}
+  - slug: car-demo-centar
+    name: "Demo Car Hire office"
+    subcategory: car_rental
+    location: {lat: 43.1541, lon: 19.1230, address: "Demo square 2, Žabljak"}
+    hours: {weekly: {mon: [["08:00", "20:00"]], tue: [["08:00", "20:00"]], wed: [["08:00", "20:00"]], thu: [["08:00", "20:00"]], fri: [["08:00", "20:00"]], sat: [["08:00", "20:00"]], sun: [["08:00", "20:00"]]}}
+
 events:
   - slug: jazz-friday-jan
     title: {en: "Live jazz evening", cnr: "Džez veče uživo", ru: "Вечер живого джаза"}
@@ -476,45 +579,183 @@ offerings:
     provider: demo-bar-tables
     recurring:
       - {days: [wed, thu, fri, sat, sun], start: "19:00", end: "01:30", capacity: 24, from: "2026-10-01", to: "2027-03-31"}
+  # ------------------------------------------------------------ transport
+  # Vehicles: inventory is per vehicle and time window (pickup + duration).
+  - slug: sedan-airport
+    service_type: airport_transfer
+    title: {en: "Sedan transfer (max 4 passengers)"}
+    provider: demo-transfers
+    attributes: {unit: vehicle, max_passengers: 4, luggage_capacity: 4, child_seats: 0, vehicle_types: [sedan, car],
+                 window: duration, duration_minutes: 150}
+    pricing: {model: per_booking, amount: 30, per_extra_person: 5, night_surcharge: 10}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "00:00", end: "00:00", capacity: 3, from: "2026-09-01", to: "2027-04-30"}
+  - slug: sedan-taxi
+    service_type: taxi
+    title: {en: "Sedan taxi (max 4 passengers)"}
+    provider: demo-transfers
+    attributes: {unit: vehicle, max_passengers: 4, luggage_capacity: 4, child_seats: 0, vehicle_types: [sedan, car],
+                 window: duration, duration_minutes: 60}
+    pricing: {model: per_booking, amount: 30, per_extra_person: 5, night_surcharge: 10}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "00:00", end: "00:00", capacity: 3, from: "2026-09-01", to: "2027-04-30"}
+  - slug: sedan-intercity
+    service_type: intercity_transfer
+    title: {en: "Sedan intercity transfer (max 4 passengers)"}
+    provider: demo-transfers
+    attributes: {unit: vehicle, max_passengers: 4, luggage_capacity: 4, child_seats: 0, vehicle_types: [sedan, car],
+                 window: duration, duration_minutes: 180}
+    pricing: {model: per_booking, amount: 90, per_extra_person: 5}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "00:00", end: "00:00", capacity: 2, from: "2026-09-01", to: "2027-04-30"}
+  - slug: minivan-airport
+    service_type: airport_transfer
+    title: {en: "Minivan transfer (max 8 passengers, child seats)"}
+    provider: demo-premium-transfers
+    attributes: {unit: vehicle, max_passengers: 8, luggage_capacity: 10, child_seats: 2, vehicle_types: [minivan, van],
+                 window: duration, duration_minutes: 150}
+    pricing: {model: per_booking, amount: 60, per_extra_person: 5, night_surcharge: 15}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "00:00", end: "00:00", capacity: 1, from: "2026-09-01", to: "2027-04-30"}
+  - slug: minivan-taxi
+    service_type: taxi
+    title: {en: "Minivan taxi (max 8 passengers, child seats)"}
+    provider: demo-premium-transfers
+    attributes: {unit: vehicle, max_passengers: 8, luggage_capacity: 10, child_seats: 2, vehicle_types: [minivan, van],
+                 window: duration, duration_minutes: 60}
+    pricing: {model: per_booking, amount: 45, per_extra_person: 5, night_surcharge: 15}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "00:00", end: "00:00", capacity: 1, from: "2026-09-01", to: "2027-04-30"}
+  - slug: minivan-intercity
+    service_type: intercity_transfer
+    title: {en: "Minivan intercity transfer (max 8 passengers, child seats)"}
+    provider: demo-premium-transfers
+    attributes: {unit: vehicle, max_passengers: 8, luggage_capacity: 10, child_seats: 2, vehicle_types: [minivan, van],
+                 window: duration, duration_minutes: 180}
+    pricing: {model: per_booking, amount: 130, per_extra_person: 5}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "00:00", end: "00:00", capacity: 1, from: "2026-09-01", to: "2027-04-30"}
+  # -------------------------------------------------------------- rentals
+  # Skis are sized from the skier's height (bands); inventory is per length.
   - slug: skis-mali
-    service_type: ski_rental
-    title: {en: "Ski set at Ski Demo Mali", cnr: "Ski oprema - Ski Demo Mali"}
+    service_type: rental
+    title: {en: "Ski set (skis, boots, poles) at Ski Demo Mali", cnr: "Ski oprema - Ski Demo Mali"}
     place: ski-demo-mali
     provider: demo-ski-rental
-    price_from: 25
-    currency: EUR
+    attributes: {categories: [ski], unit: item, fixed_start: true, requires: [heights],
+                 variants: {by: height, bands: [[120, 155, "150"], [155, 165, "160"], [165, 175, "170"], [175, 185, "180"], [185, 210, "190"]]}}
+    pricing: {model: per_item_day, amount: 25}
     recurring:
-      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "08:30", end: "13:00", capacity: 3, from: "2026-12-15", to: "2027-04-10"}
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "08:30", end: "16:30", variants: {"160": 1, "170": 1, "180": 1}, from: "2026-12-15", to: "2027-04-10"}
   - slug: skis-savin
-    service_type: ski_rental
-    title: {en: "Ski set at Ski Demo Savin Kuk", cnr: "Ski oprema - Ski Demo Savin Kuk"}
+    service_type: rental
+    title: {en: "Ski set (skis, boots, poles) at Ski Demo Savin Kuk", cnr: "Ski oprema - Ski Demo Savin Kuk"}
     place: ski-demo-savin
     provider: demo-ski-rental
-    price_from: 25
-    currency: EUR
+    attributes: {categories: [ski], unit: item, fixed_start: true, requires: [heights],
+                 variants: {by: height, bands: [[120, 155, "150"], [155, 165, "160"], [165, 175, "170"], [175, 185, "180"], [185, 210, "190"]]}}
+    pricing: {model: per_item_day, amount: 25}
     recurring:
-      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "08:00", end: "13:00", capacity: 20, from: "2026-12-15", to: "2027-04-10"}
-  - slug: guide-ana
-    service_type: guide_booking
-    title: {en: "Guide Ana (English, Montenegrin)"}
-    provider: demo-guides
-    attributes: {languages: [en, cnr], max_party: 8}
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "08:00", end: "16:30", variants: {"150": 3, "160": 4, "170": 3, "180": 4, "190": 2}, from: "2026-12-15", to: "2027-04-10"}
+  - slug: snowboards-savin
+    service_type: rental
+    title: {en: "Snowboard set (board, boots) at Ski Demo Savin Kuk", cnr: "Snoubord oprema - Ski Demo Savin Kuk"}
+    place: ski-demo-savin
+    provider: demo-ski-rental
+    attributes: {categories: [snowboard], unit: item, fixed_start: true, requires: [heights],
+                 variants: {by: height, bands: [[120, 165, "145"], [165, 180, "155"], [180, 210, "160"]]}}
+    pricing: {model: per_item_day, amount: 30}
     recurring:
-      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "09:00", end: "15:00", capacity: 1,
-         attributes: {unit: group}, from: "2026-10-01", to: "2027-03-31"}
-  - slug: guide-mila
-    service_type: guide_booking
-    title: {en: "Guide Mila (Russian)"}
-    provider: demo-guides
-    attributes: {languages: [ru], max_party: 8}
-    recurring:   # Mila does not work on Sundays
-      - {days: [mon, tue, wed, thu, fri, sat], start: "09:00", end: "15:00", capacity: 1,
-         attributes: {unit: group}, from: "2026-10-01", to: "2027-03-31"}
-  - slug: guide-ivan
-    service_type: guide_booking
-    title: {en: "Guide Ivan (Russian, English)"}
-    provider: demo-guides
-    attributes: {languages: [ru, en], max_party: 6}
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "08:00", end: "16:30", variants: {"145": 2, "155": 3, "160": 2}, from: "2026-12-15", to: "2027-04-10"}
+  # Bikes are sized S/M/L from height; rented by half day.
+  - slug: bikes-centar
+    service_type: rental
+    title: {en: "Mountain bike (half day)", cnr: "Brdski bicikl (pola dana)"}
+    place: bike-demo-centar
+    provider: demo-bike-trek
+    attributes: {categories: [bicycle], unit: item, fixed_start: true, requires: [heights],
+                 variants: {by: height, bands: [[120, 165, "S"], [165, 180, "M"], [180, 210, "L"]]}}
+    pricing: {model: per_item_day, amount: 15}
     recurring:
-      - {days: [sat, sun], start: "09:00", end: "15:00", capacity: 1,
-         attributes: {unit: group}, from: "2026-10-01", to: "2027-03-31"}
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "09:00", end: "13:00", variants: {"S": 2, "M": 4, "L": 3}, from: "2026-04-15", to: "2026-11-15"}
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "14:00", end: "18:00", variants: {"S": 2, "M": 4, "L": 3}, from: "2026-04-15", to: "2026-11-15"}
+  - slug: ebikes-centar
+    service_type: rental
+    title: {en: "E-bike (half day)", cnr: "Električni bicikl (pola dana)"}
+    place: bike-demo-centar
+    provider: demo-bike-trek
+    attributes: {categories: [e_bike], unit: item, fixed_start: true}
+    pricing: {model: per_item_day, amount: 30}
+    policies: {min_age: 16, deposit: {amount: 100, currency: EUR}}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "09:00", end: "13:00", capacity: 2, from: "2026-04-15", to: "2026-11-15"}
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "14:00", end: "18:00", capacity: 2, from: "2026-04-15", to: "2026-11-15"}
+  - slug: hiking-gear
+    service_type: rental
+    title: {en: "Hiking kit (poles, backpack, rain gear)", cnr: "Planinarska oprema"}
+    place: bike-demo-centar
+    provider: demo-bike-trek
+    attributes: {categories: [hiking_equipment], unit: item, fixed_start: true}
+    pricing: {model: per_item_day, amount: 8}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "09:00", end: "18:00", capacity: 10, from: "2026-04-15", to: "2027-04-30"}
+  - slug: camping-gear
+    service_type: rental
+    title: {en: "Camping kit (2-person tent, mats, sleeping bags)", cnr: "Oprema za kampovanje"}
+    place: bike-demo-centar
+    provider: demo-bike-trek
+    attributes: {categories: [camping_equipment], unit: item, fixed_start: true}
+    pricing: {model: per_item_day, amount: 18}
+    policies: {deposit: {amount: 50, currency: EUR}}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "09:00", end: "18:00", capacity: 4, from: "2026-04-15", to: "2026-10-31"}
+  - slug: car-compact
+    service_type: rental
+    title: {en: "Compact car (manual, 5 seats)", cnr: "Mali automobil (manuelni, 5 sjedišta)"}
+    place: car-demo-centar
+    provider: demo-car-hire
+    attributes: {categories: [car], unit: item, fixed_start: true}
+    pricing: {model: per_item_day, amount: 45}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "08:00", end: "20:00", capacity: 2, from: "2026-09-01", to: "2027-04-30"}
+  # --------------------------------------------------------------- guides
+  - slug: peak-group-hike
+    service_type: guide_booking
+    title: {en: "Guided group hike to Bobotov Kuk (fixed tour)", cnr: "Grupna tura na Bobotov kuk"}
+    provider: demo-peak-guides
+    attributes: {unit: person, format: group, max_party: 12, languages: [en, cnr], specialties: [hiking, mountain, durmitor, nature],
+                 fixed_start: true, weather_dependent: true, difficulty: "demanding (1,200 m ascent)", duration_hours: 7,
+                 meeting_point: "Sedlo pass car park", min_age: 12, required_equipment: [hiking boots, rain jacket],
+                 included: [guide, park entry], excluded: [transport, lunch]}
+    pricing: {model: per_person, amount: 35}
+    recurring:
+      - {days: [sat, sun], start: "08:00", end: "15:00", capacity: 12, from: "2026-05-01", to: "2027-04-30"}
+  - slug: peak-private-guide
+    service_type: guide_booking
+    title: {en: "Private mountain guide (day)", cnr: "Privatni planinski vodič (dan)"}
+    provider: demo-peak-guides
+    attributes: {unit: group, format: private, max_party: 8, languages: [en, cnr], specialties: [hiking, mountain, durmitor, nature],
+                 fixed_start: true, weather_dependent: true, duration_hours: 6, meeting_point: "your hotel"}
+    pricing: {model: per_booking, amount: 150, included_people: 2, per_extra_person: 10}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "09:00", end: "15:00", capacity: 1, from: "2026-05-01", to: "2027-04-30"}
+  - slug: durmitor-private-ru
+    service_type: guide_booking
+    title: {en: "Private Durmitor tour (EN/RU guide)", cnr: "Privatna tura Durmitorom (EN/RU)", ru: "Индивидуальный тур по Дурмитору (гид EN/RU)"}
+    provider: demo-durmitor-private
+    attributes: {unit: group, format: private, max_party: 6, languages: [en, ru], specialties: [durmitor, mountain, hiking, nature],
+                 fixed_start: true, weather_dependent: true, duration_hours: 6, meeting_point: "your hotel",
+                 included: [guide, park entry], excluded: [lunch]}
+    pricing: {model: per_booking, amount: 160, included_people: 2, per_extra_person: 10}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "09:00", end: "15:00", capacity: 1, from: "2026-05-01", to: "2027-04-30"}
+  - slug: culture-walk
+    service_type: guide_booking
+    title: {en: "Žabljak history & culture walk (hourly guide)", cnr: "Kulturno-istorijska šetnja Žabljakom"}
+    provider: demo-culture-walks
+    attributes: {unit: group, format: private, max_party: 15, languages: [en, de], specialties: [cultural],
+                 requires: [hours], meeting_point: "town square"}
+    pricing: {model: per_hour, amount: 40, min_hours: 2}
+    policies: {min_duration_hours: 2}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "10:00", end: "18:00", capacity: 1, from: "2026-05-01", to: "2027-04-30"}

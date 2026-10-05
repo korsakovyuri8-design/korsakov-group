@@ -35,6 +35,10 @@ def format_value(kind: str, value: Any, tz: str, property_name: str) -> str:
         return property_name
     if kind == "datetime" and value:
         return format_when(value, tz)
+    if kind == "heights" and isinstance(value, list):
+        return ", ".join(str(v) for v in value) + " cm"
+    if isinstance(value, list):
+        return ", ".join(str(v) for v in value)
     return str(value)
 
 

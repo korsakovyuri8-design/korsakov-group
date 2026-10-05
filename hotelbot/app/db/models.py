@@ -106,6 +106,9 @@ class ActionStatus(str, enum.Enum):
 
     PROPOSED = "proposed"
     SUBMITTED = "submitted"
+    # Provider accepted SUBJECT TO a condition (weather, minimum group...):
+    # not a confirmed booking until the provider confirms unconditionally.
+    PENDING_CONDITION = "pending_condition"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
     IN_PROGRESS = "in_progress"
@@ -408,6 +411,35 @@ class ExternalProvider(Base):
     active: Mapped[bool] = mapped_column(default=True)
     services: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # {"service_types": [...]}
     config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Marketplace profile: where it operates and its default policies
+    # (cancellation, deposits, ID...). Offerings may override policies.
+    profile: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)    # languages, service_area, location...
+    policies: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Commercial metadata (never alters prices shown or consent).
+    commission_type: Mapped[str | None] = mapped_column(String(32))      # percent | fixed | markup | none
+    commission_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class ProviderRelation(str, enum.Enum):
+    PREFERRED = "preferred"     # ranked first among suitable providers
+    DEFAULT = "default"         # used when the guest expresses no preference (ranked first)
+    EXCLUSIVE = "exclusive"     # the only provider for the listed services
+    BLOCKED = "blocked"         # never used for this property
+
+
+class PropertyProvider(Base):
+    """How one property relates to a (shared) provider. Providers are not
+    owned by properties: one provider serves many properties."""
+
+    __tablename__ = "property_providers"
+    __table_args__ = (UniqueConstraint("property_id", "provider_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), index=True)
+    provider_id: Mapped[str] = mapped_column(ForeignKey("external_providers.id"), index=True)
+    relation: Mapped[ProviderRelation] = mapped_column(_enum(ProviderRelation))
+    services: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # {"service_types": [...]} or {} = all
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -435,6 +467,14 @@ class Quote(Base):
     status: Mapped[QuoteStatus] = mapped_column(_enum(QuoteStatus), default=QuoteStatus.OFFERED)
     # Evidence of consent: message id, verbatim text, time.
     consent: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Material terms shown with the price (deposit, ID, age, cancellation...);
+    # consent to the quote is consent to exactly these, recorded verbatim.
+    terms: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    offering_id: Mapped[str | None] = mapped_column(ForeignKey("offerings.id"))
+    # Snapshot for future accounting; never changes `amount` the guest saw.
+    commercial: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # A change of a confirmed booking: this quote replaces that transaction.
+    replaces_transaction_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     decided_at: Mapped[datetime | None] = mapped_column()
 
@@ -595,6 +635,12 @@ class Offering(_Provenance, Base):
     price_from: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     currency: Mapped[str | None] = mapped_column(String(3))
     active: Mapped[bool] = mapped_column(default=True)
+    pricing: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)    # see app/marketplace/pricing.py
+    policies: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # overrides the provider's
+    commission_type: Mapped[str | None] = mapped_column(String(32))
+    commission_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    partner_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))  # what the provider charges us
+    guest_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))    # list price to guests, if fixed
 
 
 class AvailabilitySlot(Base):
@@ -613,6 +659,34 @@ class AvailabilitySlot(Base):
     attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # e.g. {"languages": ["ru"]}
     source: Mapped[str] = mapped_column(String(255), default="unknown")
     last_verified_at: Mapped[datetime | None] = mapped_column()
+
+
+class HoldStatus(str, enum.Enum):
+    HELD = "held"             # reserved for an open quote until expires_at
+    CONFIRMED = "confirmed"   # guest consented; kept while the booking is alive
+    RELEASED = "released"     # quote expired/declined/superseded, booking rejected/cancelled/failed
+
+
+class InventoryHold(Base):
+    """Capacity taken from an offering for a time window (and variant, e.g.
+    ski length 170). Availability = slot capacity - live holds, so an
+    expired quote frees inventory without any sweeper, and two guests can
+    never both get the last item (holds are created under a row lock)."""
+
+    __tablename__ = "inventory_holds"
+    __table_args__ = (Index("ix_inventory_holds_window", "offering_id", "starts_at", "ends_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    offering_id: Mapped[str] = mapped_column(ForeignKey("offerings.id", ondelete="CASCADE"))
+    variant: Mapped[str | None] = mapped_column(String(64))
+    starts_at: Mapped[datetime] = mapped_column()
+    ends_at: Mapped[datetime] = mapped_column()
+    quantity: Mapped[int] = mapped_column(Integer)
+    status: Mapped[HoldStatus] = mapped_column(_enum(HoldStatus), default=HoldStatus.HELD)
+    expires_at: Mapped[datetime | None] = mapped_column()
+    quote_id: Mapped[str | None] = mapped_column(ForeignKey("quotes.id"), index=True)
+    transaction_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 class ItineraryItem(Base):

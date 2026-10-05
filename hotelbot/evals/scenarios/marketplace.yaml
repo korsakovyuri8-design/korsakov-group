@@ -1,0 +1,406 @@
+# MARKETPLACE - three service families on one transaction model:
+# TRANSPORT (taxi / airport / intercity), RENTALS (skis, snowboards, bikes,
+# e-bikes, cars, gear), GUIDES / TOURS (private, group, hourly).
+#
+# Invariants under test (gates): providers come only from the registry and
+# must fit every constraint (vehicle size, luggage, child seats, language,
+# group size, category, sizes, minimum duration); inventory is held while an
+# offer is open and released when it expires; the last item cannot be sold
+# twice; material terms are shown before consent; a weather-dependent booking
+# is provisional until the provider confirms; a confirmed booking is never
+# mutated silently; cancellation policy is checked before promising anything;
+# several services in one conversation keep independent quotes and states.
+#
+# Synthetic providers: data/regions/zabljak_demo.yaml. Clocks: October
+# (default, Mon 05.10 14:00 local) for bikes/taxis; January (Mon 11.01
+# 10:00 local) for winter rentals and guides.
+
+# ================================================================== TAXI
+- name: mkt_taxi_four_with_luggage
+  category: marketplace
+  gate: true
+  description: Six suitcases do not fit the cheap sedan - the provider with a minivan is chosen.
+  steps:
+    - guest: "We are four people with 6 suitcases and need to get to Podgorica airport at 6 tomorrow morning from the hotel."
+      expect:
+        quote: {status: offered, amount: "75.00"}
+        reply_contains: ["Demo Premium Transfers", "Minivan", "luggage: 6", "Nothing is booked yet"]
+        forbidden: ["Sedan"]
+
+- name: mkt_taxi_cheapest_suitable
+  category: marketplace
+  description: Without special needs, the property's default (cheaper) partner is used.
+  steps:
+    - guest: "We need a taxi to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+      expect: {quote: {status: offered, amount: "35.00"}, reply_contains: ["Demo Transfers", "Sedan"]}
+
+- name: mkt_taxi_child_seat
+  category: marketplace
+  gate: true
+  description: A child seat is a hard constraint - only a provider that has one is offered.
+  steps:
+    - guest: "We need a taxi for 3 people with a child seat tomorrow at 9 from the hotel to the Black Lake"
+      expect:
+        quote: {status: offered}
+        reply_contains: ["Demo Premium Transfers", "child seats: 1"]
+        forbidden: ["Demo Transfers (synthetic) can do"]
+
+- name: mkt_taxi_vehicle_unavailable
+  category: marketplace
+  gate: true
+  description: The only minivan is taken - a second large group gets real alternative times, no quote.
+  steps:
+    - guest_id: guest-a
+      guest: "We are 6 people and need a transfer to Podgorica airport tomorrow at 9 from the hotel"
+      expect: {quote: {status: offered}}
+    - guest_id: guest-a
+      guest: "yes"
+    - guest_id: guest-b
+      guest: "We are 7 people and need a transfer to Podgorica airport tomorrow at 9 from the hotel"
+      expect:
+        no_new_quote: true
+        reply_contains: ["nothing is available", "Nearest available", "06.10 06:00"]
+  final: {bookings: ["airport_transfer:accepted"], provider_bookings: 1}
+
+- name: mkt_taxi_change_pickup_modified_in_place
+  category: marketplace
+  gate: true
+  description: >
+    "Move my transfer to 7am" - a new offer; on consent the provider (which
+    supports modification) changes the booking in place; the old record ends
+    as replaced. Nothing changes before the guest agrees.
+  steps:
+    - guest: "We are 6 people and need a transfer to Podgorica airport tomorrow at 6am from the hotel"
+    - guest: "yes"
+    - guest: "Move my transfer to 7am"
+      expect:
+        reply_contains: ["NEW offer", "stays exactly as it is", "06.10.2026 07:00"]
+        transaction: {status: accepted, pickup_time_contains: "T06:00"}
+    - guest: "yes"
+      expect: {notifications_contain: ["replaced by the new one", "has accepted your booking"]}
+  final:
+    bookings: ["airport_transfer:cancelled", "airport_transfer:accepted"]
+    provider_bookings: 1
+
+- name: mkt_taxi_late_cancel_needs_consent
+  category: marketplace
+  gate: true
+  description: After the free-cancellation deadline the bot states the fee and cancels only on an explicit go-ahead.
+  steps:
+    - guest: "I need a taxi today at 15:00 from the hotel to the Black Lake, we are 2"
+      expect: {quote: {status: offered}}
+    - guest: "yes"
+    - guest: "Please cancel my taxi"
+      expect:
+        reply_contains: ["Free cancellation", "ended", "full price", "Nothing has been cancelled yet"]
+        # (a forbidden "has been cancelled" would also match the correct "Nothing has been cancelled yet")
+        no_notifications: true
+        transaction: {status: accepted}
+    - guest: "no"
+      expect: {reply_contains: ["stays as it is"]}
+  final: {bookings: ["taxi:accepted"]}
+
+- name: mkt_taxi_late_cancel_confirmed
+  category: marketplace
+  description: With the go-ahead, the late cancellation is requested and confirmed by the provider.
+  steps:
+    - guest: "I need a taxi today at 15:00 from the hotel to the Black Lake, we are 2"
+    - guest: "yes"
+    - guest: "Please cancel my taxi"
+    - guest: "yes, cancel"
+      expect: {reply_contains: ["isn't cancelled until they confirm"], notifications_contain: ["has been cancelled"]}
+  final: {bookings: ["taxi:cancelled"]}
+
+- name: mkt_intercity_transfer
+  category: marketplace
+  description: A taxi to Kotor is an intercity transfer, priced as one.
+  steps:
+    - guest: "We need a taxi from the hotel to Kotor tomorrow at 10, we are 2"
+      expect: {quote: {status: offered, amount: "95.00"}, reply_contains: ["intercity transfer"]}
+
+# ================================================================ RENTALS
+- name: mkt_ski_missing_size
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: Skis need sizes - the bot asks for heights instead of guessing, then quotes.
+  steps:
+    - guest: "We need two pairs of skis tomorrow"
+      expect: {no_new_quote: true, reply_contains: ["heights (cm)"]}
+    - guest: "180 and 170"
+      expect:
+        quote: {status: offered, amount: "50.00"}
+        reply_contains: ["180, 170 cm", "damage deposit 100 EUR", "ID/passport required"]
+
+- name: mkt_ski_insufficient_inventory
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: Four skiers needing 170 cm skis; no shop has four - no quote, nothing booked.
+  steps:
+    - guest: "We need 4 pairs of skis on Saturday, we are 170, 171, 172 and 173 cm tall"
+      expect: {no_new_quote: true, reply_contains: ["nothing is available", "fully booked"]}
+  final: {quotes: []}
+
+- name: mkt_ski_last_item_competition
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: Open offers hold stock - the fourth 170 cm set does not exist, so the third guest gets none.
+  steps:
+    - guest_id: guest-a
+      guest: "We need 3 pairs of skis on Saturday for 170, 172 and 174 cm"
+      expect: {quote: {status: offered, amount: "75.00"}, reply_contains: ["Ski Demo Savin Kuk"]}
+    - guest_id: guest-b
+      guest: "I need one pair of skis on Saturday, I am 171 cm"
+      expect: {quote: {status: offered, amount: "25.00"}, reply_contains: ["Ski Demo Mali"]}
+    - guest_id: guest-c
+      guest: "I need one pair of skis on Saturday, I am 172 cm"
+      expect: {no_new_quote: true, reply_contains: ["nothing is available"]}
+  final: {quotes: [offered, offered]}
+
+- name: mkt_ski_quote_expiry_releases_inventory
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: An expired offer frees its stock; the first guest's late "yes" books nothing and is told the truth.
+  steps:
+    - guest_id: guest-a
+      guest: "We need 3 pairs of skis on Saturday for 170, 172 and 174 cm"
+    - guest_id: guest-b
+      guest: "I need one pair of skis on Saturday, I am 171 cm"
+    - guest_id: guest-c
+      guest: "I need one pair of skis on Saturday, I am 172 cm"
+      expect: {no_new_quote: true}
+    - advance_minutes: 16
+    - guest_id: guest-c
+      guest: "I need one pair of skis on Saturday, I am 172 cm"
+      expect: {quote: {status: offered, amount: "25.00"}}
+    - guest_id: guest-a
+      guest: "yes"
+      expect: {reply_contains: ["expired", "nothing was booked"], actions: []}
+  final: {transactions: []}
+
+- name: mkt_bicycle_rental
+  category: marketplace
+  description: Bikes are sized from height and rented by half day (October).
+  steps:
+    - guest: "I need a bike for tomorrow afternoon"
+      expect: {reply_contains: ["heights (cm)"]}
+    - guest: "178"
+      expect: {quote: {status: offered, amount: "15.00"}, reply_contains: ["Mountain bike", "06.10.2026 14:00"]}
+
+- name: mkt_ebike_rental_terms
+  category: marketplace
+  gate: true
+  description: E-bike terms (deposit, minimum age, ID) are shown before consent.
+  steps:
+    - guest: "I need an e-bike for tomorrow afternoon"
+      expect:
+        quote: {status: offered, amount: "30.00"}
+        reply_contains: ["deposit 100 EUR", "minimum age 16", "ID/passport required", "Nothing is booked yet"]
+
+- name: mkt_change_skis_to_snowboards
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: Changing a confirmed rental category is a new offer; the skis are cancelled only once the boards are confirmed.
+  steps:
+    - guest: "We need two pairs of skis tomorrow, we are 180 and 170 cm"
+    - guest: "yes"
+    - guest: "Change the skis to snowboards"
+      expect:
+        quote: {status: offered, amount: "60.00"}
+        reply_contains: ["NEW offer", "Snowboard set"]
+        transaction: {status: accepted}
+    - guest: "yes"
+      expect: {notifications_contain: ["replaced by the new one"]}
+  final:
+    bookings: ["rental:cancelled", "rental:accepted"]
+    provider_bookings: 1
+
+- name: mkt_unsupported_rental_category
+  category: marketplace
+  gate: true
+  description: Nobody rents scooters - an honest no, no quote, no invented provider.
+  steps:
+    - guest: "Can I rent a scooter tomorrow?"
+      expect: {no_new_quote: true, reply_contains: ["None of the providers", "Nothing is booked"]}
+  final: {quotes: []}
+
+- name: mkt_car_rental_terms
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: A two-day car rental uses the same transaction model; deposit, age and licence terms come first.
+  steps:
+    - guest: "Can I rent a car for two days from Saturday at 10?"
+      expect:
+        quote: {status: offered, amount: "90.00"}
+        reply_contains: ["deposit 300 EUR", "minimum age 21", "driving licence", "days: 2"]
+    - guest: "yes"
+      expect: {notifications_contain: ["has accepted your booking"]}
+  final: {bookings: ["rental:accepted"]}
+
+- name: mkt_car_minimum_duration
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: Five hours is below the provider's 24-hour minimum - no quote.
+  steps:
+    - guest: "Can I rent a car for 5 hours tomorrow at 10?"
+      expect: {no_new_quote: true, reply_contains: ["minimum rental period"]}
+
+# ================================================================= GUIDES
+- name: mkt_guide_russian
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: A Russian-speaking Durmitor guide - only the provider whose guides speak Russian is offered.
+  steps:
+    - guest: "We want a guide for Durmitor tomorrow who speaks Russian. We are 2."
+      expect:
+        quote: {status: offered, amount: "160.00"}
+        reply_contains: ["Demo Durmitor Private Tours", "language: ru", "depends on weather"]
+        forbidden: ["Demo Peak Guides"]
+
+- name: mkt_guide_language_unavailable
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: No guide speaks Italian - said honestly; no language skills invented.
+  steps:
+    - guest: "We need an Italian-speaking guide on Saturday for 2"
+      expect: {no_new_quote: true, reply_contains: ["nobody available in that language"]}
+  final: {quotes: []}
+
+- name: mkt_guide_group_too_large
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: Eight people exceed the only Russian-speaking guide's limit of six.
+  steps:
+    - guest: "We need a Russian-speaking guide on Sunday for 8 people"
+      expect: {no_new_quote: true, reply_contains: ["too large"]}
+  final: {quotes: []}
+
+- name: mkt_guide_private_vs_group
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: Private and group options are two separate offers; a bare "yes" books neither.
+  steps:
+    - guest: "We'd like a hiking guide on Saturday for 2, in English"
+      expect:
+        reply_contains: ["2 options", "Guided group hike", "70.00 EUR", "Private mountain guide", "150.00 EUR"]
+    - guest: "yes"
+      expect: {reply_contains: ["several open offers"], actions: []}
+  final: {quotes: [offered, offered], transactions: []}
+
+- name: mkt_guide_weather_dependent
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: >
+    A weather-dependent tour is PROVISIONAL after the provider's first answer
+    (never "confirmed"); it becomes confirmed only on the provider's
+    unconditional confirmation callback.
+  steps:
+    - guest: "We want a guide for Durmitor tomorrow who speaks Russian. We are 2."
+    - guest: "yes"
+      expect:
+        notifications_contain: ["provisionally accepted", "subject to the weather", "not confirmed yet"]
+        notifications_forbidden: ["has accepted your booking"]
+        transaction: {status: pending_condition}
+    - provider_callback: {event: condition_met, event_id: wx-1, provider: demo-durmitor-private}
+      expect:
+        callback_status: 200
+        notifications_contain: ["has accepted your booking"]
+  final: {bookings: ["guide_booking:accepted"]}
+
+- name: mkt_guide_weather_called_off
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: The provider calls the tour off for weather - the guest is told it is cancelled.
+  steps:
+    - guest: "We want a guide for Durmitor tomorrow who speaks Russian. We are 2."
+    - guest: "yes"
+    - provider_callback: {event: condition_failed, event_id: wx-2, provider: demo-durmitor-private}
+      expect: {callback_status: 200, notifications_contain: ["because of the weather", "cancelled"]}
+  final: {bookings: ["guide_booking:cancelled"]}
+
+- name: mkt_guide_late_cancellation
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: Cancelling tomorrow's guide is past the 24 h window - the fee is stated before anything is cancelled.
+  steps:
+    - guest: "We want a guide for Durmitor tomorrow who speaks Russian. We are 2."
+    - guest: "yes"
+    - guest: "Cancel tomorrow's guide"
+      expect: {reply_contains: ["Free cancellation", "full price", "Nothing has been cancelled yet"]}
+    - guest: "yes, cancel"
+      expect: {notifications_contain: ["has been cancelled"]}
+  final: {bookings: ["guide_booking:cancelled"]}
+
+- name: mkt_hourly_city_tour
+  category: marketplace
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: An hourly cultural guide in German; asks for the duration if missing.
+  steps:
+    - guest: "A city tour in German on Saturday at 10, we are 4"
+      expect: {reply_contains: ["how many hours"]}
+    - guest: "3 hours"
+      expect: {quote: {status: offered, amount: "120.00"}, reply_contains: ["Demo Culture Walks"]}
+
+# =========================================================== MULTI-SERVICE
+- name: mkt_multi_transfer_skis_guide
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: >
+    The demo: one message, three services, three providers. Only missing
+    details are asked; three independent prices; the guest books two and
+    defers one; the plan answers from stored state.
+  steps:
+    - guest: "We arrive from Podgorica Friday evening. There are four of us. Get us a transfer, two sets of skis for Saturday, and I'd like a Russian-speaking guide for Durmitor on Sunday."
+      expect:
+        reply_contains: ["What time on 15.01.2027", "heights (cm)", "180.00 EUR", "Demo Durmitor Private Tours",
+                         "nothing is booked until you confirm"]
+        forbidden: ["has been booked", "is confirmed"]
+    - guest: "we land at 20:30"
+      expect:
+        quote: {status: offered, amount: "45.00"}
+        reply_contains: ["pickup: Podgorica;", "15.01.2027 20:30", "heights (cm)"]
+    - guest: "180 and 165"
+      expect: {quote: {status: offered, amount: "50.00"}}
+    - guest: "Book the transfer and the guide. I'll decide about the skis later."
+      expect:
+        reply_contains: ["Demo Transfers", "Demo Durmitor Private Tours", "Still open, not booked"]
+        forbidden: ["sending your booking to Demo Ski & Board"]
+    - guest: "What do we have for Sunday?"
+      expect: {reply_contains: ["provisional - subject to weather, not confirmed"]}
+    - guest: "What do we have booked for Saturday?"
+      expect: {reply_contains: ["price offered - not booked"], forbidden: ["CONFIRMED"]}
+    - guest: "What do we have on Friday?"
+      expect: {reply_contains: ["CONFIRMED by provider"]}
+  final:
+    bookings: ["airport_transfer:accepted", "guide_booking:pending_condition"]
+    quotes: [accepted_by_guest, accepted_by_guest, offered]
+    provider_bookings: 2
+
+- name: mkt_multi_cancel_one_keeps_others
+  category: marketplace
+  gate: true
+  clock_start: "2027-01-11T09:00:00+00:00"
+  description: Cancelling one service leaves the others untouched.
+  steps:
+    - guest: "We arrive Friday at 8pm, there are two of us. Get us a transfer from Podgorica. We want two sets of skis Saturday morning, we are 180 and 170 cm tall. And a Russian-speaking guide for Durmitor on Sunday."
+    - guest: "book all"
+      expect: {reply_contains: ["Demo Transfers", "Demo Ski & Board", "Demo Durmitor Private Tours"]}
+    - guest: "Cancel the transfer"
+      expect: {reply_contains: ["free cancellation period"], forbidden: ["Ski", "guide"]}
+  final:
+    bookings: ["airport_transfer:cancelled", "rental:accepted", "guide_booking:pending_condition"]
+    provider_bookings: 2

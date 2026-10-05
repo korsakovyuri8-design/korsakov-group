@@ -37,6 +37,7 @@ from app.db.models import AvailabilitySlot, Event, ExternalProvider, Offering, P
 from app.knowledge.schemas import ProviderSpec
 from app.observability import log_event
 from app.places.hours import DAYS
+from app.knowledge.ingest import apply_marketplace
 from app.places.taxonomy import Category, category_of
 from app.transactions.catalog import SERVICE_CATALOG
 
@@ -109,7 +110,9 @@ class RecurringSpec(_M):
     days: list[str]
     start: str
     end: str
-    capacity: int = Field(ge=0)
+    capacity: int = Field(ge=0, default=0)
+    # Sized inventory: {"170": 3, "180": 2} = one slot per variant with that capacity.
+    variants: dict[str, int] | None = None
     attributes: dict[str, Any] = Field(default_factory=dict)
     from_: date = Field(alias="from")
     to: date
@@ -132,6 +135,12 @@ class OfferingSpec(_M):
     attributes: dict[str, Any] = Field(default_factory=dict)
     price_from: Decimal | None = None
     currency: str | None = None
+    pricing: dict[str, Any] = Field(default_factory=dict)      # app/marketplace/pricing.py
+    policies: dict[str, Any] = Field(default_factory=dict)     # app/marketplace/terms.py (overrides provider's)
+    commission_type: str | None = None
+    commission_value: Decimal | None = None
+    partner_price: Decimal | None = None
+    guest_price: Decimal | None = None
     availability: list[SlotSpec] = Field(default_factory=list)
     recurring: list[RecurringSpec] = Field(default_factory=list)
     source: str | None = None
@@ -189,6 +198,7 @@ def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
         row = existing.get(spec.slug) or ExternalProvider(region=info.slug, slug=spec.slug, property_id=None)
         row.name, row.provider_type, row.integration_type = spec.name, spec.provider_type, spec.integration_type
         row.active, row.services, row.config = spec.active, {"service_types": spec.services}, spec.config
+        apply_marketplace(row, spec)
         session.add(row)
         providers[spec.slug] = row
     for slug, row in existing.items():
@@ -242,20 +252,22 @@ def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
         row = offerings.get(spec.slug) or Offering(region=info.slug, slug=spec.slug)
         row.service_type, row.title, row.attributes = spec.service_type, spec.title, spec.attributes
         row.place_id, row.provider_id, row.active = place.id if place else None, provider.id, True
-        row.price_from, row.currency = spec.price_from, spec.currency
+        row.price_from, row.currency = spec.price_from, spec.currency or (provider.config or {}).get("currency")
+        row.pricing, row.policies = spec.pricing, spec.policies
+        row.commission_type, row.commission_value = spec.commission_type, spec.commission_value
+        row.partner_price, row.guest_price = spec.partner_price, spec.guest_price
         row.source, row.is_synthetic = spec.source or src, synth
         row.last_verified_at = _verified(spec.last_verified_at, info.verified_at, tz)
         session.add(row)
         session.flush()
-        held = {(s.starts_at.replace(tzinfo=None), s.attributes.get("unit")): s.capacity - s.remaining
-                for s in session.scalars(select(AvailabilitySlot).where(AvailabilitySlot.offering_id == row.id))}
+        # Slots are capacity only; bookings live in inventory_holds (by window,
+        # not by slot id), so re-ingesting slots never loses a booking.
         session.execute(delete(AvailabilitySlot).where(AvailabilitySlot.offering_id == row.id))
         verified = _verified(spec.last_verified_at, info.verified_at, tz)
         rows = []
         for start, end, cap, attrs in _expand(spec, tz):
-            key = (start.astimezone(ZoneInfo("UTC")).replace(tzinfo=None), attrs.get("unit"))
             rows.append({"id": str(uuid.uuid4()), "offering_id": row.id, "starts_at": start, "ends_at": end,
-                         "capacity": cap, "remaining": max(0, cap - held.get(key, 0)), "attributes": attrs,
+                         "capacity": cap, "remaining": cap, "attributes": attrs,
                          "source": spec.source or src, "last_verified_at": verified})
         if rows:   # bulk insert: thousands of slots per region
             session.execute(insert(AvailabilitySlot), rows)
@@ -280,5 +292,9 @@ def _expand(spec: OfferingSpec, tz: ZoneInfo):
                 end = datetime.combine(day, t_end, tzinfo=tz).astimezone(_UTC)
                 if end <= start:
                     end += timedelta(days=1)
-                yield start, end, r.capacity, r.attributes
+                if r.variants:
+                    for variant, cap in r.variants.items():
+                        yield start, end, cap, {**r.attributes, "variant": str(variant)}
+                else:
+                    yield start, end, r.capacity, r.attributes
             day += timedelta(days=1)

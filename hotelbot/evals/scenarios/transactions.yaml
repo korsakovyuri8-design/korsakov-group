@@ -346,16 +346,37 @@
 - name: txn_change_after_confirmation
   category: transactions
   gate: true
-  description: A confirmed booking is never silently mutated; the change goes to staff.
+  description: >
+    A confirmed booking is never silently mutated. A change becomes a NEW
+    offer; the old booking stays untouched until the new one is confirmed,
+    then it is cancelled (this provider has no in-place modification).
   steps:
     - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
     - guest: "yes"
     - guest: "Can you change the pickup to 7am instead?"
       expect:
-        reply_contains: ["already been sent", "nothing has been changed"]
-        # (the correct reply says "nothing has been changed yet")
-        forbidden: ["pickup has been changed", "updated your", "07:00"]
+        reply_contains: ["NEW offer", "stays exactly as it is", "06.10.2026 07:00", "Nothing is booked yet"]
+        forbidden: ["pickup has been changed", "updated your"]
+        quote: {status: offered}
         transaction: {status: accepted, pickup_time_contains: "T06:00"}
+    - guest: "yes"
+      expect:
+        notifications_contain: ["has accepted your booking", "replaced by the new one"]
+  final:
+    bookings: ["airport_transfer:cancelled", "airport_transfer:accepted"]
+    provider_bookings: 1
+
+- name: txn_unclear_change_goes_to_staff
+  category: transactions
+  gate: true
+  description: A change the bot cannot pin down is passed to staff - the booking is not touched.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - guest: "Can you change something about my transfer?"
+      expect:
+        reply_contains: ["already been sent", "nothing has been changed"]
+        no_new_quote: true
   final:
     transactions: [accepted]
     actions:

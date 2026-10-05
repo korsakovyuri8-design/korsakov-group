@@ -34,7 +34,10 @@ from app.observability import log_event
 S = ActionStatus
 ALLOWED_TRANSITIONS: dict[ActionStatus, frozenset[ActionStatus]] = {
     S.PROPOSED: frozenset({S.SUBMITTED, S.FAILED, S.CANCELLED}),
-    S.SUBMITTED: frozenset({S.ACCEPTED, S.REJECTED, S.IN_PROGRESS, S.COMPLETED, S.FAILED, S.CANCELLED}),
+    S.SUBMITTED: frozenset({S.ACCEPTED, S.PENDING_CONDITION, S.REJECTED, S.IN_PROGRESS, S.COMPLETED, S.FAILED,
+                            S.CANCELLED}),
+    # Accepted subject to a condition (weather...): the provider still decides.
+    S.PENDING_CONDITION: frozenset({S.ACCEPTED, S.REJECTED, S.CANCELLED, S.FAILED}),
     S.ACCEPTED: frozenset({S.IN_PROGRESS, S.COMPLETED, S.FAILED, S.CANCELLED}),
     S.IN_PROGRESS: frozenset({S.COMPLETED, S.FAILED, S.CANCELLED}),
 }

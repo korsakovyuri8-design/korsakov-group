@@ -184,3 +184,26 @@ def test_transaction_data_survives_local_travel_upgrade(engine):
         tables = set(sa.inspect(conn).get_table_names())
         assert {"places", "events", "offerings", "availability", "itinerary_items"} <= tables
     assert _diff(engine) == []
+
+
+def test_marketplace_upgrade_keeps_providers_and_offerings(engine):
+    """0004 -> 0005: existing providers/offerings gain empty marketplace fields."""
+    _upgrade(engine, "0004_local_travel")
+    with engine.begin() as conn:
+        conn.execute(sa.text(
+            "insert into external_providers (id, property_id, region, slug, name, provider_type, integration_type,"
+            " active, services, config, created_at) values ('p1', null, 'r1', 'skis', 'Skis', 'ski_rental', 'mock',"
+            " :t, :services, :config, :now)"), {"t": True, "services": '{"service_types": ["ski_rental"]}',
+                                                 "config": "{}", "now": NOW})
+        conn.execute(sa.text(
+            "insert into offerings (id, region, slug, service_type, title, provider_id, attributes, active, source,"
+            " confidence, provider_owned, is_synthetic) values ('o1', 'r1', 'set', 'ski_rental', :title, 'p1',"
+            " :attrs, :t, 'test', 1.0, :f, :t)"), {"title": '{"en": "Ski set"}', "attrs": "{}", "t": True, "f": False})
+    _upgrade(engine, "head")
+    with engine.connect() as conn:
+        [prov] = _rows(conn, "select slug, profile, policies, commission_type from external_providers")
+        [off] = _rows(conn, "select slug, pricing, policies, guest_price from offerings")
+        assert prov["slug"] == "skis" and prov["commission_type"] is None
+        assert off["slug"] == "set" and off["guest_price"] is None
+        assert {"inventory_holds", "property_providers"} <= set(sa.inspect(conn).get_table_names())
+    assert _diff(engine) == []

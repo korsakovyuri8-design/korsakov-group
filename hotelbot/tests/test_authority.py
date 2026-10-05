@@ -23,6 +23,7 @@ S = ActionStatus
 ALLOWED_CLAIMS = {
     S.PROPOSED: set(),
     S.SUBMITTED: set(),
+    S.PENDING_CONDITION: set(),   # provisional: may never read as confirmed
     S.REJECTED: set(),
     S.FAILED: set(),
     S.CANCELLED: set(),

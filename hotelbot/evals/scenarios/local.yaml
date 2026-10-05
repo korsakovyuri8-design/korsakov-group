@@ -185,26 +185,26 @@
 - name: local_ski_capacity_respected
   category: local
   gate: true
-  description: Ski Demo Mali holds 3 sets - a group of 4 gets a shop that really has 4.
+  description: Ski Demo Mali holds one set per length - two 180 cm skiers get a shop that really has them.
   clock_start: "2027-01-11T09:00:00+00:00"
   steps:
-    - guest: "We need skis for 4 people tomorrow at 9"
+    - guest: "We need skis for 4 people tomorrow, heights 180, 175, 170 and 165 cm"
       expect:
         quote: {status: offered, amount: "100.00"}
-        reply_contains: ["Ski Demo Savin Kuk"]
+        reply_contains: ["Ski Demo Savin Kuk", "ID/passport required"]
         forbidden: ["Ski Demo Mali"]
 
 - name: local_guide_unavailable_alternatives
   category: local
   gate: true
-  description: No Russian-speaking guide can take 8 people on Sunday - real alternatives, no quote, nothing booked.
+  description: No Russian-speaking guide takes 8 people - no quote, a clear reason, nothing booked.
   clock_start: "2027-01-11T09:00:00+00:00"
   steps:
     - guest: "We need a Russian-speaking guide on Sunday at 10 for 8 people"
       expect:
         no_new_quote: true
-        reply_contains: ["nothing is available", "too large", "Guide Mila (Russian) 16.01 09:00", "Nothing is booked"]
-        forbidden: ["Guide Ivan"]
+        reply_contains: ["nothing is available", "too large", "Nothing is booked"]
+        forbidden: ["can do this for"]
   final: {quotes: [], transactions: []}
 
 # --------------------------------------------------------------- flagship
@@ -213,38 +213,38 @@
   gate: true
   description: >
     One message, five independent items: transfer quote, dinner discovery
-    still serving at the estimated arrival, ski quote (capacity-aware), guide
-    (missing time is asked, not guessed), lively drinks. The guest confirms
-    only two items; nothing else is booked.
+    still serving at the estimated arrival, skis (asks the heights it needs),
+    a Russian-speaking guide (Sunday tour starts at its scheduled 09:00),
+    lively drinks. The guest confirms only two items; nothing else is booked.
   clock_start: "2027-01-11T09:00:00+00:00"
   steps:
     - guest: &flagship "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. Find somewhere local for dinner that is still serving when we arrive. We want skis Saturday morning. Find a Russian-speaking guide for Sunday. And suggest somewhere lively for drinks Saturday night."
       expect:
         reply_contains: ["nothing is booked until you confirm", "45.00 EUR", "~22:30", "Restoran Demo Ponoć",
-                         "Ski Demo Savin Kuk", "100.00 EUR", "What time on 17.01.2027", "Bar Demo Koktel"]
-        forbidden: ["Konoba Demo Durmitor", "Ski Demo Mali", "Pub Demo", "has been booked", "is confirmed"]
+                         "heights", "180.00 EUR", "17.01.2027 09:00", "Bar Demo Koktel"]
+        forbidden: ["Konoba Demo Durmitor", "Pub Demo", "has been booked", "is confirmed"]
         actions: []
-    - guest: "10am"
-      expect: {quote: {status: offered, amount: "150.00"}, reply_contains: ["Guide Ivan"]}
+    - guest: "180, 175, 170 and 165 cm"
+      expect: {quote: {status: offered, amount: "100.00"}, reply_contains: ["Ski Demo Savin Kuk"]}
     - guest: "book the transfer and the skis"
       expect:
-        reply_contains: ["Demo Transfers", "Demo Ski Rental", "not confirmed yet"]
-        forbidden: ["Demo Mountain Guides"]
+        reply_contains: ["Demo Transfers", "Demo Ski & Board", "not confirmed yet"]
+        forbidden: ["Demo Durmitor Private Tours (synthetic) now"]
     - guest: "my plan"
       expect: {reply_contains: ["Dinner: Restoran Demo Ponoć - shortlisted", "price offered - not booked"]}
   final:
-    bookings: ["airport_transfer:accepted", "ski_rental:accepted"]
+    bookings: ["airport_transfer:accepted", "rental:accepted"]
     quotes: [accepted_by_guest, accepted_by_guest, offered]
     provider_bookings: 2
 
 - name: local_flagship_ambiguous_yes
   category: local
   gate: true
-  description: A bare "yes" with several open offers books nothing and asks which.
+  description: A bare "yes" (or "ok") with several open offers books nothing and asks which.
   clock_start: "2027-01-11T09:00:00+00:00"
   steps:
-    - guest: "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. We want skis Saturday morning. Find a Russian-speaking guide for Sunday at 10."
-      expect: {reply_contains: ["45.00 EUR", "100.00 EUR", "150.00 EUR"]}
+    - guest: "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. Find a Russian-speaking guide for Sunday at 10."
+      expect: {reply_contains: ["45.00 EUR", "180.00 EUR"]}
     - guest: "yes"
       expect: {reply_contains: ["several open offers", "Nothing is booked yet"], actions: []}
     - guest: "ok"
@@ -254,32 +254,32 @@
 - name: local_flagship_ru_book_all
   category: local
   gate: true
-  description: Russian flagship; "book all" books every open offer and only those.
+  description: Russian flagship; "book all" books every open offer and only those (skis still wait for heights).
   clock_start: "2027-01-11T09:00:00+00:00"
   steps:
     - guest: "Мы прилетаем в пятницу в 20:00, нас четверо. Закажите трансфер из аэропорта Подгорицы. Найдите местный ресторан, где ещё будет работать кухня, когда мы приедем. Хотим лыжи в субботу утром. Найдите русскоговорящего гида на воскресенье в 10:00. И посоветуйте оживлённый бар на субботу вечером."
       expect:
         language: ru
-        reply_contains: ["ничего не забронировано", "Restoran Demo Ponoć", "Guide Ivan", "Bar Demo Koktel"]
+        reply_contains: ["ничего не забронировано", "Restoran Demo Ponoć", "Durmitor", "Bar Demo Koktel", "рост"]
         forbidden: ["Konoba Demo Durmitor", "Pub Demo"]
     - guest: "забронируй все"
-      expect: {reply_contains: ["Demo Transfers", "Demo Ski Rental", "Demo Mountain Guides"]}
+      expect: {reply_contains: ["Demo Transfers", "Demo Durmitor Private Tours"]}
   final:
-    bookings: ["airport_transfer:accepted", "ski_rental:accepted", "guide_booking:accepted"]
-    provider_bookings: 3
+    bookings: ["airport_transfer:accepted", "guide_booking:pending_condition"]
+    provider_bookings: 2
 
 - name: local_targeted_cancel
   category: local
   gate: true
-  description: '"Cancel only the skis" cancels exactly that booking.'
+  description: '"Cancel only the skis" cancels exactly that booking (inside the free-cancellation window).'
   clock_start: "2027-01-11T09:00:00+00:00"
   steps:
-    - guest: "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. We want skis Saturday morning."
-      expect: {reply_contains: ["45.00 EUR", "100.00 EUR"]}
+    - guest: "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. We want two sets of skis Saturday morning, we are 180 and 170 cm tall."
+      expect: {reply_contains: ["45.00 EUR", "50.00 EUR"]}
     - guest: "book all"
-      expect: {reply_contains: ["Demo Transfers", "Demo Ski Rental"]}
+      expect: {reply_contains: ["Demo Transfers", "Demo Ski & Board"]}
     - guest: "cancel only the skis"
-      expect: {forbidden: ["Demo Transfers"]}
+      expect: {reply_contains: ["free cancellation period"], forbidden: ["Demo Transfers"]}
   final:
-    bookings: ["airport_transfer:accepted", "ski_rental:cancelled"]
+    bookings: ["airport_transfer:accepted", "rental:cancelled"]
     provider_bookings: 1

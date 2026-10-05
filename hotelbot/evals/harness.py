@@ -135,8 +135,19 @@ def _build(scenario: Scenario, workdir: Path) -> tuple[Container, dict[str, str]
         path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
         paths.append(str(path))
 
+    # Region pack (shared providers) with the same per-scenario overrides.
+    region_paths = []
+    for i, rp in enumerate(Settings.model_fields["region_pack_paths"].default_factory()):  # type: ignore[misc]
+        region = yaml.safe_load((ROOT / rp).read_text(encoding="utf-8"))
+        for prov in region.get("providers", []):
+            prov.setdefault("config", {}).update((scenario.provider_config or {}).get(prov["slug"], {}))
+        target = workdir / f"region_{i}.yaml"
+        target.write_text(yaml.safe_dump(region, allow_unicode=True), encoding="utf-8")
+        region_paths.append(str(target))
+
     settings = Settings(
         env="test", database_url="sqlite://", knowledge_path=paths[0], extra_pack_paths=paths[1:],
+        region_pack_paths=region_paths,
         hotel_slug=slugs[scenario.properties[0]], log_level="ERROR", staff_api_token="eval",
     )
     integ = scenario.integration
@@ -384,7 +395,9 @@ def _check_final(scenario: Scenario, container: Container, slugs: dict[str, str]
 def run_scenario(scenario: Scenario) -> ScenarioResult:
     result = ScenarioResult(scenario=scenario)
     start = time.perf_counter()
-    os.environ["DEMO_TRANSFERS_CALLBACK_SECRET"] = CALLBACK_SECRET
+    for env in ("DEMO_TRANSFERS_CALLBACK_SECRET", "DEMO_PREMIUM_CALLBACK_SECRET", "DEMO_GUIDES_CALLBACK_SECRET",
+                "DEMO_RENTALS_CALLBACK_SECRET"):
+        os.environ[env] = CALLBACK_SECRET
     try:
         with tempfile.TemporaryDirectory() as tmp:
             container, slugs = _build(scenario, Path(tmp))

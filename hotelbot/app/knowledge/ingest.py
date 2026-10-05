@@ -15,13 +15,14 @@ import json
 import sys
 from collections import Counter
 from dataclasses import dataclass
+from typing import Any
 from pathlib import Path
 
 from functools import lru_cache
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import ExternalProvider, KnowledgeDocument, Property
+from app.db.models import ExternalProvider, KnowledgeDocument, Property, PropertyProvider, ProviderRelation
 from app.knowledge.schemas import KnowledgePack
 from app.observability import log_event
 from app.yamlio import yaml_load
@@ -91,6 +92,7 @@ def _upsert_providers(session: Session, prop: Property, pack: KnowledgePack) -> 
         row = existing.get(spec.slug) or ExternalProvider(property_id=prop.id, slug=spec.slug)
         row.name, row.provider_type, row.integration_type = spec.name, spec.provider_type, spec.integration_type
         row.active, row.services, row.config = spec.active, {"service_types": spec.services}, spec.config
+        apply_marketplace(row, spec)
         session.add(row)
     for slug, row in existing.items():
         if slug not in seen:
@@ -98,9 +100,42 @@ def _upsert_providers(session: Session, prop: Property, pack: KnowledgePack) -> 
     session.flush()
 
 
+def apply_marketplace(row: ExternalProvider, spec: Any) -> None:
+    row.profile, row.policies = spec.profile, spec.policies
+    row.commission_type, row.commission_value = spec.commission_type, spec.commission_value
+
+
+def _upsert_relationships(session: Session, prop: Property, pack: KnowledgePack) -> None:
+    """Relationships to providers: the property's own or those of its region
+    (region packs are ingested first). A provider that is not loaded is
+    skipped with a warning (e.g. a pack ingested without its region data)."""
+    region = (prop.extra or {}).get("region")
+    existing = {r.provider_id: r for r in session.scalars(select(PropertyProvider)
+                                                          .where(PropertyProvider.property_id == prop.id))}
+    seen = set()
+    for spec in pack.provider_relationships:
+        scope = ExternalProvider.property_id == prop.id
+        if region:
+            scope = or_(scope, ExternalProvider.region == region)
+        provider = session.scalar(select(ExternalProvider).where(ExternalProvider.slug == spec.provider, scope))
+        if provider is None:
+            log_event("provider_relationship_unresolved", property=prop.slug, provider=spec.provider)
+            continue
+        row = existing.get(provider.id) or PropertyProvider(property_id=prop.id, provider_id=provider.id)
+        row.relation = ProviderRelation(spec.relation)
+        row.services = {"service_types": spec.services} if spec.services else {}
+        session.add(row)
+        seen.add(provider.id)
+    for provider_id, row in existing.items():
+        if provider_id not in seen:
+            session.delete(row)
+    session.flush()
+
+
 def ingest_pack(session: Session, pack: KnowledgePack) -> IngestReport:
     prop = _upsert_property(session, pack)
     _upsert_providers(session, prop, pack)
+    _upsert_relationships(session, prop, pack)
     report = IngestReport(property_id=prop.id)
     existing = {
         d.item_key: d

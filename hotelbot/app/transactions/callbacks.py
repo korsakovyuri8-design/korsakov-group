@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -43,6 +43,10 @@ REPLAY_WINDOW_SECONDS = 300
 _EVENTS = {
     "accepted": ActionStatus.ACCEPTED, "rejected": ActionStatus.REJECTED, "in_progress": ActionStatus.IN_PROGRESS,
     "completed": ActionStatus.COMPLETED, "failed": ActionStatus.FAILED, "cancelled": ActionStatus.CANCELLED,
+    # Conditional services (weather...): accepted subject to a condition, then
+    # either confirmed unconditionally or called off.
+    "conditional": ActionStatus.PENDING_CONDITION, "condition_met": ActionStatus.ACCEPTED,
+    "condition_failed": ActionStatus.CANCELLED,
 }
 
 
@@ -65,9 +69,13 @@ def sign(secret: str, timestamp: int | str, body: bytes) -> str:
 
 def handle_callback(session: Session, deps: TxnDeps, property_slug: str, provider_slug: str,
                     headers: dict[str, str], body: bytes) -> CallbackResult:
-    provider = session.scalar(
-        select(ExternalProvider).join(Property, Property.id == ExternalProvider.property_id)
-        .where(Property.slug == property_slug, ExternalProvider.slug == provider_slug))
+    prop = session.scalar(select(Property).where(Property.slug == property_slug))
+    provider = None
+    if prop is not None:   # the property's own partner, or a shared provider of its region
+        scope = ExternalProvider.property_id == prop.id
+        if region := (prop.extra or {}).get("region"):
+            scope = or_(scope, ExternalProvider.region == region)
+        provider = session.scalar(select(ExternalProvider).where(ExternalProvider.slug == provider_slug, scope))
     if provider is None or not provider.active:
         return CallbackResult(404, {"detail": "unknown provider"})
     secret_env = (provider.config or {}).get("callback_secret_env")
@@ -114,8 +122,9 @@ def handle_callback(session: Session, deps: TxnDeps, property_slug: str, provide
             session.flush()
     except IntegrityError:
         return CallbackResult(200, {"status": "duplicate"})
+    template = "txn_condition_failed" if payload.event == "condition_failed" else None
     event.outcome = "unknown_reference" if txn is None else TransactionService(session, deps).apply_status(
-        txn, target, f"provider:{provider.slug}", payload.message)
+        txn, target, f"provider:{provider.slug}", payload.message, template)
     outcome = event.outcome
     log_event("provider_callback", provider=provider.slug, event_id=payload.event_id, event_type=payload.event,
               outcome=outcome)

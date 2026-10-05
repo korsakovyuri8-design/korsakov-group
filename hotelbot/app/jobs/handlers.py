@@ -72,7 +72,7 @@ def register_handlers(worker: JobWorker, container: Container) -> None:
         TransactionService(s, deps).on_submit_dead(job.payload["transaction_id"], error)
 
     def provider_cancel(s: Session, job: Job) -> None:
-        TransactionService(s, deps).run_cancel(job.payload["transaction_id"])
+        TransactionService(s, deps).run_cancel(job.payload["transaction_id"], job.payload.get("template"))
 
     def provider_cancel_dead(s: Session, job: Job, error: str) -> None:
         TransactionService(s, deps).on_cancel_dead(job.payload["transaction_id"], error)

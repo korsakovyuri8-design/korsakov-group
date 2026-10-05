@@ -28,7 +28,7 @@ from sqlalchemy import select
 from app.agent import messages as msg
 from app.agent.intents import Intent
 from app.clock import Clock, as_utc
-from app.db.models import Event, ItemStatus, Offering, Place
+from app.db.models import Event, ExternalProvider, ItemStatus, Offering, Place
 from app.discovery.engine import Candidate, EventCandidate, discover_events, discover_places
 from app.discovery.nlu import DiscoveryRequest, parse_discovery
 from app.discovery.render import L, candidate_line, event_line
@@ -37,8 +37,8 @@ from app.places.geo import Point
 from app.places.taxonomy import FAMILIES, SUBCATEGORIES, label
 from app.schemas.messages import ActionTaken
 from app.text import contains_phrase, fold
-from app.transactions.catalog import SERVICE_CATALOG, VENUE_CATEGORIES, detect_services
-from app.transactions.slots import PROPERTY, local_now, parse_count, parse_when
+from app.transactions.catalog import SERVICE_CATALOG, VENUE_CATEGORIES, detect_services, keyword_positions, rental_label
+from app.transactions.slots import PROPERTY, local_now, parse_count, parse_places, parse_when
 from app.trip import itinerary
 
 if TYPE_CHECKING:
@@ -115,6 +115,9 @@ _TEXT = {
     "health_no_number": {"en": "If it is urgent, call the local emergency number. I can't give medical advice.",
                          "cnr": "Ako je hitno, pozovite lokalni broj za hitne slučajeve. Ne mogu davati medicinske savjete.",
                          "ru": "Если это срочно, звоните по местному экстренному номеру. Медицинских советов я не даю."},
+    "or": {"en": "or:", "cnr": "ili:", "ru": "или:"},
+    "first_question": {"en": "To price the rest, first: {question}", "cnr": "Za ostalo mi prvo treba: {question}",
+                       "ru": "Чтобы рассчитать остальное, сначала: {question}"},
     "synthetic": {"en": "(Demo data - synthetic places.)", "cnr": "(Demo podaci - izmišljena mjesta.)",
                   "ru": "(Демо-данные — вымышленные места.)"},
 }
@@ -144,6 +147,53 @@ def _loc(table: dict[str, str], locale: str) -> str:
 def _hits(text: str, phrases: list[str]) -> bool:
     folded = fold(text)
     return any(contains_phrase(folded, p) for p in phrases)
+
+
+@dataclass
+class _TripContext:
+    day: date | None = None             # arrival day
+    arrival: datetime | None = None     # exact arrival time, if given ("8pm"); not "evening"
+    origin: str | None = None           # where they arrive from ("from Podgorica")
+
+
+_DECISION = re.compile(r"^\s*(yes|no|book|confirm|reserve|go ahead|cancel|decline|i'?ll decide|let me think|"
+                       r"da\b|ne\b|rezervis|potvrd|otkaz|da\b|net\b|bronir|zabronir|podtver|otmen|"
+                       r"да\b|нет\b|брониру|заброниру|подтвер|отмен)")
+_DELIMS = re.compile(r"(,\s*(?:and\s+|i\s+|и\s+)?|\s+(?:and|plus|also|as well as|i|kao i|а также|и)\s+)")
+
+
+def split_requests(text: str) -> list[str]:
+    """Sentences, and within a sentence one part per requested service:
+    "Get us a transfer, two sets of skis for Saturday, and a guide on
+    Sunday." -> three parts. A part keeps the words around its keyword."""
+    out: list[str] = []
+    for sentence in (x.strip() for x in _SENTENCE.split(text) if x.strip()):
+        folded = fold(sentence)
+        hits = keyword_positions(folded)
+        services = list(dict.fromkeys(svc for _, svc in hits))
+        if len(services) < 2:
+            out.append(sentence)
+            continue
+        # fold() lower-cases, strips diacritics and transliterates Cyrillic,
+        # so map folded positions back to the original text.
+        prefix = [len(fold(sentence[:i])) for i in range(len(sentence) + 1)]
+
+        def original(pos: int) -> int:
+            return next((i for i, n in enumerate(prefix) if n >= pos), len(sentence))
+
+        cuts = [0]
+        folded_len = len(folded)
+        for pos, svc in hits[1:]:
+            if svc == services[0] and len(cuts) == 1:
+                continue
+            delims = [m for m in _DELIMS.finditer(folded, cuts[-1], pos)]
+            cut = delims[-1].start() if delims else pos
+            if cuts[-1] < cut < folded_len:
+                cuts.append(cut)
+        cuts = [original(c) for c in cuts] + [len(sentence)]
+        parts = [sentence[a:b].strip(" ,") for a, b in zip(cuts, cuts[1:], strict=False)]
+        out += [p for p in parts if p]
+    return out
 
 
 @dataclass
@@ -394,12 +444,12 @@ class Concierge:
         """A message with several independent requests -> independent plan items."""
         if self.txn is None or turn.intent is None or turn.intent.intent in _SAFETY:
             return False
-        segments = [s.strip() for s in _SENTENCE.split(turn.text) if s.strip()]
-        if len(segments) < 2:
+        segments = split_requests(turn.text)
+        if len(segments) < 2 or self._answers_open_offers(turn):
             return False
         now_local = self._now_local(turn)
         sections: list[_Section] = []
-        arrival: datetime | None = None
+        ctx = _TripContext()
         for seg in segments:
             services = [s for s in detect_services(seg) if s not in VENUE_CATEGORIES]
             disc = parse_discovery(seg, now_local, require_cue=False) if turn.runtime.region else None
@@ -407,25 +457,29 @@ class Concierge:
                 sections.append(_Section("transaction", seg, service_type=services[0]))
             elif disc is not None:
                 sections.append(_Section("discovery", seg, request=disc))
-            if _hits(seg, ARRIVAL) and arrival is None:
+            if _hits(seg, ARRIVAL) and ctx.day is None:
                 parts = parse_when(fold(seg), now_local.date())
-                if parts.day and parts.time:
-                    arrival = datetime.combine(parts.day, parts.time, tzinfo=self._tz(turn))
+                ctx.day = parts.day
+                if parts.day and parts.time and not parts.approximate:
+                    ctx.arrival = datetime.combine(parts.day, parts.time, tzinfo=self._tz(turn))
+                places, _ = parse_places(seg)
+                ctx.origin = places.get("pickup")
         if len(sections) < 2:
             return False
         party = self._party(turn, turn.text)
         log_event("trip_plan", conversation_id=turn.conv.id, items=[s.service_type or s.request.hits
                                                                     for s in sections])
-        eta = arrival
+        eta = ctx.arrival
         for sec in sections:
             if sec.kind != "transaction":
                 continue
-            preset, inferred = self._preset(sec, arrival, party)
-            sec.planned = self.txn.prepare(turn, sec.service_type, sec.text, preset=preset, inferred=inferred)
-            if sec.service_type in ("airport_transfer", "taxi") and sec.planned.outcome == "offered" and arrival:
+            preset, partial, inferred = self._preset(sec, ctx, party)
+            sec.planned = self.txn.prepare(turn, sec.service_type, sec.text, preset=preset, preset_partial=partial,
+                                           inferred=inferred)
+            if sec.service_type in ("airport_transfer", "taxi") and sec.planned.outcome == "offered" and ctx.arrival:
                 minutes = (sec.planned.provider.config or {}).get("estimated_duration_minutes")
                 if minutes:
-                    eta = arrival + timedelta(minutes=int(minutes))
+                    eta = ctx.arrival + timedelta(minutes=int(minutes))
                     sec.at = eta
         for sec in sections:
             if sec.kind != "discovery":
@@ -438,27 +492,56 @@ class Concierge:
             self._run_discovery(turn, sec, now_local)
         return self._compose(turn, sections)
 
+    def _answers_open_offers(self, turn: _Turn) -> bool:
+        """"Book the transfer and the guide. Skis later." is a decision about
+        open offers, not a new multi-part request."""
+        from app.transactions.service import TransactionService
+
+        assert self.txn is not None
+        if not TransactionService(turn.session, self.txn.deps).open_quotes(turn.conv.id):
+            return False
+        return any(_DECISION.match(fold(s)) for s in _SENTENCE.split(turn.text) if s.strip())
+
     @staticmethod
-    def _preset(sec: _Section, arrival: datetime | None, party: int | None) -> tuple[dict[str, Any], list[str]]:
+    def _preset(sec: _Section, ctx: _TripContext,
+                party: int | None) -> tuple[dict[str, Any], dict[str, str], list[str]]:
+        """Trip context fills only what an item lacks, and every inferred
+        value is shown in the offer the guest must accept."""
         preset: dict[str, Any] = {}
+        partial: dict[str, str] = {}
         inferred: list[str] = []
         spec = SERVICE_CATALOG[sec.service_type or ""]
         keys = {f.key: f.kind for f in spec.fields}
         if party and "party_size" in keys:
             preset["party_size"] = party
-        if sec.service_type in ("airport_transfer", "taxi") and arrival is not None:
+        if party and "quantity" in keys:
+            preset["quantity"] = party          # "we want skis" for a group of 4 -> 4 sets (shown, confirmable)
+            inferred.append("quantity")
+        if spec.domain == "transport" and (ctx.arrival is not None or ctx.day is not None):
             when_key = next((k for k, kind in keys.items() if kind == "datetime"), None)
-            if when_key and not parse_when(fold(sec.text), arrival.date()).time:
-                preset[when_key] = arrival.isoformat()
-                inferred.append(when_key)
+            if when_key and not parse_when(fold(sec.text), (ctx.day or date.today())).time:
+                if ctx.arrival is not None:
+                    preset[when_key] = ctx.arrival.isoformat()
+                    inferred.append(when_key)
+                elif ctx.day is not None:
+                    partial[when_key] = ctx.day.isoformat()     # "Friday evening": ask the exact time
+            if ctx.origin and "pickup" in keys:
+                preset["pickup"] = ctx.origin
+                inferred.append("pickup")
             if "destination" in keys:
                 preset["destination"] = PROPERTY
                 inferred.append("destination")
-        return preset, inferred
+        return preset, partial, inferred
 
     def _section_label(self, turn: _Turn, sec: _Section) -> str:
         from app.actions.catalog import action_label
 
+        if sec.service_type == "rental" and sec.planned is not None and sec.planned.draft is not None \
+                and sec.planned.draft["values"].get("category"):
+            return rental_label(sec.planned.draft["values"]["category"], turn.language)
+        if sec.service_type == "rental" and sec.planned is not None and sec.planned.quote is not None \
+                and sec.planned.quote.request.get("category"):
+            return rental_label(sec.planned.quote.request["category"], turn.language)
         if sec.service_type:
             return action_label(sec.service_type, turn.language)
         q = sec.request.query if sec.request else None
@@ -476,7 +559,7 @@ class Concierge:
         lines = [msg.t("trip_header", turn.language)]
         results_state: list[dict[str, Any]] = []
         codes: list[str] = []
-        draft_set = False
+        drafts: list[dict[str, Any]] = []
         any_results = []
         for sec in sections:
             title = self._section_label(turn, sec)
@@ -484,18 +567,21 @@ class Concierge:
                 p = sec.planned
                 assert p is not None
                 if p.outcome == "offered" and p.quote is not None:
-                    line = f"• {title}: {self.txn.offer_line(turn, p.quote, with_label=False)}"
-                    if sec.at is not None and sec.service_type in ("airport_transfer", "taxi"):
-                        line += T("eta", turn.language, t=sec.at.strftime("%H:%M"))
-                    if p.quote.conditions:
-                        line += f". {p.quote.conditions}"
-                    lines.append(line)
-                    codes.append(p.quote.code)
+                    for i, quote in enumerate(p.quotes or [p.quote]):
+                        prefix = f"• {title}: " if i == 0 else "  " + T("or", turn.language) + " "
+                        provider = turn.session.get(ExternalProvider, quote.provider_id)
+                        line = prefix + (f"{provider.name}: " if provider else "") + \
+                            self.txn.offer_line(turn, quote, with_label=False)
+                        if sec.at is not None and sec.service_type in ("airport_transfer", "taxi"):
+                            line += T("eta", turn.language, t=sec.at.strftime("%H:%M"))
+                        conditions = self.txn._conditions(turn, quote).strip()
+                        if conditions:
+                            line += f". {conditions}"
+                        lines.append(line)
+                        codes.append(quote.code)
                 elif p.outcome == "missing" and p.draft is not None:
                     lines.append("• " + T("need", turn.language, label=title, question=self.txn.question(turn, p.draft)))
-                    if not draft_set:
-                        turn.set_state(txn_draft=p.draft)
-                        draft_set = True
+                    drafts.append(p.draft)
                 elif p.outcome == "unavailable":
                     lines.append(f"• {p.detail}")
                 elif p.outcome == "failed":
@@ -520,6 +606,10 @@ class Concierge:
                               details={"options": [c.place.id for c in sec.results]})
         if codes:
             lines.append(msg.t("trip_footer", turn.language, example=codes[0]))
+        if drafts:
+            # One question at a time; the rest are asked as each is answered.
+            turn.set_state(txn_draft=drafts[0], txn_drafts=drafts[1:] or None)
+            lines.append(T("first_question", turn.language, question=self.txn.question(turn, drafts[0])))
         if results_state:
             lines.append(self._footer(turn, any_results))
             turn.set_state(last_results=results_state)

@@ -9,10 +9,10 @@ import pytest
 from sqlalchemy import select
 
 from app.clock import FrozenClock, as_utc
-from app.db.models import AvailabilitySlot, Event, ItemStatus, Offering, Place
+from app.db.models import AvailabilitySlot, Event, ItemStatus, Place
 from app.discovery.engine import DiscoveryQuery, discover_events, discover_places
 from app.discovery.nlu import parse_discovery
-from app.places.availability import NoAvailability, find_slot, hold, release
+from app.places.availability import find_slot
 from app.places.geo import Point, distance_km, walking_minutes
 from app.places.hours import OpenState, open_during, status_at
 from app.places.taxonomy import SUBCATEGORIES, Category, category_of, label
@@ -195,45 +195,7 @@ def test_events_never_show_past_ones(region):
 
 
 # -------------------------------------------------------------- availability
-def _offerings(s, *slugs):
-    return [s.scalar(select(Offering).where(Offering.slug == slug)) for slug in slugs]
-
-
-def test_availability_capacity_by_people(region):
-    at = datetime(2027, 1, 16, 9, 0, tzinfo=timezone(timedelta(hours=1)))
-    small, big = _offerings(region, "skis-mali", "skis-savin")
-    assert find_slot(region, [small], at, 3).offering.slug == "skis-mali"
-    with pytest.raises(NoAvailability) as exc:
-        find_slot(region, [small], at, 4)
-    assert exc.value.reason == "no_capacity"
-    assert find_slot(region, [small, big], at, 4).offering.slug == "skis-savin"
-
-
-def test_availability_hold_and_release(region):
-    at = datetime(2027, 1, 16, 9, 0, tzinfo=timezone(timedelta(hours=1)))
-    (small,) = _offerings(region, "skis-mali")
-    match = find_slot(region, [small], at, 3)
-    units = hold(match.slot, 3)
-    region.flush()
-    with pytest.raises(NoAvailability):
-        find_slot(region, [small], at, 1)
-    release(region, match.slot.id, units)
-    assert find_slot(region, [small], at, 1) is not None
-
-
-def test_availability_group_language_and_party_size(region):
-    sunday = datetime(2027, 1, 17, 10, 0, tzinfo=timezone(timedelta(hours=1)))
-    guides = _offerings(region, "guide-ana", "guide-ivan", "guide-mila")
-    assert find_slot(region, guides, sunday, 4, "ru").offering.slug == "guide-ivan"   # Mila: no Sundays
-    with pytest.raises(NoAvailability) as exc:
-        find_slot(region, guides, sunday, 8, "ru")                                    # Ivan max 6
-    assert exc.value.reason == "party_too_large"
-    assert all(m.offering.slug == "guide-mila" for m in exc.value.alternatives)
-    with pytest.raises(NoAvailability) as exc:
-        find_slot(region, guides, sunday, 2, "de")
-    assert exc.value.reason == "language_unavailable"
-
-
+# (inventory holds and the marketplace are covered in tests/test_marketplace.py)
 def test_availability_none_when_no_inventory_modelled(region):
     assert find_slot(region, [], datetime(2027, 1, 16, 9, 0, tzinfo=timezone.utc), 2) is None
 
