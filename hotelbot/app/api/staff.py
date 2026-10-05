@@ -1,5 +1,8 @@
-"""Staff API (MVP, no UI): inspect conversations, work the request queue,
-take over / hand back conversations, and reply to guests."""
+"""Staff API (MVP, no UI): inspect conversations, work the action queue,
+verify stays, take over / hand back conversations, and reply to guests.
+
+/api/staff/requests is the Core v1 view of the action queue, kept for
+compatibility; /api/staff/actions is the Stay Engine API."""
 
 from __future__ import annotations
 
@@ -8,33 +11,65 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_container, get_session, require_staff
 from app.container import Container
+from app.actions.service import InvalidTransition
+from app.actions.staff_ops import transition_action
 from app.db.models import (
+    Action,
+    ActionStatus,
     Conversation,
     ConversationStatus,
     HandoffStatus,
     MessageRole,
     RequestStatus,
+    StayStatus,
     utcnow,
 )
-from app.db.repositories import ConversationRepository, HandoffRepository, RequestRepository
+from app.db.repositories import (
+    ActionRepository,
+    ConversationRepository,
+    HandoffRepository,
+    PropertyRepository,
+    StayRepository,
+)
 from app.observability import log_event
 from app.schemas.conversations import (
+    ActionDetailOut,
+    ActionOut,
+    ActionTransitionIn,
+    ActionTransitionOut,
     ConversationOut,
     ConversationSummaryOut,
     HandoffOut,
     HotelRequestOut,
     MessageOut,
+    PropertyOut,
     ResolveHandoffIn,
     ResolveRequestIn,
     StaffMessageIn,
+    StayOut,
+    StayUpdateIn,
 )
+
+# Core v1 request status <-> action status
+_REQUEST_FILTER = {
+    RequestStatus.PENDING: [ActionStatus.SUBMITTED],
+    RequestStatus.IN_PROGRESS: [ActionStatus.ACCEPTED, ActionStatus.IN_PROGRESS],
+    RequestStatus.RESOLVED: [ActionStatus.COMPLETED],
+    RequestStatus.REJECTED: [ActionStatus.REJECTED, ActionStatus.FAILED, ActionStatus.CANCELLED],
+}
+_REQUEST_TARGET = {
+    RequestStatus.IN_PROGRESS: ActionStatus.IN_PROGRESS,
+    RequestStatus.RESOLVED: ActionStatus.COMPLETED,
+    RequestStatus.REJECTED: ActionStatus.REJECTED,
+}
 
 router = APIRouter(prefix="/api/staff", tags=["staff"], dependencies=[Depends(require_staff)])
 
 
 def _summary(c: Conversation) -> ConversationSummaryOut:
     return ConversationSummaryOut(
-        id=c.id, guest_external_id=c.guest.external_id, channel=c.channel, language=c.language,
+        id=c.id, guest_external_id=c.guest.external_id, property_id=c.property_id, stay_id=c.stay_id,
+        channel=c.channel, language=c.language,
         status=c.status, created_at=c.created_at, updated_at=c.updated_at,
     )
 
@@ -86,26 +121,131 @@ def send_message(conversation_id: str, body: StaffMessageIn, session: Session = 
     return _send_staff_message(session, container, conv, body.text, body.staff_name)
 
 
-# ---------------------------------------------------------------- requests
+# ------------------------------------------------- requests (Core v1 view)
+def _request_out(a: Action) -> HotelRequestOut:
+    return HotelRequestOut(
+        id=a.id, conversation_id=a.conversation_id or "", request_type=a.request_type.value,
+        status=a.request_status.value, urgency=a.urgency.value, summary=a.summary, details=a.params,
+        resolution_note=a.note, created_at=a.created_at, resolved_at=a.closed_at,
+    )
+
+
 @router.get("/requests", response_model=list[HotelRequestOut])
 def list_requests(request_status: RequestStatus | None = RequestStatus.PENDING,
                   session: Session = Depends(get_session)) -> list[HotelRequestOut]:
-    return [HotelRequestOut.model_validate(r) for r in RequestRepository(session).list(request_status)]
+    statuses = _REQUEST_FILTER[request_status] if request_status else None
+    return [_request_out(a) for a in ActionRepository(session).list(statuses)]
 
 
 @router.post("/requests/{request_id}/resolve", response_model=HotelRequestOut)
 def resolve_request(request_id: str, body: ResolveRequestIn, session: Session = Depends(get_session),
                     container: Container = Depends(get_container)) -> HotelRequestOut:
-    repo = RequestRepository(session)
-    req = repo.get(request_id)
-    if req is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "request not found")
-    repo.resolve(req, body.status, body.note)
-    log_event("request_updated", request_id=req.id, status=req.status.value)
-    if body.reply_to_guest:
-        conv = _conversation_or_404(session, req.conversation_id)
+    action = _action_or_404(session, request_id)
+    target = _REQUEST_TARGET.get(body.status)
+    if target is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "cannot move a request back to pending")
+    _transition(session, container, action, target, "staff", body.note, notify_guest=False)
+    log_event("request_updated", request_id=action.id, status=action.status.value)
+    if body.reply_to_guest and action.conversation_id:
+        conv = _conversation_or_404(session, action.conversation_id)
         _send_staff_message(session, container, conv, body.reply_to_guest, None)
-    return HotelRequestOut.model_validate(req)
+    return _request_out(action)
+
+
+# ----------------------------------------------------------------- actions
+def _action_or_404(session: Session, action_id: str) -> Action:
+    action = ActionRepository(session).get(action_id)
+    if action is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "action not found")
+    return action
+
+
+def _transition(session: Session, container: Container, action: Action, to: ActionStatus, actor: str,
+                note: str | None, *, notify_guest: bool):
+    try:
+        return transition_action(session, container.executors, action, to, actor, note,
+                                 notify_guest=notify_guest, transport_for=container.transport_for)
+    except InvalidTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+@router.get("/actions", response_model=list[ActionOut])
+def list_actions(action_status: ActionStatus | None = None, property: str | None = None,
+                 session: Session = Depends(get_session)) -> list[ActionOut]:
+    property_id = None
+    if property:
+        prop = PropertyRepository(session).get_by_slug(property)
+        if prop is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "property not found")
+        property_id = prop.id
+    actions = ActionRepository(session).list([action_status] if action_status else None, property_id=property_id)
+    return [ActionOut.model_validate(a) for a in actions]
+
+
+@router.get("/actions/{action_id}", response_model=ActionDetailOut)
+def get_action(action_id: str, session: Session = Depends(get_session)) -> ActionDetailOut:
+    return ActionDetailOut.model_validate(_action_or_404(session, action_id))
+
+
+@router.post("/actions/{action_id}/transition", response_model=ActionTransitionOut)
+def transition(action_id: str, body: ActionTransitionIn, session: Session = Depends(get_session),
+               container: Container = Depends(get_container)) -> ActionTransitionOut:
+    """Move an action through its lifecycle. By default the guest is told the
+    new state using the fixed status template (never free text)."""
+    action = _action_or_404(session, action_id)
+    actor = f"staff:{body.staff_name}" if body.staff_name else "staff"
+    result = _transition(session, container, action, body.to, actor, body.note, notify_guest=body.notify_guest)
+    if result.delivery is not None and not result.delivery.ok:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"status saved, delivery failed: {result.delivery.error}")
+    return ActionTransitionOut(action=ActionDetailOut.model_validate(action), guest_notification=result.notification)
+
+
+# ------------------------------------------------------------------- stays
+def _stay_or_404(session: Session, stay_id: str):
+    stay = StayRepository(session).get(stay_id)
+    if stay is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "stay not found")
+    return stay
+
+
+@router.get("/stays", response_model=list[StayOut])
+def list_stays(stay_status: StayStatus | None = None, property: str | None = None,
+               session: Session = Depends(get_session)) -> list[StayOut]:
+    property_id = None
+    if property:
+        prop = PropertyRepository(session).get_by_slug(property)
+        property_id = prop.id if prop else "-"
+    return [StayOut.model_validate(s) for s in StayRepository(session).list(property_id, stay_status)]
+
+
+@router.get("/stays/{stay_id}", response_model=StayOut)
+def get_stay(stay_id: str, session: Session = Depends(get_session)) -> StayOut:
+    return StayOut.model_validate(_stay_or_404(session, stay_id))
+
+
+@router.patch("/stays/{stay_id}", response_model=StayOut)
+def update_stay(stay_id: str, body: StayUpdateIn, session: Session = Depends(get_session)) -> StayOut:
+    """Record staff-verified booking data. Guest-stated facts stay untouched."""
+    stay = _stay_or_404(session, stay_id)
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(stay, field, value)
+    log_event("stay_updated", stay_id=stay.id, fields=sorted(body.model_dump(exclude_unset=True)))
+    return StayOut.model_validate(stay)
+
+
+# -------------------------------------------------------------- properties
+@router.get("/properties", response_model=list[PropertyOut])
+def list_properties(session: Session = Depends(get_session),
+                    container: Container = Depends(get_container)) -> list[PropertyOut]:
+    out = []
+    for p in PropertyRepository(session).list():
+        runtime = container.runtime_for_property_id(p.id)
+        out.append(PropertyOut(
+            id=p.id, slug=p.slug, name=p.name, property_type=p.property_type.value, timezone=p.timezone,
+            default_language=p.default_language, active=p.active, is_synthetic=p.is_synthetic,
+            capabilities=runtime.capabilities.describe() if runtime else {},
+        ))
+    return out
 
 
 # ---------------------------------------------------------------- handoffs

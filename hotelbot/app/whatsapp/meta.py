@@ -51,8 +51,14 @@ class WAContact(_Lenient):
     profile: WAProfile | None = None
 
 
+class WAMetadata(_Lenient):
+    phone_number_id: str | None = None
+    display_phone_number: str | None = None
+
+
 class WAValue(_Lenient):
     messaging_product: str | None = None
+    metadata: WAMetadata | None = None
     contacts: list[WAContact] = []
     messages: list[WAMessage] = []
     statuses: list[dict[str, Any]] = []
@@ -79,6 +85,7 @@ class ParsedInbound(BaseModel):
     type: str
     text: str | None
     display_name: str | None
+    phone_number_id: str | None = None  # receiving business number -> property routing
 
 
 def parse_webhook(payload: WAWebhook) -> list[ParsedInbound]:
@@ -98,6 +105,7 @@ def parse_webhook(payload: WAWebhook) -> list[ParsedInbound]:
                         type=m.type,
                         text=m.text.body if m.type == "text" and m.text else None,
                         display_name=names.get(m.from_),
+                        phone_number_id=change.value.metadata.phone_number_id if change.value.metadata else None,
                     )
                 )
     return out

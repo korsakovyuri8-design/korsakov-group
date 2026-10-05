@@ -18,6 +18,8 @@ _CYRILLIC_TO_LATIN = {
     "ф": "f", "х": "h", "ц": "c", "ч": "c", "џ": "dz", "ш": "s",
     # Montenegrin-specific letters
     "ś": "s", "ź": "z",
+    # Russian-only letters (shared letters use the mapping above)
+    "ы": "y", "э": "e", "я": "ya", "ю": "yu", "й": "j", "щ": "sc", "ь": "", "ъ": "", "ё": "e",
 }
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -58,3 +60,43 @@ def contains_phrase(folded_text: str, phrase: str) -> bool:
     else:
         pattern = r"\b" + re.escape(p) + r"\b"
     return re.search(pattern, folded_text) is not None
+
+
+# --------------------------------------------------------------------------
+# Montenegrin/Serbian Latin -> Cyrillic (for replying in the guest's script)
+# --------------------------------------------------------------------------
+
+_LAT_DIGRAPHS = {"lj": "љ", "nj": "њ", "dž": "џ", "Lj": "Љ", "LJ": "Љ", "Nj": "Њ", "NJ": "Њ", "Dž": "Џ", "DŽ": "Џ"}
+_LAT_TO_CYR = dict(zip(
+    "abcčćdđefghijklmnoprsštuvzžśź",
+    ["а", "б", "ц", "ч", "ћ", "д", "ђ", "е", "ф", "г", "х", "и", "ј", "к", "л", "м", "н", "о", "п",
+     "р", "с", "ш", "т", "у", "в", "з", "ж", "с́", "з́"],
+))
+_FOREIGN_RE = re.compile(r"[qwxy]", re.IGNORECASE)
+# Loanwords and technical terms conventionally kept in Latin inside Cyrillic text.
+_KEEP_LATIN = {"check-in", "check-out", "checkin", "checkout", "wi-fi", "wifi", "e-mail", "email", "online"}
+_WORD_RE = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*", re.UNICODE)
+
+
+def _word_to_cyrillic(word: str) -> str:
+    if word.lower() in _KEEP_LATIN or _FOREIGN_RE.search(word) or (len(word) > 1 and word.isupper()):
+        return word  # EUR, Wi-Fi, check-in ...
+    out, i = [], 0
+    while i < len(word):
+        pair = word[i:i + 2]
+        if pair in _LAT_DIGRAPHS or pair.lower() in _LAT_DIGRAPHS:
+            cyr = _LAT_DIGRAPHS.get(pair) or _LAT_DIGRAPHS[pair.lower()]
+            out.append(cyr.upper() if pair[0].isupper() else cyr)
+            i += 2
+            continue
+        ch = word[i]
+        cyr = _LAT_TO_CYR.get(ch.lower())
+        out.append(ch if cyr is None else (cyr.upper() if ch.isupper() else cyr))
+        i += 1
+    return "".join(out)
+
+
+def latin_to_cyrillic(text: str) -> str:
+    """Transliterate Montenegrin/Serbian Latin script to Cyrillic, leaving
+    numbers, acronyms and foreign words (Wi-Fi, check-in, EUR) untouched."""
+    return _WORD_RE.sub(lambda m: _word_to_cyrillic(m.group(0)), text)

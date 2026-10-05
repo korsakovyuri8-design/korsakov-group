@@ -78,12 +78,14 @@ async def receive(
 def process_inbound(container: Container, item: ParsedInbound) -> None:
     transport = container.transport_for("whatsapp")
     try:
+        runtime = container.properties.for_whatsapp_number(item.phone_number_id)
         if item.text is None:
             reply_text = msg.t("unsupported_media", "en")
         else:
             reply = container.orchestrator.handle(
                 InboundMessage(channel="whatsapp", sender_id=item.sender_id, text=item.text,
-                               external_id=item.message_id, display_name=item.display_name)
+                               external_id=item.message_id, display_name=item.display_name,
+                               property_slug=runtime.slug)
             )
             reply_text = reply.text
         if not reply_text:

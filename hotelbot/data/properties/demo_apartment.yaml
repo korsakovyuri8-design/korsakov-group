@@ -1,0 +1,128 @@
+# =============================================================================
+#  SYNTHETIC DEVELOPMENT DATA - NOT A REAL PROPERTY
+# =============================================================================
+#  A fictional self check-in vacation rental used to prove that the agent core
+#  is property-agnostic: different property type, fewer capabilities, a
+#  transport partner reached through a webhook integration.
+# =============================================================================
+
+pack:
+  property_slug: demo-apartment
+  property_name: "Demo Lakeside Apartment (synthetic data)"
+  property_type: vacation_rental
+  timezone: Europe/Podgorica
+  default_language: en
+  emergency_number: "112"
+  source: "synthetic-dev-dataset"
+  synthetic: true
+  version: "0.1"
+
+capabilities:
+  actions:
+    late_checkout_request: {executor: staff}
+    maintenance_request:   {executor: staff}
+    staff_question:        {executor: staff}
+    booking_inquiry:       {executor: staff}
+    # Transfers go to a (synthetic) transport partner. If it fails or times
+    # out, the agent falls back to the host - it never assumes success.
+    transport_booking:
+      executor: webhook
+      config: {url: "https://transport-partner.example.invalid/hotelbot/actions", timeout: 8}
+    # Not offered: housekeeping_request (no daily cleaning), restaurant_booking,
+    # late_arrival_request / early_checkin_request (self check-in).
+  integrations: [human_staff]
+  external_services: [transport]
+
+policy:
+  max_consecutive_failures: 2
+  failure_thresholds:
+    LOCAL_RECOMMENDATION: 1   # the pack has no local guide; go to the host quickly
+
+items:
+  - key: self_check_in
+    category: check_in_out
+    content:
+      en: "Self check-in is from 15:00. The key is in a code box next to the entrance; the code is sent on the day of arrival. Arriving late is fine, no need to inform us."
+      cnr: "Samostalna prijava je od 15:00. Ključ je u kutiji sa šifrom pored ulaza; šifra se šalje na dan dolaska. Kasni dolazak nije problem i ne morate nas obavještavati."
+    keywords:
+      en: [check-in, checkin, arrival, arrive, key, code, late]
+      cnr: [prijava, dolazak, ključ, šifra, kasno]
+      ru: [заезд, ключ, код, поздно]
+    metadata: {synthetic: true}
+
+  - key: check_out
+    category: check_in_out
+    content:
+      en: "Check-out is until 10:00. Please leave the key in the code box. Late check-out depends on the next booking and must be approved by the host."
+      cnr: "Odjava je do 10:00. Ključ ostavite u kutiji sa šifrom. Kasniji check-out zavisi od sljedeće rezervacije i mora ga odobriti domaćin."
+    keywords:
+      en: [check-out, checkout, departure, leave, late]
+      cnr: [odjava, odlazak, kasniji]
+      ru: [выезд, выехать]
+    metadata: {synthetic: true, requires_staff_approval: [late_checkout_request]}
+
+  - key: wifi
+    category: amenities
+    content:
+      en: "Wi-Fi is free. The network name and password are on the fridge door."
+      cnr: "Wi-Fi je besplatan. Naziv mreže i lozinka su na vratima frižidera."
+    keywords:
+      en: [wifi, wi-fi, internet, password, network, online]
+      cnr: [wifi, internet, lozinka, šifra, mreža]
+      ru: [вайфай, интернет, пароль]
+    metadata: {synthetic: true}
+
+  - key: parking
+    category: amenities
+    content:
+      en: "The apartment has no private parking. A paid public car park is 200 m away."
+      cnr: "Apartman nema privatni parking. Javni parking koji se plaća nalazi se 200 m dalje."
+    keywords:
+      en: [parking, park, car, vehicle, garage]
+      cnr: [parking, parkiranje, auto, automobil]
+      ru: [парковка, машина]
+    metadata: {synthetic: true}
+
+  - key: pets
+    category: policies
+    content:
+      en: "Pets are not allowed in the apartment."
+      cnr: "Kućni ljubimci nijesu dozvoljeni u apartmanu."
+    keywords:
+      en: [pet, pets, dog, cat, animal]
+      cnr: [ljubimac, ljubimci, pas, psa, psom, mačka]
+      ru: [собака, кошка, животные]
+    metadata: {synthetic: true}
+
+  - key: cleaning
+    category: services
+    content:
+      en: "Final cleaning is included. There is no daily cleaning during the stay; fresh towels are in the wardrobe."
+      cnr: "Završno čišćenje je uključeno. Tokom boravka nema svakodnevnog čišćenja; čisti peškiri su u ormaru."
+    keywords:
+      en: [cleaning, clean, towels, towel, housekeeping, sheets]
+      cnr: [čišćenje, peškiri, peškir, posteljina]
+      ru: [уборка, полотенца]
+    metadata: {synthetic: true}
+
+  - key: kitchen
+    category: amenities
+    content:
+      en: "The kitchen has a stove, oven, fridge, dishwasher and coffee machine."
+      cnr: "Kuhinja ima šporet, rernu, frižider, mašinu za sudove i aparat za kafu."
+    keywords:
+      en: [kitchen, cook, cooking, stove, oven, fridge, coffee, dishwasher]
+      cnr: [kuhinja, kuvati, šporet, rerna, frižider, kafa]
+      ru: [кухня, готовить, кофе]
+    metadata: {synthetic: true}
+
+  - key: quiet_hours
+    category: policies
+    content:
+      en: "Quiet hours are from 22:00 to 07:00. Parties are not allowed."
+      cnr: "Kućni red: tišina od 22:00 do 07:00. Zabave nijesu dozvoljene."
+    keywords:
+      en: [quiet, noise, party, parties, music]
+      cnr: [tišina, buka, zabava, muzika]
+      ru: [тишина, шум, вечеринка]
+    metadata: {synthetic: true}

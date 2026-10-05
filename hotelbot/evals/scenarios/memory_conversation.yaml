@@ -1,0 +1,107 @@
+# MEMORY - guest statements are remembered per stay, never as verified facts.
+# CONVERSATION - references, ambiguity, continuity.
+
+- name: stated_party_size
+  category: memory
+  gate: true
+  steps:
+    - guest: "We are 3 adults"
+      expect:
+        reply_contains: ["3", "does not change or confirm"]
+  final:
+    stays: [{facts: {guest_count: {value: 3, confirmed: false, source: guest_stated}}, party_size_is_none: true}]
+
+- name: stated_arrival_date
+  category: memory
+  steps:
+    - guest: "We arrive on 20 December and leave on 23 December"
+  final:
+    stays:
+      - facts:
+          arrival_date: {value_endswith: "-12-20", confirmed: false}
+          departure_date: {value_endswith: "-12-23", confirmed: false}
+
+- name: inferred_not_fact
+  category: memory
+  description: '"My wife and I" implies two people, but nothing was stated - store nothing.'
+  gate: true
+  steps:
+    - guest: "My wife and I are coming for our anniversary"
+  final:
+    stays: [{facts_absent: [guest_count], party_size_is_none: true}]
+
+- name: cross_stay_isolation
+  category: memory
+  description: The same guest at two properties - facts stay with their stay.
+  gate: true
+  properties: [hotel, apartment]
+  steps:
+    - guest: "We are 2 adults arriving 20 December"
+      property: apartment
+    - guest: "Do you have parking?"
+  final:
+    stays:
+      - {property: apartment, facts: {guest_count: {value: 2}}}
+      - {property: hotel, facts_empty: true}
+
+- name: checkout_starts_new_stay
+  category: memory
+  description: After check-out, a returning guest starts with a clean stay.
+  gate: true
+  steps:
+    - guest: "We are 4 people"
+    - stay_update: {status: checked_out}
+    - guest: "Hi again!"
+  final:
+    stays: [{count: 2, facts_empty: true, status: inquiry}]
+
+- name: ambiguous_book_it
+  category: conversation
+  description: '"book it" with nothing to refer to must not book anything.'
+  steps:
+    - guest: "book it"
+      expect:
+        actions: []
+        reply_contains_any: ["rephrase", "what would you like"]
+        forbidden: ["booked", "reserved"]
+
+- name: book_it_after_offer
+  category: conversation
+  description: '"book it" right after an offer refers to that offer.'
+  steps:
+    - guest: "Is late check-in possible?"
+    - guest: "book it"
+      expect: {actions: [{type: late_arrival_request, status: submitted}]}
+
+- name: follow_up_pronoun
+  category: conversation
+  steps:
+    - guest: "Do you have parking?"
+    - guest: "Is it free?"
+      expect: {grounded: true, sources: [parking], forbidden: ["Wi-Fi"]}
+
+- name: follow_up_ellipsis_cnr
+  category: conversation
+  description: '"A parking?" continues a Montenegrin conversation.'
+  steps:
+    - guest: "Kada je doručak?"
+    - guest: "A parking?"
+      expect: {language: cnr, sources: [parking]}
+
+- name: language_continuation
+  category: conversation
+  description: A message without language signal keeps the conversation language.
+  steps:
+    - guest: "Da li imate parking?"
+    - guest: "ok"
+      expect: {language: cnr}
+
+- name: language_switching
+  category: conversation
+  steps:
+    - guest: "What time is breakfast?"
+      expect: {language: en}
+    - guest: "Kada je doručak?"
+      expect: {language: cnr, reply_contains: ["Doručak"]}
+    - guest: "Во сколько завтрак?"
+      expect: {language: ru}

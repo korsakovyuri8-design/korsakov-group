@@ -8,28 +8,38 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    Action,
+    ActionStatus,
     Conversation,
     ConversationStatus,
     Guest,
     HandoffStatus,
-    Hotel,
-    HotelRequest,
     HumanHandoff,
     Message,
     MessageRole,
-    RequestStatus,
-    RequestType,
+    Property,
+    Stay,
+    StayStatus,
     Urgency,
     utcnow,
 )
 
 
-class HotelRepository:
+class PropertyRepository:
     def __init__(self, session: Session) -> None:
         self.s = session
 
-    def get_by_slug(self, slug: str) -> Hotel | None:
-        return self.s.scalar(select(Hotel).where(Hotel.slug == slug))
+    def get_by_slug(self, slug: str) -> Property | None:
+        return self.s.scalar(select(Property).where(Property.slug == slug))
+
+    def get(self, property_id: str) -> Property | None:
+        return self.s.get(Property, property_id)
+
+    def list(self) -> list[Property]:
+        return list(self.s.scalars(select(Property).order_by(Property.slug)))
+
+
+HotelRepository = PropertyRepository  # Core v1 name
 
 
 class ConversationRepository:
@@ -48,20 +58,20 @@ class ConversationRepository:
             guest.display_name = display_name
         return guest
 
-    def get_open_conversation(self, hotel_id: str, guest: Guest, channel: str) -> Conversation:
-        """Latest non-closed conversation for the guest, or a new one."""
+    def get_open_conversation(self, stay: Stay, channel: str) -> Conversation:
+        """Latest non-closed conversation of this stay, or a new one."""
         conv = self.s.scalar(
             select(Conversation)
             .where(
-                Conversation.hotel_id == hotel_id,
-                Conversation.guest_id == guest.id,
+                Conversation.stay_id == stay.id,
                 Conversation.status != ConversationStatus.CLOSED,
             )
             .order_by(Conversation.created_at.desc())
             .limit(1)
         )
         if conv is None:
-            conv = Conversation(hotel_id=hotel_id, guest_id=guest.id, channel=channel, memory={})
+            conv = Conversation(property_id=stay.property_id, guest_id=stay.guest_id, stay_id=stay.id,
+                                channel=channel, memory={})
             self.s.add(conv)
             self.s.flush()
         return conv
@@ -117,47 +127,49 @@ class ConversationRepository:
         return list(reversed(list(rows)))
 
 
-class RequestRepository:
+class ActionRepository:
     def __init__(self, session: Session) -> None:
         self.s = session
 
-    def create(
+    def get(self, action_id: str) -> Action | None:
+        return self.s.get(Action, action_id)
+
+    def list(
         self,
-        conv: Conversation,
-        request_type: RequestType,
-        summary: str,
-        urgency: Urgency = Urgency.NORMAL,
-        details: dict[str, Any] | None = None,
-    ) -> HotelRequest:
-        req = HotelRequest(
-            conversation_id=conv.id,
-            request_type=request_type,
-            summary=summary,
-            urgency=urgency,
-            details=details or {},
-        )
-        self.s.add(req)
-        self.s.flush()
-        return req
-
-    def get(self, request_id: str) -> HotelRequest | None:
-        return self.s.get(HotelRequest, request_id)
-
-    def list(self, status: RequestStatus | None = None, conversation_id: str | None = None) -> list[HotelRequest]:
-        q = select(HotelRequest).order_by(HotelRequest.created_at.desc())
-        if status:
-            q = q.where(HotelRequest.status == status)
+        statuses: list[ActionStatus] | None = None,
+        conversation_id: str | None = None,
+        stay_id: str | None = None,
+        property_id: str | None = None,
+    ) -> list[Action]:
+        q = select(Action).order_by(Action.created_at.desc())
+        if statuses:
+            q = q.where(Action.status.in_(statuses))
         if conversation_id:
-            q = q.where(HotelRequest.conversation_id == conversation_id)
+            q = q.where(Action.conversation_id == conversation_id)
+        if stay_id:
+            q = q.where(Action.stay_id == stay_id)
+        if property_id:
+            q = q.where(Action.property_id == property_id)
         return list(self.s.scalars(q))
 
-    def resolve(self, req: HotelRequest, status: RequestStatus, note: str | None) -> HotelRequest:
-        req.status = status
-        req.resolution_note = note
-        if status in (RequestStatus.RESOLVED, RequestStatus.REJECTED):
-            req.resolved_at = utcnow()
-        self.s.flush()
-        return req
+
+class StayRepository:
+    def __init__(self, session: Session) -> None:
+        self.s = session
+
+    def get(self, stay_id: str) -> Stay | None:
+        return self.s.get(Stay, stay_id)
+
+    def list(self, property_id: str | None = None, status: StayStatus | None = None,
+             guest_id: str | None = None) -> list[Stay]:
+        q = select(Stay).order_by(Stay.updated_at.desc())
+        if property_id:
+            q = q.where(Stay.property_id == property_id)
+        if status:
+            q = q.where(Stay.status == status)
+        if guest_id:
+            q = q.where(Stay.guest_id == guest_id)
+        return list(self.s.scalars(q))
 
 
 class HandoffRepository:

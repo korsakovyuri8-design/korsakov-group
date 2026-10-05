@@ -32,7 +32,9 @@ def test_detects_supported_languages(text, expected):
 
 def test_russian_is_not_mistaken_for_montenegrin_cyrillic():
     guess = detect_language("Во сколько завтрак?")
-    assert guess.language is None and guess.detected == "ru"
+    # Iteration 2 product decision (Yuri): Russian became a supported locale.
+    # Core v1 asserted `guess.language is None` (unsupported) here.
+    assert guess.language == "ru" and guess.detected == "ru"
 
 
 def test_no_signal_keeps_conversation_language():

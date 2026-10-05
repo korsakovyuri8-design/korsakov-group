@@ -1,13 +1,17 @@
 """Lightweight language detection for guest messages.
 
-Supported reply languages are English ("en") and Montenegrin ("cnr",
-ISO 639-3). Serbian, Croatian and Bosnian input is mutually intelligible
-with Montenegrin and is answered in Montenegrin. Other detected languages
-fall back to the conversation's language (or English).
+Reply *locales* (language + script):
 
-Signals, strongest first: Montenegrin Cyrillic letters / Latin diacritics,
-then function-word votes on diacritic-folded text. Russian/Ukrainian Cyrillic
-is recognised so it is not mistaken for Montenegrin Cyrillic.
+    en        English
+    cnr       Montenegrin, Latin script (ISO 639-3 "cnr")
+    cnr-Cyrl  Montenegrin, Cyrillic script - used when the guest writes Cyrillic
+    ru        Russian - routing, safety/handoff and operational templates
+
+Serbian, Croatian and Bosnian input is mutually intelligible with Montenegrin
+and is answered in Montenegrin (in the script the guest used).
+
+Signals, strongest first: script-specific letters (ј љ њ ћ ђ џ vs ы э ъ ь я
+ю ё й щ), Latin diacritics, then function-word votes on folded text.
 
 The detector is deliberately dependency-free; adding a language means adding
 a word list (or swapping in a statistical detector behind `detect_language`).
@@ -18,9 +22,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from app.text import tokens
+from app.text import fold, tokens
 
-SUPPORTED_LANGUAGES = ("en", "cnr")
+SUPPORTED_LANGUAGES = ("en", "cnr", "ru")
+SUPPORTED_LOCALES = ("en", "cnr", "cnr-Cyrl", "ru")
 DEFAULT_LANGUAGE = "en"
 
 _CNR_DIACRITICS = re.compile(r"[čćšžđśź]", re.IGNORECASE)
@@ -44,21 +49,31 @@ _WORDS = {
 # Words such as "a", "i", "do", "to", "hotel" exist in both languages and are
 # intentionally left out of both lists.
 
+# Russian vs Montenegrin function words, folded (used only for Cyrillic text
+# that has no script-specific letters, e.g. "Где парковка?").
+# Only words that do NOT exist in Montenegrin/Serbian: "у" (in), "где" (ekavian
+# "where"), "да", "кад" are shared and must not vote.
+_RU_WORDS = {fold(w) for w in "что как когда есть вас меня мне нас вы мы это можно пожалуйста спасибо здравствуйте номер завтрак сколько во".split()}
+_CNR_CYR_WORDS = {fold(w) for w in "шта је ли гдје када имате може хвала здраво доручак соба собу соби помозите молим".split()}
+
 
 @dataclass(frozen=True)
 class LanguageGuess:
     language: str | None   # None = no reliable signal
     confidence: float
-    detected: str | None = None  # raw detection, may be unsupported (e.g. "ru")
+    detected: str | None = None  # raw detection
+    script: str = "Latn"         # "Latn" | "Cyrl"
+
+    @property
+    def locale(self) -> str | None:
+        if self.language == "cnr" and self.script == "Cyrl":
+            return "cnr-Cyrl"
+        return self.language
 
 
 def detect_language(text: str) -> LanguageGuess:
-    if _SR_CYRILLIC.search(text):
-        return LanguageGuess("cnr", 0.95, "cnr")
-    if _RU_CYRILLIC.search(text):
-        return LanguageGuess(None, 0.8, "ru")
     if _ANY_CYRILLIC.search(text):
-        return LanguageGuess("cnr", 0.7, "cnr")
+        return _detect_cyrillic(text)
 
     words = tokens(text)
     votes = {lang: sum(1 for w in words if w in vocab) for lang, vocab in _WORDS.items()}
@@ -74,9 +89,29 @@ def detect_language(text: str) -> LanguageGuess:
     return LanguageGuess(best, confidence, best)
 
 
+def _detect_cyrillic(text: str) -> LanguageGuess:
+    sr, ru = len(_SR_CYRILLIC.findall(text)), len(_RU_CYRILLIC.findall(text))
+    if sr and sr >= ru:
+        return LanguageGuess("cnr", 0.95, "cnr", "Cyrl")
+    if ru:
+        return LanguageGuess("ru", 0.9, "ru", "Cyrl")
+    words = set(tokens(text))
+    ru_votes, cnr_votes = len(words & _RU_WORDS), len(words & _CNR_CYR_WORDS)
+    if ru_votes > cnr_votes:
+        return LanguageGuess("ru", 0.7, "ru", "Cyrl")
+    # No distinguishing signal: Montenegrin Cyrillic, but with low confidence so
+    # an established conversation language is kept.
+    return LanguageGuess("cnr", 0.55 if cnr_votes == 0 else 0.7, "cnr", "Cyrl")
+
+
 def resolve_reply_language(guess: LanguageGuess, conversation_language: str | None) -> str:
-    """Language to reply in: a confident detection wins; otherwise keep the
-    conversation's language (so "ok" or "👍" does not flip it)."""
+    """Locale to reply in: a confident detection wins; otherwise keep the
+    conversation's locale (so "ok" or "👍" does not flip it)."""
     if guess.language in SUPPORTED_LANGUAGES and (guess.confidence >= 0.6 or not conversation_language):
-        return guess.language
-    return conversation_language or guess.language or DEFAULT_LANGUAGE
+        return guess.locale  # type: ignore[return-value]
+    return conversation_language or guess.locale or DEFAULT_LANGUAGE
+
+
+def base_language(locale: str | None) -> str:
+    """"cnr-Cyrl" -> "cnr"."""
+    return (locale or DEFAULT_LANGUAGE).split("-")[0]

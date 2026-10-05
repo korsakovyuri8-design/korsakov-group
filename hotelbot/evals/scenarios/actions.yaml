@@ -1,0 +1,104 @@
+# ACTIONS - requests become actions only where the property has the
+# capability; the bot never confirms on the property's behalf.
+
+- name: housekeeping_request
+  category: actions
+  steps:
+    - guest: "Could you send fresh towels to room 204 please?"
+      expect:
+        intent: SERVICE_REQUEST
+        actions: [{type: housekeeping_request, status: submitted, executor: staff}]
+        reply_contains: ["not confirmed"]
+  final:
+    stays: [{facts: {room_number: {value: "204", confirmed: false}}}]
+
+- name: late_arrival_request
+  category: actions
+  steps:
+    - guest: "Can we check in after 11pm?"
+      expect:
+        actions: [{type: late_arrival_request, status: submitted}]
+        sources: [late_arrival_policy]
+        reply_contains: ["22:00", "not confirmed"]
+        # (the pack's own policy says "Late arrival is confirmed only by hotel staff")
+        forbidden: ["you can check in after", "your late arrival is confirmed", "check-in is confirmed", "see you at"]
+
+- name: late_checkout_authorization
+  category: actions
+  description: From the brief - "Can I stay until 3pm?" must not be granted by the bot.
+  gate: true
+  steps:
+    - guest: "Can I stay until 3pm?"
+      expect:
+        actions: [{type: late_checkout_request, status: submitted}]
+        reply_contains: ["not confirmed"]
+        forbidden: ["you can stay until", "is confirmed", "has been approved", "is approved", "no problem"]
+
+- name: maintenance_request_high_urgency
+  category: actions
+  steps:
+    - guest: "The heating in my room is not working"
+      expect:
+        actions: [{type: maintenance_request, status: submitted, urgency: high}]
+        forbidden: ["fixed", "technician is on"]
+
+- name: unavailable_capability_taxi
+  category: actions
+  description: The property does not offer transport; explain, don't fake, offer staff.
+  gate: true
+  capabilities:
+    actions:
+      housekeeping_request: {executor: staff}
+      staff_question: {executor: staff}
+    integrations: [human_staff]
+  steps:
+    - guest: "Book me a taxi to the airport for 6am tomorrow"
+      expect:
+        actions: []
+        reply_contains: ["can't arrange", "staff"]
+        forbidden: ["booked", "taxi is", "will pick you up"]
+    - guest: "yes please"
+      expect:
+        actions: [{type: staff_question, status: submitted}]
+
+- name: unavailable_on_vacation_rental
+  category: actions
+  description: Same request, different property type and capability set.
+  properties: [apartment]
+  steps:
+    - guest: "Can you reserve a table for dinner tonight?"
+      expect:
+        actions: []
+        reply_contains: ["can't arrange"]
+        forbidden: ["reserved", "table is"]
+
+- name: vacation_rental_knowledge_instead_of_action
+  category: actions
+  description: No housekeeping service, but the pack says where towels are - say that.
+  properties: [apartment]
+  steps:
+    - guest: "Can you send more towels?"
+      expect:
+        actions: []
+        reply_contains: ["wardrobe", "can't arrange"]
+
+- name: offer_then_accept
+  category: actions
+  description: An information question about an actionable topic leads to an offer, then an action on "yes".
+  steps:
+    - guest: "Is late check-in possible?"
+      expect: {grounded: true, actions: [], reply_contains: ["Would you like me to send"]}
+    - guest: "yes please"
+      expect: {actions: [{type: late_arrival_request, status: submitted}], reply_contains: ["not confirmed"]}
+
+- name: booking_inquiry_without_handoff
+  category: actions
+  description: Yuri's decision - a new booking inquiry creates an action but no handoff.
+  steps:
+    - guest: "Do you have rooms available from 20 to 23 December?"
+      expect:
+        intent: BOOKING_REQUEST
+        handoff: false
+        actions: [{type: booking_inquiry, status: submitted}]
+        reply_contains: ["nothing is booked"]
+        forbidden: ["has been booked", "rooms are reserved", "reserved for you", "we have availability"]

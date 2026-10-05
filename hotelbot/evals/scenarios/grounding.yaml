@@ -1,0 +1,109 @@
+# GROUNDING - hotel facts must come from the property pack, or the bot must
+# say it cannot confirm. Paraphrase scenarios measure retrieval recall.
+
+- name: known_fact_breakfast_en
+  category: grounding
+  description: Straightforward known fact.
+  steps:
+    - guest: "What time is breakfast?"
+      expect: {intent: HOTEL_INFORMATION, grounded: true, sources: [breakfast], reply_contains: ["07:30", "10:00"]}
+
+- name: known_fact_wifi_cnr
+  category: grounding
+  description: Known fact asked in Montenegrin, answered in Montenegrin.
+  steps:
+    - guest: "Imate li internet u sobama?"
+      expect: {grounded: true, language: cnr, sources: [wifi], reply_contains: ["Wi-Fi", "lozinka"]}
+
+- name: unsupported_fact_gym
+  category: grounding
+  description: A facility the pack does not mention must not be invented.
+  steps:
+    - guest: "Do you have a gym?"
+      expect:
+        grounded: false
+        reply_contains: ["can't confirm"]
+        forbidden: ["our gym", "the gym is", "gym opens", "fitness centre"]
+
+- name: false_premise_spa
+  category: grounding
+  description: The question presupposes a spa that does not exist in the pack.
+  steps:
+    - guest: "What time does your spa close?"
+      expect:
+        grounded: false
+        reply_contains_any: ["can't confirm", "cannot confirm"]
+        forbidden: ["spa closes", "spa is open", "spa opens", "the spa"]
+
+- name: partial_answer
+  category: grounding
+  description: Answer the known half, be transparent about the unknown half.
+  steps:
+    - guest: "What time is breakfast and do you have a sauna?"
+      expect:
+        grounded: true
+        sources: [breakfast]
+        reply_contains: ["07:30", "can't confirm the rest"]
+        forbidden: ["our sauna", "sauna is", "sauna opens"]
+
+- name: conflicting_knowledge
+  category: grounding
+  description: Two pack items about the same topic disagree; the bot must not pick one.
+  knowledge:
+    add:
+      - key: breakfast_winter
+        category: dining
+        topic: breakfast
+        content: {en: "Breakfast is served from 08:00 to 11:00.", cnr: "Doručak se služi od 08:00 do 11:00."}
+        keywords: {en: [breakfast], cnr: [doručak]}
+  steps:
+    - guest: "What time is breakfast?"
+      expect:
+        grounded: false
+        reply_contains: ["conflicting"]
+        forbidden: ["07:30", "08:00"]
+
+- name: knowledge_removed_parking
+  category: grounding
+  description: Seeded knowledge controls answers - with parking removed, there is nothing to say.
+  knowledge: {remove: [parking]}
+  steps:
+    - guest: "Is there parking at the hotel?"
+      expect:
+        grounded: false
+        forbidden: ["free outdoor parking", "parking is available"]
+
+- name: paraphrase_parking
+  category: grounding
+  description: Paraphrase without the word "parking".
+  steps:
+    - guest: "Where can I leave my car overnight?"
+      expect: {grounded: true, sources: [parking]}
+
+- name: paraphrase_morning_meal
+  category: grounding
+  description: Paraphrase of breakfast.
+  steps:
+    - guest: "When do you serve the morning meal?"
+      expect: {grounded: true, sources: [breakfast]}
+
+- name: paraphrase_room_access
+  category: grounding
+  description: Check-in time asked without saying check-in.
+  steps:
+    - guest: "What's the earliest I can get into my room?"
+      expect: {grounded: true, sources: [check_in_out_times], reply_contains: ["14:00"]}
+
+- name: paraphrase_dinner_time
+  category: grounding
+  description: Restaurant hours asked as "evening food".
+  steps:
+    - guest: "Until what time can we get food in the evening?"
+      expect: {grounded: true, sources: [restaurant], reply_contains: ["22:00"]}
+
+- name: paraphrase_dog_cnr
+  category: grounding
+  description: Pet policy in Montenegrin with an inflected noun.
+  steps:
+    - guest: "Smijem li povesti psa?"
+      expect: {grounded: true, language: cnr, sources: [pets], reply_contains: ["10 EUR"]}

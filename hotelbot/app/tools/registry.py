@@ -11,19 +11,26 @@ Pydantic input model, and the registry rejects unknown names and invalid args.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
-from app.db.models import Conversation
+from app.db.models import Conversation, Stay
 from app.observability import log_event
+
+if TYPE_CHECKING:
+    from app.actions.service import ActionService
+    from app.capabilities.registry import CapabilityRegistry
 
 
 @dataclass
 class ToolContext:
     session: Session
     conversation: Conversation
+    stay: Stay | None = None
+    capabilities: CapabilityRegistry | None = None
+    actions: ActionService | None = None
 
 
 class ToolResult(BaseModel):

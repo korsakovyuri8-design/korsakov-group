@@ -20,6 +20,7 @@ from app.schemas.messages import InboundMessage
 def main() -> int:
     parser = argparse.ArgumentParser(description="HOTELBOT terminal demo")
     parser.add_argument("--guest", default="cli-guest")
+    parser.add_argument("--property", default=None, help="property slug (default: deployment default)")
     parser.add_argument("--verbose", action="store_true", help="print intent/grounding details and logs")
     args = parser.parse_args()
 
@@ -33,10 +34,11 @@ def main() -> int:
         text = line.strip()
         if not text:
             continue
-        reply = container.orchestrator.handle(InboundMessage(channel="demo", sender_id=args.guest, text=text))
+        reply = container.orchestrator.handle(InboundMessage(channel="demo", sender_id=args.guest, text=text,
+                                                                property_slug=args.property))
         if not interactive:
             print(f"you> {text}")
-        print(f"bot> {reply.text if reply.text else '(silent - conversation is with hotel staff)'}")
+        print(f"bot> {reply.text if reply.text else '(silent - conversation is with staff)'}")
         if args.verbose:
             print(f"     [intent={reply.intent} lang={reply.language} grounded={reply.grounded} "
                   f"sources={reply.sources} actions={[a.kind for a in reply.actions]} handed_off={reply.handed_off}]")

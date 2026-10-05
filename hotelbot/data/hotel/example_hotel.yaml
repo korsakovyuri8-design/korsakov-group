@@ -8,11 +8,35 @@
 # =============================================================================
 
 pack:
-  hotel_slug: example-hotel
-  hotel_name: "Demo Mountain Hotel (synthetic data)"
+  property_slug: example-hotel
+  property_name: "Demo Mountain Hotel (synthetic data)"
+  property_type: hotel
+  timezone: Europe/Podgorica
+  default_language: en
+  emergency_number: "112"
   source: "synthetic-dev-dataset"
   synthetic: true
-  version: "0.1"
+  version: "0.2"
+
+# What this property can DO through the bot, and how. Anything not listed is
+# explained as unavailable instead of being faked.
+capabilities:
+  actions:
+    late_arrival_request:  {executor: staff}
+    early_checkin_request: {executor: staff}
+    late_checkout_request: {executor: staff}
+    housekeeping_request:  {executor: staff}
+    maintenance_request:   {executor: staff}
+    restaurant_booking:    {executor: staff}
+    transport_booking:     {executor: staff}
+    booking_inquiry:       {executor: staff}
+    staff_question:        {executor: staff}
+  integrations: [human_staff]
+  external_services: [transport, activities]
+
+# Conversation policy (see FailurePolicy). Omitted keys use deployment defaults.
+policy:
+  max_consecutive_failures: 2
 
 items:
   - key: check_in_out_times
@@ -23,6 +47,7 @@ items:
     keywords:
       en: [check-in, checkin, check-out, checkout, arrival, departure, arrive, leave]
       cnr: [prijava, odjava, dolazak, odlazak, ulazak, napuštanje, sobe]
+      ru: [заезд, выезд, заселение, регистрация]
     metadata: {synthetic: true}
 
   - key: late_arrival_policy
@@ -53,6 +78,7 @@ items:
     keywords:
       en: [breakfast, morning, meal, buffet, food, eat]
       cnr: [doručak, jutro, obrok, švedski, sto, hrana, jelo]
+      ru: [завтрак, утром, еда]
     metadata: {synthetic: true}
 
   - key: restaurant
@@ -63,6 +89,7 @@ items:
     keywords:
       en: [restaurant, lunch, dinner, food, eat, menu, table, local, dishes]
       cnr: [restoran, ručak, večera, hrana, jelo, meni, sto, domaća, jela]
+      ru: [ресторан, обед, ужин, меню]
     metadata: {synthetic: true, requires_staff_approval: [restaurant]}
 
   - key: wifi
@@ -73,6 +100,7 @@ items:
     keywords:
       en: [wifi, wi-fi, internet, password, network, connection, online]
       cnr: [wifi, wi-fi, internet, lozinka, šifra, mreža, konekcija]
+      ru: [вайфай, wi-fi, интернет, пароль]
     metadata: {synthetic: true}
 
   - key: parking
@@ -83,6 +111,7 @@ items:
     keywords:
       en: [parking, park, car, vehicle, garage]
       cnr: [parking, parkiranje, parkirati, auto, automobil, vozilo, garaža]
+      ru: [парковка, парковать, машина, автомобиль]
     metadata: {synthetic: true}
 
   - key: pets
@@ -93,6 +122,7 @@ items:
     keywords:
       en: [pet, pets, dog, cat, animal, cost, price, fee]
       cnr: [ljubimac, ljubimci, ljubimce, pas, psa, psom, mačka, mačku, mačkom, životinja, cijena, košta, doplata]
+      ru: [собака, собакой, кошка, животные, питомец]
     metadata: {synthetic: true}
 
   - key: smoking
@@ -113,6 +143,7 @@ items:
     keywords:
       en: [cleaning, clean, housekeeping, towels, towel, sheets, bedding, toiletries, maid]
       cnr: [čišćenje, čistiti, sobarica, peškiri, peškir, posteljina, pribor]
+      ru: [уборка, полотенца, полотенце, постельное]
     metadata: {synthetic: true, requires_staff_approval: [housekeeping]}
 
   - key: reception
@@ -123,6 +154,7 @@ items:
     keywords:
       en: [reception, front, desk, open, hours, staff]
       cnr: [recepcija, recepciji, radno, vrijeme, osoblje]
+      ru: [ресепшн, администратор, стойка]
     metadata: {synthetic: true}
 
   - key: airport_transfer
@@ -133,6 +165,7 @@ items:
     keywords:
       en: [airport, transfer, taxi, pickup, pick-up, shuttle, transport, podgorica, tivat, cost, price]
       cnr: [aerodrom, aerodroma, transfer, taksi, prevoz, prijevoz, podgorica, tivat, cijena, košta]
+      ru: [трансфер, аэропорт, такси]
     metadata: {synthetic: true, requires_staff_approval: [transport]}
 
   - key: ski_storage
@@ -143,6 +176,7 @@ items:
     keywords:
       en: [ski, skis, snowboard, storage, boots, equipment, winter]
       cnr: [skije, skija, snoubord, ostava, pancerice, oprema, zima]
+      ru: [лыжи, лыж, сноуборд, хранение]
     metadata: {synthetic: true}
 
   - key: payment_methods
@@ -163,4 +197,5 @@ items:
     keywords:
       en: [activities, do, visit, see, hiking, hike, lake, black, durmitor, rafting, tara, skiing, ski, tour, excursion, recommend, nearby]
       cnr: [aktivnosti, posjetiti, vidjeti, planinarenje, jezero, crno, durmitor, rafting, tara, skijanje, tura, izlet, preporuka, preporučiti, blizini]
+      ru: [достопримечательности, экскурсии, озеро, рафтинг, поход]
     metadata: {synthetic: true, recommendation: true}

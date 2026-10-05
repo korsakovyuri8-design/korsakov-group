@@ -1,146 +1,154 @@
-# HOTELBOT: AI guest operations agent (prototype, iteration 1)
+# HOTELBOT: AI guest operations layer (prototype, iteration 2)
 
-A WhatsApp-first concierge and guest-operations agent, built first for Hotel Aleksandar (Žabljak, Montenegro) and designed as a reusable hospitality product.
+A WhatsApp-first guest-operations agent for any accommodation (hotels, hostels, resorts, vacation rentals, apartments, glamping). Hotel Aleksandar (Žabljak, Montenegro) will be the first real property; in the core it is just one `Property` with `property_type: hotel`.
 
-> ⚠️ **The bundled hotel data is SYNTHETIC.** `data/hotel/example_hotel.yaml` describes a fictional "Demo Mountain Hotel". None of it is a fact about Hotel Aleksandar. Replace it with the official data (see [Replacing the knowledge pack](#replacing-the-knowledge-pack)). While it is loaded, every API reply carries `"knowledge_synthetic": true`.
+> ⚠️ **All bundled property data is SYNTHETIC.** `data/hotel/example_hotel.yaml` ("Demo Mountain Hotel") and `data/properties/demo_apartment.yaml` ("Demo Lakeside Apartment") are fictional. Nothing in them is a fact about Hotel Aleksandar. While they are loaded, every API reply carries `"knowledge_synthetic": true`.
 
-## What it does (iteration 1)
+## Product invariants
+
+1. **Facts are grounded.** Property facts come from the property pack, or the bot says it cannot confirm them.
+2. **Response authority.** LLMs may understand, phrase, summarise and classify. They may **not** decide that a real-world event happened. Every statement about a request ("sent", "accepted", "completed") is a fixed template chosen from the *stored* action state. Model prose that claims more is discarded. `SUBMITTED ≠ ACCEPTED ≠ COMPLETED`.
+3. **Capabilities, not assumptions.** The bot only acts where the property declares a capability. Anything else is explained, never faked.
+4. **Guest statements are not facts.** "We are 2 adults" is remembered on the stay as `confirmed: false`. Only staff or an integration sets authoritative stay data.
+5. **Humans are first-class.** A handoff gives the conversation to staff; the bot stays silent except for emergencies.
+
+## Domain
+
+```text
+Guest ──< Stay >── Property ──< KnowledgeDocument
+            │          └── capabilities (actions / integrations / services), policy
+            ├──< Conversation ──< Message
+            │          └──< HumanHandoff
+            └──< Action ──< ActionEvent   (PROPOSED → SUBMITTED → ACCEPTED → IN_PROGRESS → COMPLETED
+                                           | REJECTED | FAILED | CANCELLED)
+```
 
 | Capability | How |
 |---|---|
-| Grounded hotel answers | Retrieval over a hotel knowledge pack. The answer is the pack text (no LLM), or LLM phrasing that must cite retrieved items. Otherwise the bot says "I can't confirm that, shall I ask staff?" |
-| English + Montenegrin | Automatic detection (Latin/Cyrillic, with or without diacritics). The bot replies in the guest's language. |
-| Actions | Service and booking requests become `HotelRequest`s through the `create_hotel_request` tool. The bot never confirms them; staff do. |
-| Human handoff | Triggered by emergency, explicit request, complaint, billing dispute, booking change or repeated failure. Staff get a structured package, and the bot goes silent until staff hand the conversation back. |
-| Session memory | Arrival/departure dates, guest count and room number, stored as *unconfirmed guest statements* |
-| WhatsApp | Meta Cloud API webhook (verification, HMAC signature, idempotent on `wamid`), plus a mock transport for local work |
-| LLM providers | `none` / `openai` (any OpenAI-compatible API) / `anthropic`, selected by env |
-| Staff API | Conversations, request queue, handoffs, staff replies |
-| Observability | JSON-lines events: `message_received`, `intent_detected`, `knowledge_retrieved`, `tool_called`, `handoff_created`, `message_sent`, `error` |
+| Grounded answers | Lexical retrieval over the property pack. Answers are either extractive (no LLM) or LLM phrasing that must cite retrieved items and pass the authority guard. The bot handles multi-question messages, follow-ups ("is it free?") and conflicting knowledge. |
+| Actions | `submit_action` checks the property's capability registry, then hands the action to its executor: the **staff queue**, or a **signed webhook** to an external partner. If the partner fails or times out, the action is marked FAILED and handed to staff with an honest message. |
+| Status answers | "Is my late checkout confirmed?" is answered from stored action state. Staff transitions notify the guest with the template for the new state. |
+| Stays | One stay per guest × property × visit. Guest-stated facts never leak across properties or visits. |
+| Languages | English, Montenegrin Latin, Montenegrin/Serbian **Cyrillic → Cyrillic replies**, and Russian (routing, safety, handoff and operational templates; English-only knowledge is flagged as such). |
+| Handoff | Triggers: emergency, human request, complaint, billing dispute, booking change, repeated failure. The failure threshold is a per-property, per-intent policy. |
+| WhatsApp | Meta Cloud API webhook: verification, HMAC, idempotent on `wamid`. Routes to a property by the receiving phone number. A mock transport is included. |
+| LLM | `none` / `openai` (any OpenAI-compatible API) / `anthropic` |
+| Persistence | PostgreSQL (or SQLite). Alembic migrations run automatically on startup; Core v1 databases are upgraded in place. |
+| Evaluation | 60 deterministic product scenarios; invariant scenarios are gates (see below). |
 
 ## Quick start
-
-### Local (no Docker, SQLite, no LLM)
 
 ```bash
 cd hotelbot
 pip install -r requirements-dev.txt
-pytest                                    # 159 tests
+pytest                                      # 390 tests (SQLite)
+python -m evals                             # product evaluation summary
 uvicorn app.main:create_app --factory --reload
 ```
 
 ```bash
 curl -s localhost:8000/api/chat -H 'content-type: application/json' \
-  -d '{"guest_id":"demo-001","message":"What time is breakfast?"}'
+  -d '{"guest_id":"demo-001","message":"Can I stay until 3pm?"}'
+curl -s localhost:8000/api/chat -H 'content-type: application/json' \
+  -d '{"guest_id":"demo-001","message":"Book me a taxi to the airport","property":"demo-apartment"}'
+python -m app.cli --verbose --property demo-apartment
 ```
 
-Or chat in the terminal (same orchestrator):
+Docker Compose (PostgreSQL + both demo properties): `cp .env.example .env && docker compose up --build`.
 
-```bash
-python -m app.cli --verbose
+LLM: set `HOTELBOT_LLM_PROVIDER=anthropic|openai`, `HOTELBOT_LLM_MODEL` and the matching API key. If the LLM fails, the bot falls back to rules and extractive answers.
+
+## Property packs
+
+A pack is one YAML file per property, with no code changes needed:
+
+```yaml
+pack:
+  property_slug: example-hotel
+  property_name: "Demo Mountain Hotel (synthetic data)"
+  property_type: hotel            # hotel | hostel | resort | vacation_rental | apartment | glamping | other
+  timezone: Europe/Podgorica
+  default_language: en
+  emergency_number: "112"         # not hard-coded in the core
+  whatsapp_phone_number_id: ...   # optional: route this WhatsApp number to this property
+  source: "..."
+  synthetic: false
+
+capabilities:
+  actions:
+    late_arrival_request: {executor: staff}
+    transport_booking:    {executor: webhook, config: {url: "https://partner/...", secret_env: PARTNER_SECRET}}
+  integrations: [human_staff]
+  external_services: [transport, activities]
+
+policy:
+  max_consecutive_failures: 2
+  failure_thresholds: {LOCAL_RECOMMENDATION: 1}
+
+items:
+  - key: breakfast
+    category: dining
+    topic: breakfast               # items sharing a topic must agree (conflicts are refused)
+    content: {en: "...", cnr: "..."}          # cnr-Cyrl is derived; add ru if available
+    keywords: {en: [...], cnr: [...], ru: [...]}
+    metadata: {requires_staff_approval: [late_arrival_request]}
 ```
 
-### Docker Compose (PostgreSQL)
+Action types: `late_arrival_request`, `early_checkin_request`, `late_checkout_request`, `housekeeping_request`, `maintenance_request`, `restaurant_booking`, `transport_booking`, `booking_inquiry`, `staff_question`.
 
-```bash
-cd hotelbot
-cp .env.example .env        # optional: set LLM / WhatsApp / staff token
-docker compose up --build
-```
-
-### Enable an LLM
-
-```bash
-# Anthropic
-HOTELBOT_LLM_PROVIDER=anthropic HOTELBOT_LLM_MODEL=claude-sonnet-5-5 HOTELBOT_ANTHROPIC_API_KEY=...
-# OpenAI or any OpenAI-compatible server (vLLM, Ollama, OpenRouter...)
-HOTELBOT_LLM_PROVIDER=openai HOTELBOT_LLM_MODEL=<model> HOTELBOT_OPENAI_API_KEY=... HOTELBOT_OPENAI_BASE_URL=...
-```
-
-If the LLM fails or times out, the bot falls back to rules and extractive answers. It does not error.
-
-## Demo script
-
-```text
-guest> What time is breakfast?                      -> grounded answer (EN)
-guest> Kada je doručak?                             -> grounded answer (CNR)
-guest> Can we check in after 11pm? We arrive on 20 December, 2 adults.
-                                                     -> quotes late-arrival policy, creates LATE_CHECK_IN request,
-                                                        "not confirmed yet"; memory: arrival 12-20, 2 guests (unconfirmed)
-guest> Do you have a sauna?                         -> "can't confirm... shall I ask staff?"
-guest> yes                                          -> question forwarded to the staff queue
-guest> The room is dirty and nobody answers!        -> complaint handoff (high urgency); bot goes silent
-staff  POST /api/staff/conversations/{id}/messages  -> staff reply delivered to the guest
-staff  POST /api/staff/handoffs/{id}/resolve        -> bot resumes
-```
+Packs listed in `HOTELBOT_KNOWLEDGE_PATH` + `HOTELBOT_EXTRA_PACK_PATHS` are ingested on startup (idempotent). Core v1 packs (`hotel_slug`, no capabilities) still load, with all actions handled by staff.
 
 ## API
 
 | Method & path | Purpose |
 |---|---|
-| `GET /health` | liveness |
-| `POST /api/chat` `{guest_id, message}` | demo channel, same orchestrator as WhatsApp |
-| `GET /api/dev/outbox?to=` | messages sent by the mock transport / to demo guests |
-| `GET /webhooks/whatsapp` | Meta verification (`hub.mode`, `hub.verify_token`, `hub.challenge`) |
-| `POST /webhooks/whatsapp` | inbound messages (requires `X-Hub-Signature-256` when the app secret is set) |
-| `GET /api/staff/conversations[?conv_status=]` | list conversations |
-| `GET /api/staff/conversations/{id}` | messages + memory |
-| `POST /api/staff/conversations/{id}/messages` `{text, staff_name?}` | staff → guest (via the guest's channel) |
-| `GET /api/staff/requests[?request_status=pending]` | request queue |
-| `POST /api/staff/requests/{id}/resolve` `{status?, note?, reply_to_guest?}` | resolve/reject, optionally reply |
-| `GET /api/staff/handoffs[?handoff_status=]` | handoffs with packages |
-| `POST /api/staff/handoffs/{id}/accept` | staff takes it |
-| `POST /api/staff/handoffs/{id}/resolve` `{close_conversation?}` | hand back to the bot (or close) |
+| `POST /api/chat` `{guest_id, message, property?}` | demo channel, same orchestrator as WhatsApp |
+| `GET /api/dev/outbox?to=` | messages sent by the mock transport |
+| `GET/POST /webhooks/whatsapp` | Meta verification / inbound messages |
+| `GET /api/staff/properties` | properties with capability summary |
+| `GET /api/staff/actions[?action_status=&property=]`, `GET /api/staff/actions/{id}` | action queue, with audit events |
+| `POST /api/staff/actions/{id}/transition` `{to, note?, staff_name?, notify_guest=true}` | lifecycle change. Invalid moves return 409. The guest gets the template for the new state. |
+| `GET /api/staff/stays[?stay_status=&property=]`, `GET/PATCH /api/staff/stays/{id}` | stays; PATCH records staff-verified booking data |
+| `GET /api/staff/conversations`, `GET /api/staff/conversations/{id}`, `POST .../{id}/messages` | conversations, staff replies |
+| `GET /api/staff/handoffs`, `POST .../{id}/accept`, `POST .../{id}/resolve` | handoffs |
+| `GET /api/staff/requests`, `POST /api/staff/requests/{id}/resolve` | Core v1 compatibility view of actions |
 
-Staff endpoints require the `X-Staff-Token` header. They are open without a token only when `HOTELBOT_ENV=dev`. Interactive docs are at `/docs`.
+Staff endpoints require `X-Staff-Token` (they are open without one only when `HOTELBOT_ENV=dev`).
 
-## Architecture
+## Evaluation
 
-```text
-WhatsApp webhook ─┐                          ┌─ knowledge/ (pack → DB → retriever)
-/api/chat (demo) ─┼─► agent/orchestrator ────┼─ agent/intents (rules + optional LLM)
-CLI ──────────────┘    one path, one txn     ├─ agent/responder (grounded answer)
-                                             ├─ agent/policies + handoff (escalation)
-                                             ├─ agent/memory (guest-stated facts)
-                                             ├─ tools/ (create_hotel_request, registry)
-                                             └─ llm/ (none | openai | anthropic)
-Reply ─► whatsapp/{meta,mock} transport      db/ (SQLAlchemy models + repositories)
+```bash
+python -m evals                                   # TOTAL / PASS / FAIL by category + failure details
+python -m evals --category authority
+python -m evals --markdown docs/EVAL_REPORT.md --json eval.json
 ```
 
-```text
-app/
-  main.py, container.py, config.py, observability.py, text.py, cli.py
-  api/        chat.py  whatsapp.py  staff.py  deps.py
-  agent/      orchestrator.py intents.py language.py memory.py policies.py handoff.py
-              responder.py prompts.py messages.py
-  knowledge/  schemas.py ingest.py service.py
-  llm/        base.py openai_provider.py anthropic_provider.py factory.py
-  tools/      registry.py hotel_request.py
-  db/         models.py session.py repositories.py
-  whatsapp/   base.py meta.py mock.py
-  schemas/    messages.py conversations.py
-data/hotel/example_hotel.yaml     ← SYNTHETIC
-docs/DECISIONS.md                 ← architecture decisions (read this)
-tests/
-```
+Scenarios live in `evals/scenarios/*.yaml` (grounding, actions, authority, handoff, safety, memory, conversation, languages). Each one runs through a fresh real container: real packs plus scenario edits, an optional scripted LLM, and an optional mocked partner endpoint. Every bot message is also checked against the authority invariant. `gate: true` scenarios are product invariants: they run in pytest, and the CLI exits 1 if one fails. Latest report: [`docs/EVAL_REPORT.md`](docs/EVAL_REPORT.md). Retrieval findings: [`docs/RETRIEVAL_ANALYSIS.md`](docs/RETRIEVAL_ANALYSIS.md).
 
-Every turn follows the same sequence: dedupe → detect language → store message → update memory → classify intent. If a human owns the conversation, the bot stays silent unless the message is an emergency. Otherwise it resolves a pending yes/no offer, then routes the message. A route ends in a handoff, a request, a grounded answer or "cannot confirm", or a clarification. The reply is then stored and sent.
+## Migrations
 
-## Replacing the knowledge pack
-
-1. Create `data/hotel/<hotel>.yaml` in the same format as the example. Set `pack.synthetic: false`. Fill per-language `content` (`en`, `cnr`) and `keywords` (the words guests actually use). For items that need staff authorisation, set `metadata.requires_staff_approval: [late_check_in, ...]`.
-2. Set `HOTELBOT_HOTEL_SLUG` and `HOTELBOT_KNOWLEDGE_PATH`.
-3. Restart, or run `python -m app.knowledge.ingest data/hotel/<hotel>.yaml`. Ingestion is idempotent and removes items that are no longer in the file.
-
-No code changes are needed.
+New databases are created from the models and stamped. Existing databases are upgraded with Alembic on startup (`HOTELBOT_AUTO_MIGRATE=true`); Core v1 databases (no version table) are detected and upgraded. Manual alternative: `HOTELBOT_AUTO_MIGRATE=false alembic upgrade head`. `0002_stay_engine` is forward-only, so **back up first** (`pg_dump`).
 
 ## Testing
 
 ```bash
-pytest                                       # in-memory SQLite
+pytest
 HOTELBOT_TEST_DATABASE_URL=postgresql+psycopg://hotelbot:hotelbot@localhost:5432/hotelbot_test pytest
 ```
 
-The tests exercise real behaviour: the orchestrator with the real knowledge pack, HTTP endpoints, HMAC signatures, and provider wire formats through `httpx.MockTransport`. The only test double is `ScriptedLLM`, which implements the provider interface with queued responses.
+## Layout
 
-See `docs/DECISIONS.md` for the reasoning behind each design choice.
+```text
+app/
+  agent/        orchestrator, intents, language, memory, policies, handoff, responder, authority,
+                dialogue, runtime, prompts, messages
+  actions/      catalog, service (state machine), executors (staff, webhook), staff_ops
+  capabilities/ registry
+  stays/        service
+  knowledge/    schemas (pack format), ingest, service (retriever)
+  llm/  tools/  db/  whatsapp/  api/  schemas/
+migrations/     Alembic (0001_core_v1, 0002_stay_engine)
+evals/          harness, report, scenarios/
+data/           hotel/example_hotel.yaml, properties/demo_apartment.yaml   (SYNTHETIC)
+docs/           DECISIONS.md, EVAL_REPORT.md, RETRIEVAL_ANALYSIS.md
+```

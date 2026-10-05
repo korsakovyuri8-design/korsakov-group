@@ -23,9 +23,14 @@ class Settings(BaseSettings):
     # PostgreSQL in Docker Compose; SQLite is fine for local hacking and tests.
     database_url: str = "sqlite:///./hotelbot.db"
 
-    # --- Hotel knowledge pack --------------------------------------------
+    # --- Property packs ----------------------------------------------------
+    # Default property for channels that do not identify one. HOTELBOT_HOTEL_SLUG
+    # is the Core v1 name and still works; HOTELBOT_PROPERTY_SLUG wins if set.
     hotel_slug: str = "example-hotel"
+    property_slug: str | None = None
     knowledge_path: str = "data/hotel/example_hotel.yaml"
+    # Additional properties served by this deployment (JSON list of pack paths).
+    extra_pack_paths: list[str] = Field(default_factory=list)
     # Minimum retrieval score for an answer to count as grounded.
     grounding_min_score: float = 0.5
 
@@ -53,13 +58,28 @@ class Settings(BaseSettings):
     staff_api_token: SecretStr | None = None
 
     # --- Agent policy ----------------------------------------------------
-    # Consecutive turns the bot could not help with before escalating.
-    max_consecutive_failures: int = 2
+    # Consecutive turns the bot could not help with before escalating
+    # (default; packs and the overrides below may refine it per intent).
+    max_consecutive_failures: int = Field(default=2, ge=1)
+    # Per-intent thresholds, e.g. HOTELBOT_FAILURE_THRESHOLDS='{"LOCAL_RECOMMENDATION": 1}'.
+    failure_thresholds: dict[str, int] = Field(default_factory=dict)
     # Messages included in a handoff package.
     handoff_context_messages: int = 10
     enable_demo_endpoints: bool = True
 
     max_inbound_chars: int = Field(default=2000, ge=1)
+
+    # Apply Alembic migrations on startup for existing databases (fresh
+    # databases are created from the models and stamped at head).
+    auto_migrate: bool = True
+
+    @property
+    def default_property_slug(self) -> str:
+        return self.property_slug or self.hotel_slug
+
+    @property
+    def all_pack_paths(self) -> list[str]:
+        return [self.knowledge_path, *self.extra_pack_paths]
 
 
 @lru_cache

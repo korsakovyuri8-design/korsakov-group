@@ -184,3 +184,157 @@ Handoff triggers: emergency (critical), explicit human request, complaint (high)
 **Decision.** `/api/staff/*` requires `X-Staff-Token` (constant-time compare). Without a configured token it is open only when `HOTELBOT_ENV=dev`, and returns 503 otherwise.
 
 **Consequences.** There are no per-staff identities or audit trail beyond the optional `staff_name`. Real auth (per-user accounts or SSO) comes with the staff UI.
+
+---
+
+# Iteration 2: Stay Engine and evaluation harness
+
+## D-017 - Core v1 frozen as a baseline; compatibility is tested, not assumed
+
+**Decision.** Commit `2a73fc1` is tagged `hotelbot-core-v1` (local tag; this session's git proxy cannot push tags). All 159 Core v1 tests must keep passing. Exactly one v1 assertion changed, because of an explicit product decision: Russian is now a supported language (`tests/test_language.py`, marked in place). The `tests/conftest.py` PostgreSQL reset helper now reflects and drops *all* tables, so leftover v1 tables no longer block it. No assertion changed there.
+
+**Reason.** Generalising the domain must not silently change v1 behaviour.
+
+**Consequences.** Several v1 names survive as aliases: `Hotel`, `HotelKnowledgeDocument`, `HotelRequest`, `HotelRepository`, `report.hotel_id`, `create_hotel_request`, `/api/staff/requests`, `ActionTaken.kind == "hotel_request"`, the `HOTEL_INFORMATION` intent and `HOTELBOT_HOTEL_SLUG`. They can be removed in a versioned API change once no client needs them.
+
+---
+
+## D-018 - Property replaces Hotel in the core
+
+**Decision.** `Property` (table `properties`) has `property_type` ∈ {hotel, hostel, resort, vacation_rental, apartment, glamping, other}, plus `timezone`, `default_language`, `active`, `capabilities` and metadata. Knowledge becomes `KnowledgeDocument` (`property_id`). Pack v2 uses `property_slug` and `property_name`. The v1 names `hotel_slug` and `hotel_name` are still accepted. Nothing location-specific is hard-coded in the core: the emergency number (`112`) moved into the pack (`pack.emergency_number`). If a pack does not set it, the emergency reply says "the local emergency number".
+
+**Consequences.** Hotel Aleksandar will be one pack with `property_type: hotel`. A second synthetic pack (`data/properties/demo_apartment.yaml`, a vacation rental) shows that the same core serves a property with different capabilities.
+
+---
+
+## D-019 - Stay is the context; stay facts, authoritative fields and guest preferences are kept apart
+
+**Decision.** `Stay` connects one Guest and one Property for one visit. Every conversation belongs to a stay. The agent keeps three buckets:
+
+| Bucket | Where | Written by |
+|---|---|---|
+| Authoritative stay data (booking ref, dates, party size, status) | `Stay` columns | staff (`PATCH /api/staff/stays/{id}`), future PMS |
+| Guest-stated facts (unconfirmed) | `Stay.facts` | agent, always `confirmed: false` |
+| Global preferences (e.g. language) | `Guest.preferences` | agent (`source: observed`) |
+
+A message is attached to the guest's open stay at that property: status inquiry, booked or in_house, and not more than 2 days past a verified departure. Otherwise a new stay starts. Facts therefore cannot leak across properties or visits. `Conversation.memory` holds dialogue state only.
+
+**Alternatives.** Facts on the conversation (v1); one global guest profile. The first leaks between visits once conversations are reused. The second mixes verified and unverified data.
+
+**Consequences.** Without a PMS, stays are `inquiry` until staff verify them. Matching an inbound guest to a *booking* (by booking reference or phone) is a future slice.
+
+---
+
+## D-020 - Generic Action with an enforced lifecycle and audit trail
+
+**Decision.** `Action` (table `actions`) replaces `HotelRequest`. It has `action_type` (a capability key), `status` (one of the eight lifecycle states), `executor`, `params`, `result`, `external_ref` and `error`. Every transition goes through `ActionService.transition()`, which validates it against `ALLOWED_TRANSITIONS` and writes an `ActionEvent` (from, to, actor, detail). Terminal states have no exits. Staff may skip intermediate steps (submitted → completed), because completion implies acceptance. The event log still shows exactly what was recorded. `PROPOSED` exists but conversational offers are not persisted as actions; it is reserved for flows that need explicit guest confirmation (price quotes in the transport slice). `/api/staff/requests` stays as a v1 view: pending = submitted; in_progress = accepted + in_progress; resolved = completed; rejected = rejected + failed + cancelled.
+
+**Consequences.** The intent layer still speaks in request *topics* (`RequestType`). `app/actions/catalog.py` maps topics to action types.
+
+---
+
+## D-021 - Capability registry per property, declared as data
+
+**Decision.** Each pack declares `capabilities.actions` (which action types exist and which executor handles each), `integrations` (`human_staff`, later `pms`, `payment`) and informational `external_services`. Knowledge capabilities are derived from the pack's topics. The orchestrator never assumes an action exists; it asks `registry.can(action_type)`. If the action is unavailable, the bot quotes any relevant property knowledge ("fresh towels are in the wardrobe"), says what it cannot arrange, and offers to ask staff. Nothing is faked. Validation rejects unknown action types, unknown executors, webhook entries without a URL, and staff executors without `human_staff`. Packs without a `capabilities` section get the v1 behaviour: every action, executed by staff.
+
+**Alternatives.** Capabilities in code per property type. Rejected: two hotels differ as much as a hotel and an apartment do.
+
+**Consequences.** Connecting a property to a new integration is a pack change, with no change to the agent core.
+
+---
+
+## D-022 - Response Authority invariant
+
+**Decision.** *LLMs may understand, phrase, summarise and classify; they may not decide whether a real-world event happened.* It is enforced in three places:
+
+1. **Templates per state.** `authority.status_message(action)` is the only producer of sentences about an action. There is one fixed template per `ActionStatus` per locale, and each may claim exactly its own state. `tests/test_authority.py` checks every status in every locale.
+2. **Guard on model prose.** `unbacked_claims(text, statuses)` detects acceptance-level claims (confirmed / approved / booked / on its way / "you can stay until") and completion-level claims (done / fixed / cleaned), with negation handling, in en, cnr and ru. A grounded LLM answer that makes a claim no stored action backs is discarded. The bot falls back to the property-authored text.
+3. **Global evaluation check.** The harness runs (2) on every bot message in every scenario. Property-authored knowledge that the bot quotes verbatim is excluded, because it is the property's own published policy.
+
+The detector errs towards flagging. A false positive only costs nicer LLM phrasing; a false negative would break the invariant.
+
+**Consequences.** When real integrations arrive (payments, PMS, transport), statements about them stay tied to recorded state by construction.
+
+---
+
+## D-023 - Webhook executor: failure is FAILED, then honest fallback to staff
+
+**Decision.** `WebhookExecutor` POSTs the action to a URL from the pack. It signs the body with `X-HotelBot-Signature` when `secret_env` names an environment variable; secrets never live in packs. The partner responds `accepted`, `received` or `rejected`. Timeouts, transport errors, HTTP ≥ 300 and malformed bodies all become `FAILED` with an error; none is ever an assumed success. On failure, if the property has `human_staff`, the same action is re-submitted to the staff queue. The guest hears "I couldn't submit it automatically, so I've sent it to the staff; it is not confirmed yet."
+
+**Consequences.** There are no retries and no inbound status callbacks yet. Both belong to the transport slice (callback endpoint + signed status updates through `ActionService.transition`).
+
+---
+
+## D-024 - Alembic, with automatic upgrade on startup
+
+**Decision.** Two revisions exist. `0001_core_v1` is the v1 schema verbatim. `0002_stay_engine` is forward-only and copies data:
+
+- `hotels` → `properties`
+- knowledge documents are re-keyed to `property_id`
+- one stay is created per existing conversation, and guest-stated facts move from `conversation.memory` to `stay.facts`
+- `hotel_requests` → `actions`, with synthesized audit events
+
+`create_schema()` handles three cases:
+
+- **Empty database:** `create_all` and stamp head.
+- **Existing database:** `alembic upgrade head`.
+- **v1 database:** v1 never had an `alembic_version` table, so it is stamped `0001` first and then upgraded.
+
+This is controlled by `HOTELBOT_AUTO_MIGRATE`.
+
+**Verification.** Tests check that the schema produced by migrations equals the models. They also seed v1 data and assert it after upgrade. Both run on SQLite and PostgreSQL. A real v1 PostgreSQL database left over from the Iteration-1 demo was migrated by simply starting the new server.
+
+**Consequences.** Back up before upgrading production data (`pg_dump`); the downgrade raises. The migrations caught a real bug during development: untyped columns read datetimes and JSON back as strings on SQLite.
+
+---
+
+## D-025 - Locales: Cyrillic out for Cyrillic in; Russian for routing and operations
+
+**Decision.** Reply locales are `en`, `cnr`, `cnr-Cyrl` and `ru`. Montenegrin or Serbian written in Cyrillic gets Cyrillic replies. Templates and Latin knowledge are transliterated deterministically. Placeholders, numbers, acronyms and loanwords such as Wi-Fi and check-in are preserved. Detection distinguishes Russian from Serbian/Montenegrin Cyrillic using script-specific letters, then a list of non-shared function words. Russian has full template coverage and Russian intent lexicons. Knowledge in Russian is not required: a Russian guest gets the English text prefixed with "this information is only available to me in English". With an LLM enabled, the model phrases it in Russian. A weak signal keeps the conversation locale. A new stay reuses the guest's global language preference. German is deferred.
+
+---
+
+## D-026 - Failure threshold is a policy object
+
+**Decision.** `FailurePolicy(default, per_intent)` is resolved in this order:
+
+1. the property pack's `policy` (`max_consecutive_failures`, `failure_thresholds`)
+2. the deployment settings (`HOTELBOT_MAX_CONSECUTIVE_FAILURES`, `HOTELBOT_FAILURE_THRESHOLDS`)
+3. the default of 2
+
+The threshold applied is the one for the intent of the turn that failed. Example: the demo apartment escalates an unanswerable local recommendation after 1 failure, while the hotel keeps 2 for FAQs.
+
+---
+
+## D-027 - New intent: REQUEST_STATUS
+
+**Decision.** "Is my late checkout confirmed?" is a distinct intent, answered only from stored action state via `status_message`. If no action exists, the bot says so.
+
+**Reason.** Without this intent, status questions fell into FAQ retrieval. That invites exactly the confirmation hallucination the authority invariant forbids. This is a change to the intent set the brief proposed; flagged for ChatGPT's conversation-policy track.
+
+---
+
+## D-028 - Knowledge answers: clauses, follow-ups, conflicts, partial answers
+
+**Decision.** Four deterministic dialogue rules apply to knowledge answers:
+
+- **Multi-question messages** are split into clauses using per-language conjunctions. English "I" is not the Montenegrin conjunction "i". Each clause is grounded separately. Answered parts are given, and the unanswered rest gets "I can't confirm the rest of your question".
+- **Short anaphoric follow-ups** ("Is it free?", "A parking?") are retrieved together with the previous question.
+- **Conflicts.** Items sharing a `topic` but disagreeing get "I have conflicting information", with no guess. Ingest logs `knowledge_conflict_risk` for shared topics.
+- **Statement-only messages** ("we are 2 adults arriving 20 Dec") are acknowledged as noted. The reply explicitly says nothing was changed or confirmed.
+
+---
+
+## D-029 - Product evaluation harness: gates and benchmark
+
+**Decision.** `evals/` is separate from unit tests. Scenarios are YAML: messages, seed-knowledge edits, capabilities, scripted LLM, mocked integration, staff transitions, stay updates. Expectations cover intent, language, grounding, sources, forbidden claims, actions, handoffs, and stay memory. Every scenario runs through a fresh real container via `Orchestrator.handle()`, and every bot message gets the global authority check. Scenarios marked `gate: true` encode product invariants (authority, safety, memory isolation, capability honesty). They are pytest tests and they set the CLI exit code. The rest is a benchmark, reported as a pass rate (`python -m evals --markdown docs/EVAL_REPORT.md`).
+
+Scenario authoring rule: expectations describe *desired product behaviour*. A failing benchmark scenario is diagnosed and reported, not tuned away. Two scenario mis-specifications found during the first run were fixed and recorded. They were forbidden phrases that also matched correct text: "is booked" inside "Nothing is booked yet", and the pack's own policy wording.
+
+---
+
+## D-030 - Retrieval: no embeddings yet
+
+**Decision.** The lexical coverage retriever stays. Evidence is in `docs/RETRIEVAL_ANALYSIS.md`. After fixing one real lexical bug (stopword-stem collision), the remaining grounding failures (4 of 12) are paraphrases. Precision scenarios (unsupported facts, false premise, removed knowledge, conflicts) pass 100%. That is the safety-relevant side that a semantic retriever tends to weaken.
+
+**Consequences.** Next: grow the paraphrase set from real guest messages, then compare against the same harness: (a) curated pack keywords, (b) LLM query rewriting into pack vocabulary, (c) hybrid lexical + embeddings, with lexical kept as the measured baseline and the precision scenarios as a gate.

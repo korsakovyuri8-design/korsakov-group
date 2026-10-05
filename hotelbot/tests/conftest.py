@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import MetaData
 
 from app.config import Settings
 from app.container import Container, build_container
-from app.db.models import Base
 from app.db.session import make_engine
 from app.llm.base import ChatMessage, LLMError
 from app.main import create_app
@@ -30,7 +30,11 @@ TEST_DATABASE_URL = os.environ.get("HOTELBOT_TEST_DATABASE_URL", "sqlite://")
 def _fresh_database_url() -> str:
     if not TEST_DATABASE_URL.startswith("sqlite"):
         engine = make_engine(TEST_DATABASE_URL)
-        Base.metadata.drop_all(engine)
+        # Reflect rather than use Base.metadata: tables from older schema
+        # versions (and alembic_version) must go too.
+        existing = MetaData()
+        existing.reflect(engine)
+        existing.drop_all(engine)
         engine.dispose()
     return TEST_DATABASE_URL
 

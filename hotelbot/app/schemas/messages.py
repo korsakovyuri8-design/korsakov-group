@@ -15,10 +15,13 @@ class InboundMessage(BaseModel):
     text: str
     external_id: str | None = Field(default=None, max_length=255)  # channel message id, for dedupe
     display_name: str | None = Field(default=None, max_length=200)
+    # Which property the message is addressed to (None = deployment default).
+    property_slug: str | None = Field(default=None, max_length=64)
 
 
 class ActionTaken(BaseModel):
-    kind: str          # "hotel_request" | "handoff"
+    # "hotel_request" (Core v1 name for an Action; see detail.action_type/status) | "handoff"
+    kind: str
     id: str
     detail: dict[str, Any] = {}
 
@@ -37,3 +40,5 @@ class AgentReply(BaseModel):
     handed_off: bool = False
     duplicate: bool = False
     knowledge_synthetic: bool = False
+    property_slug: str | None = None
+    stay_id: str | None = None

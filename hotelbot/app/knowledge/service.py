@@ -23,9 +23,9 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import HotelKnowledgeDocument
+from app.db.models import KnowledgeDocument
 from app.knowledge.schemas import RetrievalResult, RetrievedItem
-from app.text import stem, stems
+from app.text import fold, stem, tokens
 
 # Function words that carry no retrieval signal (folded, both languages).
 STOPWORDS = frozenset(
@@ -35,16 +35,26 @@ STOPWORDS = frozenset(
     what when where which who whom why how much many any some please thanks thank hi hello
     to of in on at for from with by about as and or but if so not no yes ok okay also just
     have has had get got need want like know tell let bring time
+    send more some give another again
     ja ti on ona ono mi vi oni one ona je su sam si smo ste bi bih bismo biste da li ne ni
     i a ali ili pa te jer kako sta sto koji koja koje kad kada gdje gde ima imate imamo
     u na za od do sa s iz kod po o pri prema mogu moze mozemo mozete molim hvala zdravo
     dobar dan vec jos samo li se me te nas vas mene tebe vama nama ovo to taj ta ovaj ova
     zelim zelimo hocu treba trebam trebamo recite kazite znate interesuje koliko
+    posaljite donesite dajte vise
     vrijeme sati doci dodjem jedan jedna dva dvije dvoje tri troje cetiri cetvoro pet
     one two three four five
     """.split()
 )
-STOPWORD_STEMS = frozenset(stem(w) for w in STOPWORDS)
+# Russian function words, folded with the same transliteration as queries.
+STOPWORDS |= frozenset(
+    fold(w) for w in """
+    что как когда где сколько какой какая какие есть ли у вас вам нас нам мне меня мы вы я он она
+    это в во на с со и а но или не нет да можно пожалуйста спасибо здравствуйте привет ли бы
+    для по от до из за о об при хочу хотим нужно нужен нужна будет время
+    ещё еще пришлите принесите дайте
+    """.split()
+)
 
 
 class KnowledgeRetriever(Protocol):
@@ -92,9 +102,12 @@ class LexicalRetriever:
 
 
 def _informative(text: str) -> list[str]:
-    # Digits (dates, times, room numbers) say little about the topic and
-    # would dilute coverage, so they are not retrieval terms.
-    return [t for t in stems(text) if t not in STOPWORD_STEMS and len(t) > 1 and not any(c.isdigit() for c in t)]
+    # Stopwords are removed as whole tokens *before* stemming: filtering on
+    # stems made unrelated words collide (stopword "interesuje" -> "inter"
+    # removed "internet"). Digits (dates, times, room numbers) say little
+    # about the topic and would dilute coverage, so they are not terms either.
+    return [stem(t) for t in tokens(text)
+            if t not in STOPWORDS and len(t) > 1 and not any(c.isdigit() for c in t)]
 
 
 class KnowledgeService:
@@ -103,10 +116,16 @@ class KnowledgeService:
     def __init__(self, retriever: KnowledgeRetriever) -> None:
         self.retriever = retriever
 
+    @property
+    def topics(self) -> frozenset[str]:
+        """Knowledge capabilities: topics this property's pack covers."""
+        docs = getattr(self.retriever, "documents", [])
+        return frozenset(d.topic for d in docs)
+
     @classmethod
-    def from_db(cls, session: Session, hotel_id: str, min_score: float) -> KnowledgeService:
+    def from_db(cls, session: Session, property_id: str, min_score: float) -> KnowledgeService:
         docs = session.scalars(
-            select(HotelKnowledgeDocument).where(HotelKnowledgeDocument.hotel_id == hotel_id)
+            select(KnowledgeDocument).where(KnowledgeDocument.property_id == property_id)
         )
         items = [
             RetrievedItem(

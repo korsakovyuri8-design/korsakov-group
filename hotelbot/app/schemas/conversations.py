@@ -7,7 +7,14 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.models import ConversationStatus, HandoffStatus, MessageRole, RequestStatus
+from app.db.models import (
+    ActionStatus,
+    ConversationStatus,
+    HandoffStatus,
+    MessageRole,
+    RequestStatus,
+    StayStatus,
+)
 
 
 class _ORM(BaseModel):
@@ -26,6 +33,8 @@ class MessageOut(_ORM):
 class ConversationSummaryOut(_ORM):
     id: str
     guest_external_id: str
+    property_id: str | None = None
+    stay_id: str | None = None
     channel: str
     language: str | None
     status: ConversationStatus
@@ -77,3 +86,86 @@ class StaffMessageIn(BaseModel):
 class ResolveHandoffIn(BaseModel):
     # Hand the conversation back to the bot (default) or close it.
     close_conversation: bool = False
+
+
+# ------------------------------------------------------------- Stay Engine
+class ActionEventOut(_ORM):
+    seq: int
+    from_status: ActionStatus | None
+    to_status: ActionStatus
+    actor: str
+    detail: str | None
+    created_at: datetime
+
+
+class ActionOut(_ORM):
+    id: str
+    property_id: str
+    stay_id: str | None
+    conversation_id: str | None
+    action_type: str
+    status: ActionStatus
+    urgency: str
+    summary: str
+    params: dict[str, Any]
+    result: dict[str, Any]
+    executor: str
+    external_ref: str | None
+    error: str | None
+    note: str | None
+    created_at: datetime
+    closed_at: datetime | None
+
+
+class ActionDetailOut(ActionOut):
+    events: list[ActionEventOut]
+
+
+class ActionTransitionIn(BaseModel):
+    to: ActionStatus
+    note: str | None = Field(default=None, max_length=2000)
+    staff_name: str | None = Field(default=None, max_length=100)
+    # Send the guest the status template for the new state.
+    notify_guest: bool = True
+
+
+class ActionTransitionOut(BaseModel):
+    action: ActionDetailOut
+    guest_notification: str | None
+
+
+class StayOut(_ORM):
+    id: str
+    guest_id: str
+    property_id: str
+    status: StayStatus
+    booking_reference: str | None
+    arrival_at: datetime | None
+    departure_at: datetime | None
+    party_size: int | None
+    source_channel: str | None
+    facts: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class StayUpdateIn(BaseModel):
+    """Staff-verified (authoritative) stay data."""
+
+    status: StayStatus | None = None
+    booking_reference: str | None = Field(default=None, max_length=128)
+    arrival_at: datetime | None = None
+    departure_at: datetime | None = None
+    party_size: int | None = Field(default=None, ge=1, le=100)
+
+
+class PropertyOut(BaseModel):
+    id: str
+    slug: str
+    name: str
+    property_type: str
+    timezone: str
+    default_language: str
+    active: bool
+    is_synthetic: bool
+    capabilities: dict[str, Any]

@@ -1,0 +1,61 @@
+# LANGUAGES - English, Montenegrin Latin, Montenegrin/Serbian Cyrillic, basic Russian.
+
+- name: montenegrin_latin_service
+  category: languages
+  steps:
+    - guest: "Molim vas, pošaljite peškire u sobu 12"
+      expect:
+        language: cnr
+        actions: [{type: housekeeping_request, status: submitted}]
+        reply_contains: ["nije potvrđen"]
+
+- name: cyrillic_question_cyrillic_answer
+  category: languages
+  steps:
+    - guest: "Када је доручак?"
+      expect: {language: cnr-Cyrl, grounded: true, reply_contains: ["Доручак", "07:30"]}
+
+- name: cyrillic_action_status
+  category: languages
+  steps:
+    - guest: "Можемо ли да се пријавимо после 23h?"
+      expect:
+        language: cnr-Cyrl
+        actions: [{type: late_arrival_request, status: submitted}]
+        reply_contains: ["није потврђен"]
+
+- name: serbian_ekavian_cyrillic
+  category: languages
+  description: Serbian (ekavian) Cyrillic is answered in Montenegrin Cyrillic.
+  steps:
+    - guest: "Где је паркинг?"
+      expect: {language: cnr-Cyrl, sources: [parking]}
+
+- name: russian_complaint_routing
+  category: languages
+  steps:
+    - guest: "В номере очень грязно, это ужасно"
+      expect: {intent: COMPLAINT, language: ru, handoff: true, reply_contains: ["Нам очень жаль"]}
+
+- name: russian_service_request
+  category: languages
+  steps:
+    - guest: "У меня в номере не работает кондиционер"
+      expect:
+        language: ru
+        actions: [{type: maintenance_request, status: submitted}]
+        reply_contains: ["не подтверждён"]
+
+- name: russian_emergency
+  category: languages
+  gate: true
+  steps:
+    - guest: "Пожар в номере, срочно вызовите скорую!"
+      expect: {intent: EMERGENCY, language: ru, reply_contains: ["112", "экстренная"]}
+
+- name: russian_knowledge_with_language_note
+  category: languages
+  description: Knowledge exists only in en/cnr - answer, and say it is in English.
+  steps:
+    - guest: "Есть ли у вас парковка?"
+      expect: {language: ru, grounded: true, sources: [parking], reply_contains: ["только на английском"]}

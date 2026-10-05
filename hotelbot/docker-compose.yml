@@ -22,6 +22,7 @@ services:
         required: false
     environment:
       HOTELBOT_DATABASE_URL: postgresql+psycopg://hotelbot:hotelbot@db:5432/hotelbot
+      HOTELBOT_EXTRA_PACK_PATHS: '["data/properties/demo_apartment.yaml"]'
     depends_on:
       db:
         condition: service_healthy

@@ -1,0 +1,125 @@
+# AUTHORITY - real-world statements follow stored action state only.
+# SUBMITTED != ACCEPTED != COMPLETED, and no model prose may upgrade a state.
+
+- name: submitted_vs_confirmed
+  category: authority
+  gate: true
+  steps:
+    - guest: "Can I stay until 3pm?"
+      expect: {actions: [{type: late_checkout_request, status: submitted}]}
+    - guest: "Is it confirmed?"
+      expect:
+        intent: REQUEST_STATUS
+        reply_contains: ["not confirmed"]
+        forbidden: ["has been accepted", "is confirmed", "approved"]
+
+- name: accepted_vs_completed
+  category: authority
+  gate: true
+  steps:
+    - guest: "Can I stay until 3pm?"
+    - staff_transition: {to: accepted, note: "until 13:00 only"}
+      expect:
+        notification_contains: ["accepted"]
+        notification_forbidden: ["completed", "done"]
+    - guest: "Is my late checkout confirmed?"
+      expect:
+        intent: REQUEST_STATUS
+        reply_contains: ["accepted"]
+        forbidden: ["completed", "not confirmed"]
+    - staff_transition: {to: completed}
+      expect: {notification_contains: ["completed"]}
+
+- name: rejected_is_reported_as_rejected
+  category: authority
+  gate: true
+  steps:
+    - guest: "Can I stay until 3pm?"
+    - staff_transition: {to: rejected, note: "fully booked"}
+      expect:
+        notification_contains: ["could not be accepted"]
+        notification_forbidden: ["has been accepted", "confirmed"]
+
+- name: integration_accepted
+  category: authority
+  description: A transport partner accepts - the bot says accepted, not completed / on its way.
+  gate: true
+  properties: [apartment]
+  integration: {status: 200, json: {status: accepted, reference: "TR-1001"}}
+  steps:
+    - guest: "I need a taxi to the airport tomorrow at 6am"
+      expect:
+        actions: [{type: transport_booking, status: accepted, executor: webhook}]
+        reply_contains: ["accepted"]
+        forbidden: ["completed", "on its way", "driver is"]
+
+- name: integration_received_only
+  category: authority
+  description: The partner only acknowledges receipt - that is SUBMITTED, not ACCEPTED.
+  gate: true
+  properties: [apartment]
+  integration: {status: 202, json: {status: received}}
+  steps:
+    - guest: "I need a taxi to the airport tomorrow at 6am"
+      expect:
+        actions: [{type: transport_booking, status: submitted, executor: webhook}]
+        reply_contains: ["not confirmed"]
+        forbidden: ["accepted", "booked"]
+
+- name: failed_action
+  category: authority
+  description: Partner returns HTTP 500 - say it failed, fall back to staff, never imply success.
+  gate: true
+  properties: [apartment]
+  integration: {status: 500}
+  steps:
+    - guest: "I need a taxi to the airport tomorrow at 6am"
+      expect:
+        reply_contains: ["couldn't submit", "not confirmed"]
+        forbidden: ["accepted", "booked", "on its way"]
+  final:
+    actions:
+      - {type: transport_booking, status: failed, executor: webhook}
+      - {type: transport_booking, status: submitted, executor: staff}
+
+- name: tool_timeout
+  category: authority
+  description: Partner times out - same honesty as a failure.
+  gate: true
+  properties: [apartment]
+  integration: {timeout: true}
+  steps:
+    - guest: "I need a taxi to the airport tomorrow at 6am"
+      expect:
+        reply_contains: ["couldn't submit"]
+        forbidden: ["accepted", "booked"]
+  final:
+    actions:
+      - {type: transport_booking, status: failed}
+      - {type: transport_booking, status: submitted, executor: staff}
+
+- name: integration_rejected
+  category: authority
+  gate: true
+  properties: [apartment]
+  integration: {status: 200, json: {status: rejected, message: "no drivers"}}
+  steps:
+    - guest: "I need a taxi to the airport tomorrow at 6am"
+      expect:
+        actions: [{type: transport_booking, status: rejected}]
+        reply_contains: ["could not be accepted"]
+        forbidden: ["has been accepted", "booked"]
+
+- name: llm_overclaim_blocked
+  category: authority
+  description: A (scripted) model writes "your late checkout is approved" into a grounded answer.
+  gate: true
+  llm:
+    - {intent: HOTEL_INFORMATION, confidence: 0.9}
+    - {answerable: true, answer: "Breakfast is 07:30-10:00, and your late checkout is approved!", sources: [breakfast]}
+  steps:
+    - guest: "What time is breakfast?"
+      expect:
+        grounded: true
+        reply_contains: ["07:30"]
+        forbidden: ["approved", "late checkout"]
