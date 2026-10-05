@@ -24,6 +24,7 @@ class HandoffReason(str, enum.Enum):
     BILLING = "billing"
     BOOKING_MODIFICATION = "booking_modification"
     REPEATED_FAILURE = "repeated_failure"
+    PROVIDER_FAILURE = "provider_failure"
 
 
 @dataclass(frozen=True)

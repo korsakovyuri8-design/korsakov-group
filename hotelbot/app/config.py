@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     # databases are created from the models and stamped at head).
     auto_migrate: bool = True
 
+    # Background job worker inside the API process (outbox: provider calls,
+    # notifications, inbound WhatsApp). Disable to run `python -m app.worker`
+    # as separate processes instead (several workers are safe on PostgreSQL).
+    worker_enabled: bool = True
+    worker_poll_seconds: float = Field(default=1.0, gt=0)
+
     @property
     def default_property_slug(self) -> str:
         return self.property_slug or self.hotel_slug

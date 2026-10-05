@@ -17,7 +17,8 @@ SCENARIOS = load_scenarios()
 def test_scenario_suite_shape():
     assert 40 <= len(SCENARIOS)
     assert {s.category for s in SCENARIOS} == {
-        "grounding", "actions", "authority", "handoff", "safety", "memory", "conversation", "languages"}
+        "grounding", "actions", "authority", "handoff", "safety", "memory", "conversation", "languages",
+        "transactions"}
 
 
 @pytest.mark.parametrize("scenario", [s for s in SCENARIOS if s.gate], ids=lambda s: s.name)

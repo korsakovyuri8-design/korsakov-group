@@ -43,10 +43,20 @@ class ActionCapability(BaseModel):
         return self
 
 
+class ServiceCapability(BaseModel):
+    """An external, transactional service (quote -> consent -> provider)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Preferred provider slug; None = discover any active provider offering it.
+    provider: str | None = None
+
+
 class CapabilitySpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     actions: dict[str, ActionCapability] = Field(default_factory=dict)
+    services: dict[str, ServiceCapability] = Field(default_factory=dict)
     integrations: list[str] = Field(default_factory=list)
     # Informational: external service categories available around the property
     # (e.g. "transport", "activities"), surfaced to staff and future planners.
@@ -58,6 +68,16 @@ class CapabilitySpec(BaseModel):
         unknown = sorted(set(v) - set(ACTION_CATALOG))
         if unknown:
             raise ValueError(f"unknown action types {unknown}; known: {sorted(ACTION_CATALOG)}")
+        return v
+
+    @field_validator("services")
+    @classmethod
+    def _known_services(cls, v: dict[str, ServiceCapability]) -> dict[str, ServiceCapability]:
+        from app.transactions.catalog import SERVICE_CATALOG
+
+        unknown = sorted(set(v) - set(SERVICE_CATALOG))
+        if unknown:
+            raise ValueError(f"unknown service types {unknown}; known: {sorted(SERVICE_CATALOG)}")
         return v
 
     @field_validator("integrations")
@@ -97,6 +117,9 @@ class CapabilityRegistry:
     def can(self, action_type: str) -> bool:
         return action_type in self.spec.actions
 
+    def service(self, service_type: str) -> ServiceCapability | None:
+        return self.spec.services.get(service_type)
+
     def has_integration(self, name: str) -> bool:
         return name in self.spec.integrations
 
@@ -105,6 +128,7 @@ class CapabilityRegistry:
             "knowledge": sorted(self.knowledge_topics),
             "actions": {k: a.executor for k, a in sorted(self.spec.actions.items())},
             "unavailable_actions": sorted(set(ACTION_CATALOG) - set(self.spec.actions)),
+            "services": {k: (v.provider or "auto") for k, v in sorted(self.spec.services.items())},
             "integrations": sorted(self.spec.integrations),
             "external_services": sorted(self.spec.external_services),
         }

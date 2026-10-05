@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.capabilities.registry import CapabilitySpec
 from app.db.models import PropertyType
@@ -89,12 +89,65 @@ class PolicySpec(BaseModel):
     failure_thresholds: dict[str, int] = Field(default_factory=dict)
 
 
+_SECRET_HINTS = ("secret", "token", "password", "api_key", "apikey", "credential")
+
+
+class ProviderSpec(BaseModel):
+    """An external provider serving this property. `config` must not hold
+    secrets: reference them by environment-variable name (`*_env` keys)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str = Field(pattern=r"^[a-z0-9][a-z0-9_\-]*$", max_length=64)
+    name: str
+    provider_type: str
+    integration_type: str = "mock"
+    services: list[str]
+    active: bool = True
+    config: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check(self) -> ProviderSpec:
+        from app.transactions.catalog import PROVIDER_TYPES, SERVICE_CATALOG
+        from app.transactions.providers.registry import INTEGRATION_TYPES
+
+        if self.provider_type not in PROVIDER_TYPES:
+            raise ValueError(f"unknown provider_type {self.provider_type!r}")
+        if self.integration_type not in INTEGRATION_TYPES:
+            raise ValueError(f"unknown integration_type {self.integration_type!r}")
+        for svc in self.services:
+            spec = SERVICE_CATALOG.get(svc)
+            if spec is None:
+                raise ValueError(f"unknown service type {svc!r}")
+            if spec.domain != self.provider_type:
+                raise ValueError(f"service {svc!r} belongs to {spec.domain!r}, not {self.provider_type!r}")
+        bad = [k for k in self.config if any(h in k.lower() for h in _SECRET_HINTS) and not k.endswith("_env")]
+        if bad:
+            raise ValueError(f"provider config must not contain secrets {bad}; use '<name>_env' variables")
+        if self.integration_type == "webhook" and not self.config.get("base_url"):
+            raise ValueError("webhook providers require config.base_url")
+        return self
+
+
 class KnowledgePack(BaseModel):
     pack: PackInfo
     items: list[KnowledgeItem]
     # None = Core v1 pack without declared capabilities (legacy defaults).
     capabilities: CapabilitySpec | None = None
     policy: PolicySpec = Field(default_factory=PolicySpec)
+    providers: list[ProviderSpec] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _services_have_providers(self) -> KnowledgePack:
+        if not self.capabilities:
+            return self
+        for svc, cap in self.capabilities.services.items():
+            offering = [p for p in self.providers if svc in p.services]
+            if cap.provider:
+                offering = [p for p in offering if p.slug == cap.provider]
+            if not offering:
+                raise ValueError(f"service {svc!r} has no provider in this pack that offers it")
+        return self
 
     @field_validator("items")
     @classmethod

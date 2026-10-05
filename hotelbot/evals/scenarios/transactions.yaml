@@ -1,0 +1,440 @@
+# TRANSACTIONS - External Service Transaction Layer (transport reference implementation).
+#
+# Invariants under test:  quote != booking;  only explicit consent to THIS quote
+# books;  submitted != accepted != completed;  every statement follows stored
+# state;  retries and duplicate deliveries never double-book;  callbacks are
+# authenticated, fresh, idempotent and legal.
+#
+# Synthetic provider "demo-transfers" (mock): 30 EUR base + 5 EUR per extra
+# passenger + 10 EUR night surcharge (22:00-06:00); quotes valid 15 minutes.
+# Clock is frozen at 2026-10-05 12:00 UTC (14:00 Europe/Podgorica).
+
+- name: txn_quote_obtained
+  category: transactions
+  gate: true
+  description: A complete request produces a priced offer - and nothing is booked.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+      expect:
+        intent: SERVICE_REQUEST
+        quote: {status: offered, amount: "35.00", currency: EUR, pickup_time_contains: "2026-10-06T06:00"}
+        actions: []
+        reply_contains: ["35.00 EUR", "Nothing is booked yet", "reply \"yes\""]
+        forbidden: ["is booked for", "has been booked", "confirmed"]
+  final: {transactions: [], provider_bookings: 0}
+
+- name: txn_missing_information
+  category: transactions
+  description: Ask only for what is missing, one detail at a time.
+  steps:
+    - guest: "I need a taxi to the airport"
+      expect: {reply_contains: ["When should the driver pick you up"], no_new_quote: true}
+    - guest: "tomorrow at 7am"
+      expect: {reply_contains: ["Where should the driver pick you up"], no_new_quote: true}
+    - guest: "from the hotel"
+      expect: {reply_contains: ["How many people"], no_new_quote: true}
+    - guest: "3"
+      expect:
+        quote: {status: offered, amount: "40.00", pickup_time_contains: "T07:00", pickup: "@property"}
+
+- name: txn_no_invented_values
+  category: transactions
+  gate: true
+  description: Missing pickup must be asked, never guessed.
+  steps:
+    - guest: "I need a transfer to Podgorica airport"
+      expect: {no_new_quote: true, reply_contains_any: ["When should", "Where should"]}
+  final: {quotes: []}
+
+- name: txn_explicit_confirmation
+  category: transactions
+  gate: true
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect:
+        actions: [{type: airport_transfer, status: proposed, executor: provider}]
+        reply_contains: ["not confirmed"]
+        forbidden: ["has accepted", "is booked"]
+        transaction: {status: accepted}
+        notifications_contain: ["has accepted your booking", "Reference: MOCK-"]
+  final: {quotes: [accepted_by_guest], transactions: [accepted], provider_bookings: 1}
+
+- name: txn_ambiguous_non_confirmation
+  category: transactions
+  gate: true
+  description: Hesitation, questions and haggling are never consent.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "ok maybe"
+      expect: {actions: [], reply_contains: ["clear \"yes\"", "Nothing is booked yet"]}
+    - guest: "can it be cheaper?"
+      expect: {actions: [], reply_contains: ["sets the price"]}
+    - guest: "tell me more"
+      expect: {actions: []}
+    - guest: "sounds good I guess"
+      expect: {actions: []}
+  final: {quotes: [offered], transactions: [], provider_bookings: 0}
+
+- name: txn_quote_declined
+  category: transactions
+  gate: true
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "no thanks"
+      expect: {actions: [], reply_contains: ["nothing has been booked"]}
+  final: {quotes: [declined_by_guest], transactions: []}
+
+- name: txn_quote_expired
+  category: transactions
+  gate: true
+  description: Consent to an expired offer books nothing; a fresh offer needs fresh consent.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - advance_minutes: 20
+    - guest: "yes"
+      expect:
+        actions: []
+        reply_contains: ["expired", "Nothing is booked yet"]
+        quote: {status: offered}
+  final: {quotes: [expired, offered], transactions: [], provider_bookings: 0}
+
+- name: txn_quote_modification
+  category: transactions
+  gate: true
+  description: Changing the time before confirming supersedes the offer; consent covers the new one only.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "what about 6:30?"
+      expect:
+        actions: []
+        reply_contains: ["Updated offer", "06:30"]
+        quote: {status: offered, pickup_time_contains: "T06:30"}
+    - guest: "yes"
+      expect: {transaction: {status: accepted, pickup_time_contains: "T06:30"}}
+  final: {quotes: [superseded, accepted_by_guest], transactions: [accepted]}
+
+- name: txn_consent_scoped_to_offer
+  category: transactions
+  gate: true
+  description: A "yes" after the conversation moved on does not book the earlier offer.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "What time is breakfast?"
+      expect: {reply_contains: ["07:30"]}
+    - guest: "yes"
+      expect: {actions: []}
+  final: {transactions: [], provider_bookings: 0}
+
+- name: txn_provider_received_then_accepted
+  category: transactions
+  gate: true
+  description: Receipt is not acceptance; acceptance arrives later by signed callback.
+  provider_config: {demo-transfers: {behavior: {submit: received}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect:
+        transaction: {status: submitted}
+        notifications_contain: ["has received", "not confirmed"]
+        notifications_forbidden: ["has accepted"]
+    - provider_callback: {event: accepted, event_id: evt-1}
+      expect:
+        callback_status: 200
+        callback_result: applied
+        transaction: {status: accepted}
+        notifications_contain: ["has accepted your booking"]
+  final: {transactions: [accepted]}
+
+- name: txn_provider_rejected
+  category: transactions
+  gate: true
+  provider_config: {demo-transfers: {behavior: {submit: rejected}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect:
+        transaction: {status: rejected}
+        notifications_contain: ["could not accept", "Nothing has been booked"]
+        notifications_forbidden: ["has accepted"]
+  final: {transactions: [rejected], provider_bookings: 0}
+
+- name: txn_provider_timeout
+  category: transactions
+  gate: true
+  description: The provider never answers - bounded retries, then an honest failure and a human.
+  provider_config: {demo-transfers: {behavior: {submit: timeout}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect:
+        transaction: {status: failed}
+        notifications_contain: ["trouble reaching", "Nothing has been confirmed", "property team"]
+        notifications_forbidden: ["has accepted", "booked"]
+  final:
+    transactions: [failed]
+    handoffs: [{reason: provider_failure, urgency: high}]
+    dead_jobs: 1
+    provider_bookings: 0
+    provider_submit_calls_max: 5
+
+- name: txn_transient_failure_then_success
+  category: transactions
+  gate: true
+  description: Two timeouts then success - retried with the same idempotency key, one booking, no premature success message.
+  provider_config: {demo-transfers: {behavior: {submit: "flaky:2"}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect:
+        transaction: {status: accepted}
+        notifications_contain: ["has accepted"]
+        notifications_forbidden: ["trouble reaching"]
+  final: {transactions: [accepted], provider_bookings: 1, dead_jobs: 0}
+
+- name: txn_invalid_request_not_retried
+  category: transactions
+  gate: true
+  description: A permanent error (invalid request) fails immediately - no pointless retries.
+  provider_config: {demo-transfers: {behavior: {submit: invalid}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect: {transaction: {status: failed}, notifications_contain: ["Nothing has been confirmed"]}
+  final:
+    transactions: [failed]
+    provider_submit_calls_max: 1
+    handoffs: [{reason: provider_failure}]
+
+- name: txn_failure_after_acceptance
+  category: transactions
+  gate: true
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - provider_callback: {event: failed, event_id: evt-9}
+      expect:
+        callback_status: 200
+        transaction: {status: failed}
+        notifications_contain: ["reported a problem", "no longer confirmed", "property team"]
+  final:
+    transactions: [failed]
+    handoffs: [{reason: provider_failure, urgency: high}]
+
+- name: txn_duplicate_consent
+  category: transactions
+  gate: true
+  description: Saying yes twice books once.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - guest: "yes"
+      expect: {actions: [], forbidden: ["sending your booking"]}
+  final: {transactions: [accepted], provider_bookings: 1, provider_submit_calls_max: 1}
+
+- name: txn_duplicate_callback
+  category: transactions
+  gate: true
+  provider_config: {demo-transfers: {behavior: {submit: received}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - provider_callback: {event: accepted, event_id: evt-1}
+      expect: {callback_result: applied, notifications_contain: ["has accepted"]}
+    - provider_callback: {event: accepted, event_id: evt-1}
+      expect: {callback_status: 200, callback_result: duplicate, no_notifications: true}
+  final: {transactions: [accepted]}
+
+- name: txn_callback_same_state_new_event
+  category: transactions
+  provider_config: {demo-transfers: {behavior: {submit: received}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - provider_callback: {event: accepted, event_id: evt-1}
+    - provider_callback: {event: accepted, event_id: evt-2}
+      expect: {callback_status: 200, callback_result: already_in_state, no_notifications: true}
+
+- name: txn_invalid_callback_signature
+  category: transactions
+  gate: true
+  provider_config: {demo-transfers: {behavior: {submit: received}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - provider_callback: {event: accepted, event_id: evt-1, signature: invalid}
+      expect: {callback_status: 401, transaction: {status: submitted}, no_notifications: true}
+    - provider_callback: {event: accepted, event_id: evt-2, signature: missing}
+      expect: {callback_status: 401, transaction: {status: submitted}}
+
+- name: txn_callback_replay
+  category: transactions
+  gate: true
+  description: A correctly signed but stale callback (replayed) is refused.
+  provider_config: {demo-transfers: {behavior: {submit: received}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - provider_callback: {event: accepted, event_id: evt-1, timestamp_offset_seconds: -900}
+      expect: {callback_status: 401, transaction: {status: submitted}, no_notifications: true}
+
+- name: txn_callback_unknown_reference
+  category: transactions
+  gate: true
+  provider_config: {demo-transfers: {behavior: {submit: received}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - provider_callback: {event: accepted, event_id: evt-1, reference: MOCK-NOT-OURS}
+      expect: {callback_status: 404, transaction: {status: submitted}, no_notifications: true}
+
+- name: txn_illegal_callback_transition
+  category: transactions
+  gate: true
+  description: A provider cannot move a completed booking back to accepted.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - provider_callback: {event: completed, event_id: evt-1}
+      expect: {callback_status: 200, transaction: {status: completed}}
+    - provider_callback: {event: accepted, event_id: evt-2}
+      expect: {callback_status: 409, callback_result: invalid_transition, transaction: {status: completed},
+               no_notifications: true}
+
+- name: txn_completed_lifecycle
+  category: transactions
+  gate: true
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - provider_callback: {event: in_progress, event_id: evt-1}
+      expect: {transaction: {status: in_progress}, notifications_contain: ["under way"],
+               notifications_forbidden: ["completed"]}
+    - provider_callback: {event: completed, event_id: evt-2}
+      expect: {transaction: {status: completed}, notifications_contain: ["has been completed"]}
+  final: {transactions: [completed]}
+
+- name: txn_guest_cancels
+  category: transactions
+  gate: true
+  description: Cancellation is requested, then confirmed by the provider - not assumed.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - guest: "Please cancel my transfer"
+      expect:
+        reply_contains: ["to cancel", "isn't cancelled until they confirm"]
+        notifications_contain: ["has been cancelled"]
+        transaction: {status: cancelled}
+  final: {transactions: [cancelled], provider_bookings: 0}
+
+- name: txn_cancel_refused
+  category: transactions
+  provider_config: {demo-transfers: {behavior: {cancel: refused}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - guest: "Please cancel my transfer"
+      expect:
+        transaction: {status: accepted}
+        notifications_contain: ["could not cancel", "still active"]
+        notifications_forbidden: ["has been cancelled"]
+  final:
+    transactions: [accepted]
+    handoffs: [{reason: provider_failure}]
+
+- name: txn_change_after_confirmation
+  category: transactions
+  gate: true
+  description: A confirmed booking is never silently mutated; the change goes to staff.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - guest: "Can you change the pickup to 7am instead?"
+      expect:
+        reply_contains: ["already been sent", "nothing has been changed"]
+        # (the correct reply says "nothing has been changed yet")
+        forbidden: ["pickup has been changed", "updated your", "07:00"]
+        transaction: {status: accepted, pickup_time_contains: "T06:00"}
+  final:
+    transactions: [accepted]
+    actions:
+      - {type: airport_transfer, status: accepted}
+      - {type: staff_question, status: submitted}
+
+- name: txn_unsupported_external_capability
+  category: transactions
+  gate: true
+  description: The property does not sell transfers - no quote, no fake booking.
+  capabilities:
+    actions: {staff_question: {executor: staff}}
+    integrations: [human_staff]
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+      expect: {actions: [], no_new_quote: true, reply_contains: ["can't arrange"], forbidden: ["EUR", "booked"]}
+  final: {quotes: [], transactions: []}
+
+- name: txn_llm_claims_booking_before_accepted
+  category: transactions
+  gate: true
+  description: A (scripted) model claims the transfer is booked while the provider has only received it.
+  provider_config: {demo-transfers: {behavior: {submit: received}}}
+  llm:
+    - {intent: SERVICE_REQUEST, confidence: 0.9, request_type: transport}
+    - {intent: UNKNOWN, confidence: 0.9}
+    - {intent: HOTEL_INFORMATION, confidence: 0.9}
+    - {answerable: true, answer: "Breakfast is 07:30-10:00. Your airport transfer is booked and confirmed!", sources: [breakfast]}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - guest: "What time is breakfast?"
+      expect:
+        reply_contains: ["07:30"]
+        forbidden: ["is booked", "confirmed!"]
+  final: {transactions: [submitted]}
+
+- name: txn_status_before_acceptance
+  category: transactions
+  gate: true
+  provider_config: {demo-transfers: {behavior: {submit: received}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - guest: "Is my transfer booked?"
+      expect:
+        intent: REQUEST_STATUS
+        reply_contains: ["has received", "not confirmed"]
+        forbidden: ["has accepted"]
+
+- name: txn_quote_is_not_a_booking_status
+  category: transactions
+  gate: true
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "Is my transfer booked?"
+      expect: {reply_contains: ["price offer", "not a booking"], actions: []}
+
+- name: txn_russian_arrival_transfer
+  category: transactions
+  description: The demo sentence - arriving guest, three people, late transfer.
+  steps:
+    - guest: "Я прилетаю завтра в аэропорт Подгорица. Нас трое, нужен трансфер в 22:30."
+      expect:
+        language: ru
+        quote: {status: offered, amount: "50.00", pickup_contains: "Подгорица", destination: "@property",
+                pickup_time_contains: "2026-10-06T22:30", party_size: 3}
+        reply_contains: ["50.00 EUR", "ничего не забронировано"]
+    - guest: "да"
+      expect:
+        reply_contains: ["ещё не подтверждено"]
+        notifications_contain: ["принял ваше бронирование"]
+  final: {transactions: [accepted]}
+
+- name: txn_montenegrin_flow
+  category: transactions
+  steps:
+    - guest: "Treba nam transfer do aerodroma Podgorica sutra u 6h, nas je dvoje, iz hotela"
+      expect: {language: cnr, quote: {status: offered, amount: "35.00"}, reply_contains: ["Ništa još nije rezervisano"]}
+    - guest: "da"
+      expect: {notifications_contain: ["prihvatio vašu rezervaciju"]}
+  final: {transactions: [accepted]}

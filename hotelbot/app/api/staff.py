@@ -13,9 +13,15 @@ from app.api.deps import get_container, get_session, require_staff
 from app.container import Container
 from app.actions.service import InvalidTransition
 from app.actions.staff_ops import transition_action
+from sqlalchemy import select
+
 from app.db.models import (
     Action,
     ActionStatus,
+    ExternalTransaction,
+    Job,
+    JobStatus,
+    Quote,
     Conversation,
     ConversationStatus,
     HandoffStatus,
@@ -41,13 +47,16 @@ from app.schemas.conversations import (
     ConversationSummaryOut,
     HandoffOut,
     HotelRequestOut,
+    JobOut,
     MessageOut,
     PropertyOut,
+    QuoteOut,
     ResolveHandoffIn,
     ResolveRequestIn,
     StaffMessageIn,
     StayOut,
     StayUpdateIn,
+    TransactionOut,
 )
 
 # Core v1 request status <-> action status
@@ -278,3 +287,30 @@ def resolve_handoff(handoff_id: str, body: ResolveHandoffIn, session: Session = 
     conv.consecutive_failures = 0
     log_event("handoff_resolved", handoff_id=handoff.id, conversation_id=conv.id, conversation_status=conv.status.value)
     return HandoffOut.model_validate(handoff)
+
+
+# ----------------------------------------------------- external transactions
+@router.get("/quotes", response_model=list[QuoteOut])
+def list_quotes(limit: int = 100, session: Session = Depends(get_session)) -> list[QuoteOut]:
+    rows = session.scalars(select(Quote).order_by(Quote.created_at.desc()).limit(min(limit, 500)))
+    return [QuoteOut.model_validate({**q.__dict__, "amount": str(q.amount), "status": q.status.value}) for q in rows]
+
+
+@router.get("/transactions", response_model=list[TransactionOut])
+def list_transactions(limit: int = 100, session: Session = Depends(get_session)) -> list[TransactionOut]:
+    rows = session.scalars(select(ExternalTransaction).order_by(ExternalTransaction.created_at.desc())
+                           .limit(min(limit, 500)))
+    return [TransactionOut(
+        id=t.id, action_id=t.action_id, status=t.action.status, service_type=t.action.action_type,
+        provider=t.provider.slug, quote_id=t.quote_id, idempotency_key=t.idempotency_key,
+        provider_reference=t.provider_reference, request=t.request, last_error=t.last_error,
+        created_at=t.created_at, submitted_at=t.submitted_at) for t in rows]
+
+
+@router.get("/jobs", response_model=list[JobOut])
+def list_jobs(job_status: JobStatus | None = None, limit: int = 100,
+              session: Session = Depends(get_session)) -> list[JobOut]:
+    q = select(Job).order_by(Job.created_at.desc()).limit(min(limit, 500))
+    if job_status:
+        q = q.where(Job.status == job_status)
+    return [JobOut.model_validate({**j.__dict__, "status": j.status.value}) for j in session.scalars(q)]

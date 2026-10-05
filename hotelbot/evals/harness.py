@@ -14,6 +14,7 @@ without a stored action in a state that backs it.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -26,13 +27,30 @@ from sqlalchemy import select
 
 from app.actions.staff_ops import transition_action
 from app.agent.authority import unbacked_claims
+from app.clock import FrozenClock
 from app.config import Settings
 from app.container import Container, build_container
-from app.db.models import Action, ActionStatus, Guest, HumanHandoff, Stay, StayStatus
+from app.db.models import (
+    Action,
+    ActionStatus,
+    ExternalTransaction,
+    Guest,
+    HumanHandoff,
+    Job,
+    JobStatus,
+    Quote,
+    Stay,
+    StayStatus,
+)
 from app.llm.base import ChatMessage, LLMError
 from app.observability import configure_logging
 from app.schemas.messages import InboundMessage
+from app.transactions.callbacks import handle_callback, sign
+from app.transactions.providers.mock import MockExternalProvider
 from evals.schema import ActionExpect, Scenario, StepExpect
+
+CALLBACK_SECRET = "eval-callback-secret"
+CLOCK_START = "2026-10-05T12:00:00+00:00"
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKS = {
@@ -108,6 +126,8 @@ def _build(scenario: Scenario, workdir: Path) -> tuple[Container, dict[str, str]
                 data["items"].extend(scenario.knowledge.add)
             if scenario.capabilities is not None:
                 data["capabilities"] = scenario.capabilities
+            for prov in data.get("providers", []):
+                prov.setdefault("config", {}).update((scenario.provider_config or {}).get(prov["slug"], {}))
         slug = data["pack"].get("property_slug") or data["pack"]["hotel_slug"]
         slugs[alias] = slug
         path = workdir / f"{i}_{slug}.yaml"
@@ -128,7 +148,10 @@ def _build(scenario: Scenario, workdir: Path) -> tuple[Container, dict[str, str]
         return httpx.Response(integ.status, json=integ.json_body if integ.json_body is not None else {})
 
     llm = ScriptedLLM(scenario.llm) if scenario.llm is not None else None
-    container = build_container(settings, llm=llm, http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    from datetime import datetime
+
+    container = build_container(settings, llm=llm, http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+                                clock=FrozenClock(datetime.fromisoformat(CLOCK_START)))
     return container, slugs
 
 
@@ -204,6 +227,52 @@ def _check_guest_step(prefix: str, exp: StepExpect, reply, container: Container,
         _match_actions(prefix, exp.actions, new, failures)
 
 
+def _check_transactions(prefix: str, exp: StepExpect, container: Container, before_quotes: set[str],
+                        notifications: list[str], failures: list[str]) -> None:
+    with container.session_factory() as s:
+        quotes = list(s.scalars(select(Quote).order_by(Quote.created_at.desc())))
+        # Prefer quotes created in this step, then open ones (frozen clock => equal timestamps).
+        quote = next((q for q in quotes if q.id not in before_quotes and q.status.value == "offered"), None) \
+            or next((q for q in quotes if q.id not in before_quotes), None) \
+            or next((q for q in quotes if q.status.value == "offered"), None) or (quotes[0] if quotes else None)
+        txn = s.scalars(select(ExternalTransaction).order_by(ExternalTransaction.created_at.desc())).first()
+        if exp.quote is not None:
+            if quote is None:
+                failures.append(f"{prefix}: expected a quote, none exists")
+            else:
+                actual = {"status": quote.status.value, "amount": f"{quote.amount:.2f}", "currency": quote.currency,
+                          **{k: v for k, v in (quote.request or {}).items()}}
+                for k, v in exp.quote.items():
+                    if k.endswith("_contains"):
+                        if str(v) not in str(actual.get(k[:-9])):
+                            failures.append(f"{prefix}: quote.{k[:-9]} = {actual.get(k[:-9])!r} lacks {v!r}")
+                    elif str(actual.get(k)) != str(v):
+                        failures.append(f"{prefix}: quote.{k} = {actual.get(k)!r}, expected {v!r}")
+        if exp.no_new_quote and quote is not None and quote.id not in before_quotes \
+                and quote.status.value == "offered":
+            failures.append(f"{prefix}: a new quote was offered but none was expected")
+        if exp.transaction is not None:
+            if txn is None:
+                failures.append(f"{prefix}: expected a transaction, none exists")
+            else:
+                actual = {"status": txn.action.status.value, **(txn.request or {})}
+                for k, v in exp.transaction.items():
+                    if k.endswith("_contains"):
+                        if str(v) not in str(actual.get(k[:-9])):
+                            failures.append(f"{prefix}: transaction.{k[:-9]} = {actual.get(k[:-9])!r} lacks {v!r}")
+                    elif str(actual.get(k)) != str(v):
+                        failures.append(f"{prefix}: transaction.{k} = {actual.get(k)!r}, expected {v!r}")
+    joined = "\n".join(notifications)
+    _check_text(f"{prefix} notifications", joined, exp.notifications_contain, [], exp.notifications_forbidden,
+                failures)
+    if exp.no_notifications and notifications:
+        failures.append(f"{prefix}: expected no notifications, got {notifications}")
+
+
+def _mock_providers(container: Container) -> list[MockExternalProvider]:
+    return [a for a in container.providers_registry.instances() if isinstance(a, MockExternalProvider)]
+
+
 def _authority_check(prefix: str, text: str | None, container: Container, stay_id: str | None,
                      failures: list[str], *, quoted_sources: list[str] | None = None,
                      property_slug: str | None = None, locale: str = "en") -> None:
@@ -238,6 +307,27 @@ def _check_final(scenario: Scenario, container: Container, slugs: dict[str, str]
                     failures.append(f"final: expected handoff {exp}, got {actual_h}")
             if not f.handoffs and actual_h:
                 failures.append(f"final: expected no handoff, got {actual_h}")
+        if f.quotes is not None:
+            actual_q = sorted(q.status.value for q in s.scalars(select(Quote)))
+            if actual_q != sorted(f.quotes):
+                failures.append(f"final: quotes {actual_q}, expected {sorted(f.quotes)}")
+        if f.transactions is not None:
+            actual_t = sorted(t.action.status.value for t in s.scalars(select(ExternalTransaction)))
+            if actual_t != sorted(f.transactions):
+                failures.append(f"final: transactions {actual_t}, expected {sorted(f.transactions)}")
+        if f.dead_jobs is not None:
+            dead = len(list(s.scalars(select(Job).where(Job.status == JobStatus.DEAD))))
+            if dead != f.dead_jobs:
+                failures.append(f"final: {dead} dead jobs, expected {f.dead_jobs}")
+        mocks = _mock_providers(container)
+        if f.provider_bookings is not None:
+            n = sum(m.active_bookings for m in mocks)
+            if n != f.provider_bookings:
+                failures.append(f"final: provider holds {n} bookings, expected {f.provider_bookings}")
+        if f.provider_submit_calls_max is not None:
+            n = sum(m.submit_calls for m in mocks)
+            if n > f.provider_submit_calls_max:
+                failures.append(f"final: provider received {n} submit calls, at most {f.provider_submit_calls_max}")
         for se in f.stays:
             slug = slugs.get(se.property or scenario.properties[0], se.property)
             guest = s.scalar(select(Guest).where(Guest.external_id == se.guest_id))
@@ -282,16 +372,60 @@ def _check_final(scenario: Scenario, container: Container, slugs: dict[str, str]
 def run_scenario(scenario: Scenario) -> ScenarioResult:
     result = ScenarioResult(scenario=scenario)
     start = time.perf_counter()
+    os.environ["DEMO_TRANSFERS_CALLBACK_SECRET"] = CALLBACK_SECRET
     try:
         with tempfile.TemporaryDirectory() as tmp:
             container, slugs = _build(scenario, Path(tmp))
+            clock = container.clock
             last_stay: dict[str, str | None] = {}
+
+            def drain_and_collect(guest_id: str) -> list[str]:
+                container.worker.drain(advance_clock=True)
+                sent = [m["text"] for m in container.dev_outbox.outbox(guest_id)]
+                container.dev_outbox.clear()
+                for text in sent:
+                    result.transcript.append(Turn("bot", text, {"kind": "async_notification"}))
+                return sent
+
             for i, step in enumerate(scenario.steps, start=1):
                 prefix = f"step {i}"
+                if step.advance_minutes is not None:
+                    clock.advance(minutes=step.advance_minutes)  # type: ignore[attr-defined]
+                    result.transcript.append(Turn("clock", f"+{step.advance_minutes} min"))
+                    continue
+                if step.provider_callback is not None:
+                    cb = step.provider_callback
+                    with container.session_factory() as s:
+                        txn = s.scalars(select(ExternalTransaction).order_by(ExternalTransaction.created_at.desc())).first()
+                        reference = (txn.provider_reference if txn else None) if cb.reference == "auto" else cb.reference
+                        stay_id = txn.action.stay_id if txn else None
+                        body = json.dumps({"event_id": cb.event_id, "reference": reference or "none",
+                                           "event": cb.event}).encode()
+                        ts = int(clock.now().timestamp()) + cb.timestamp_offset_seconds
+                        headers = {"X-Provider-Timestamp": str(ts)}
+                        if cb.signature != "missing":
+                            secret = CALLBACK_SECRET if cb.signature == "valid" else "attacker-secret"
+                            headers["X-Provider-Signature"] = sign(secret, ts, body)
+                        out = handle_callback(s, container.txn_deps, slugs[scenario.properties[0]], cb.provider,
+                                              headers, body)
+                        s.commit()
+                    result.transcript.append(Turn("provider", f"[callback {cb.event} {cb.event_id} "
+                                                              f"sig={cb.signature}] -> {out.status_code} {out.body}"))
+                    exp = step.expect
+                    if exp.callback_status is not None and out.status_code != exp.callback_status:
+                        result.failures.append(f"{prefix}: callback HTTP {out.status_code}, expected {exp.callback_status}")
+                    if exp.callback_result is not None and out.body.get("status") != exp.callback_result:
+                        result.failures.append(f"{prefix}: callback result {out.body}, expected {exp.callback_result}")
+                    sent = drain_and_collect(step.guest_id)
+                    _check_transactions(prefix, exp, container, set(), sent, result.failures)
+                    for text in sent:
+                        _authority_check(prefix, text, container, stay_id, result.failures)
+                    continue
                 if step.guest is not None:
                     slug = slugs.get(step.property, step.property) if step.property else None
                     with container.session_factory() as s:
                         before = {a.id for a in s.scalars(select(Action))}
+                        before_quotes = {q.id for q in s.scalars(select(Quote))}
                     reply = container.orchestrator.handle(InboundMessage(
                         channel=step.channel, sender_id=step.guest_id, text=step.guest, property_slug=slug))
                     last_stay[step.guest_id] = reply.stay_id
@@ -304,6 +438,10 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
                     _authority_check(prefix, reply.text, container, reply.stay_id, result.failures,
                                      quoted_sources=reply.sources, property_slug=reply.property_slug,
                                      locale=reply.language)
+                    sent = drain_and_collect(step.guest_id)
+                    _check_transactions(prefix, step.expect, container, before_quotes, sent, result.failures)
+                    for text in sent:
+                        _authority_check(prefix, text, container, reply.stay_id, result.failures)
                 elif step.staff_transition is not None:
                     with container.session_factory() as s:
                         action = s.scalars(select(Action).order_by(Action.created_at.desc())).first()

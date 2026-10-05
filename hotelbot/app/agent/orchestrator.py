@@ -20,6 +20,7 @@ model prose.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,7 +30,7 @@ from app.actions.catalog import action_for_topic, action_label
 from app.actions.executors import ExecutorRegistry
 from app.actions.service import ActionService
 from app.agent import messages as msg
-from app.agent.authority import status_message
+from app.agent.authority import status_message, transaction_status_message
 from app.agent.dialogue import is_follow_up, split_clauses
 from app.agent.handoff import create_handoff
 from app.agent.intents import Intent, IntentClassifier, IntentResult
@@ -45,6 +46,7 @@ from app.agent.policies import (
 from app.agent.responder import GroundedAnswer, GroundedResponder
 from app.agent.runtime import PropertyDirectory, PropertyRuntime
 from app.capabilities.registry import ActionCapability, CapabilityRegistry, CapabilitySpec
+from app.clock import as_utc
 from app.db.models import (
     Action,
     ActionStatus,
@@ -52,6 +54,7 @@ from app.db.models import (
     ConversationStatus,
     MessageRole,
     Property,
+    Quote,
     RequestType,
     Stay,
 )
@@ -63,6 +66,12 @@ from app.schemas.messages import ActionTaken, AgentReply, InboundMessage
 from app.stays.service import StayService
 from app.text import fold
 from app.tools.registry import ToolContext, ToolRegistry
+from app.transactions.dialogue import TransactionDialogue
+from app.transactions.format import format_price
+from app.transactions.service import TransactionService
+
+# Staff-handled action types that a provider-backed service can replace.
+_TRANSACTIONAL_TOPICS = {"transport_booking": RequestType.TRANSPORT, "restaurant_booking": RequestType.RESTAURANT}
 
 HISTORY_TURNS = 6
 
@@ -88,14 +97,18 @@ class _Turn:
     failed: bool = False  # bot could not help this turn
     succeeded: bool = False
     facts: dict[str, Any] = field(default_factory=dict)  # guest-stated facts in this message
+    guest_message_id: str | None = None
+    offered_quote_id: str | None = None   # set when this turn presents a quote awaiting consent
 
     @property
     def state(self) -> dict[str, Any]:
-        return dict((self.conv.memory or {}).get("_state", {}))
+        # Deep copy: nested dicts must not alias the persisted JSON value, or
+        # in-place edits would go undetected and never be saved.
+        return copy.deepcopy((self.conv.memory or {}).get("_state", {}))
 
     def set_state(self, **values: Any) -> None:
-        state = {k: v for k, v in {**self.state, **values}.items() if v is not None}
-        self.conv.memory = {**(self.conv.memory or {}), "_state": state}
+        state = {k: v for k, v in {**self.state, **copy.deepcopy(values)}.items() if v is not None}
+        self.conv.memory = {**copy.deepcopy(self.conv.memory or {}), "_state": state}
 
 
 class Orchestrator:
@@ -110,6 +123,7 @@ class Orchestrator:
         *,
         handoff_context_messages: int = 10,
         max_inbound_chars: int = 2000,
+        transactions: TransactionDialogue | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.properties = properties
@@ -119,6 +133,7 @@ class Orchestrator:
         self.executors = executors
         self.handoff_context = handoff_context_messages
         self.max_chars = max_inbound_chars
+        self.transactions = transactions
 
     # ------------------------------------------------------------------ entry
     def handle(self, inbound: InboundMessage) -> AgentReply:
@@ -166,7 +181,7 @@ class Orchestrator:
 
         turn = _Turn(session=session, runtime=runtime, prop=prop, stay=stay, conv=conv, inbound=inbound,
                      text=text, language=language, actions_service=ActionService(session, self.executors),
-                     facts=facts)
+                     facts=facts, guest_message_id=guest_msg.id)
         turn.intent = self.classifier.classify(text, language)
         guest_msg.intent = turn.intent.intent.value
         log_event("intent_detected", conversation_id=conv.id, intent=turn.intent.intent.value,
@@ -175,9 +190,13 @@ class Orchestrator:
 
         if conv.status == ConversationStatus.HANDED_OFF:
             self._while_handed_off(turn)
+        elif self.transactions is not None and self.transactions.handle(turn):
+            pass   # quote / consent / booking dialogue
         elif not self._resolve_pending_offer(turn):
             self._route(turn)
 
+        # Consent is scoped to the offer the bot just made: any other reply ends it.
+        turn.set_state(awaiting_quote=turn.offered_quote_id)
         self._update_failures(turn)
         if turn.reply:
             convs.add_message(conv, MessageRole.BOT, turn.reply, language=language,
@@ -232,6 +251,10 @@ class Orchestrator:
     def _perform_action(self, turn: _Turn, action_type: str, *, guest_message: str | None = None,
                         summary: str | None = None) -> None:
         """Do what the property's capabilities allow - and nothing more."""
+        if self.transactions is not None and action_type in _TRANSACTIONAL_TOPICS:
+            # The property sells this through a provider: quote + consent instead.
+            if self.transactions.try_start(turn, _TRANSACTIONAL_TOPICS[action_type]):
+                return
         capabilities = turn.runtime.capabilities
         if not capabilities.can(action_type):
             log_event("capability_unavailable", property=turn.runtime.slug, action_type=action_type)
@@ -324,17 +347,32 @@ class Orchestrator:
         return ""
 
     def _report_status(self, turn: _Turn) -> None:
-        """Answer "is my request confirmed?" strictly from stored action state."""
+        """Answer "is my request confirmed?" strictly from stored state."""
         actions = [a for a in ActionRepository(turn.session).list(stay_id=turn.stay.id)
-                   if a.status != ActionStatus.PROPOSED]
+                   if a.status != ActionStatus.PROPOSED or a.executor == "provider"]
         wanted = turn.intent.request_type if turn.intent else None
         if wanted is not None:
             actions = [a for a in actions if a.request_type == wanted] or actions
-        if not actions:
+        quote = self._open_quote(turn)
+        turn.succeeded = True
+        if quote is not None and (not actions or as_utc(quote.created_at) > as_utc(actions[0].created_at)):
+            # A price offer is not a booking.
+            turn.reply = msg.t("quote_pending_status", turn.language, code=quote.code,
+                               price=format_price(quote.amount, quote.currency))
+            turn.offered_quote_id = quote.id
+        elif not actions:
             turn.reply = msg.t("no_actions_yet", turn.language)
+        elif actions[0].executor == "provider" and self.transactions is not None:
+            svc = TransactionService(turn.session, self.transactions.deps)
+            view = svc.view(svc.for_action(actions[0].id), actions[0], turn.prop, turn.language)
+            turn.reply = transaction_status_message(view, turn.language)
         else:
             turn.reply = status_message(actions[0], turn.language, turn.prop.name)
-        turn.succeeded = True
+
+    def _open_quote(self, turn: _Turn) -> Quote | None:
+        if self.transactions is None:
+            return None
+        return TransactionService(turn.session, self.transactions.deps).open_quote(turn.conv.id)
 
     # ----------------------------------------------------------- knowledge
     def _answer(self, turn: _Turn) -> None:

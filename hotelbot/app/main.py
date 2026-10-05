@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import chat, staff, whatsapp
+from app.api import chat, providers, staff, whatsapp
 from app.config import Settings, get_settings
 from app.container import Container, build_container
 from app.observability import configure_logging, log_event
@@ -26,8 +26,14 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             whatsapp_transport=app.state.container.whatsapp.name,
             hotel=settings.hotel_slug,
         )
+        container = app.state.container
+        run_worker = settings.worker_enabled and settings.env != "test"
+        if run_worker:
+            container.worker.start(settings.worker_poll_seconds)
         yield
-        app.state.container.engine.dispose()
+        if run_worker:
+            container.worker.stop()
+        container.engine.dispose()
 
     app = FastAPI(title="HOTELBOT", version="0.1.0", lifespan=lifespan)
     if container is not None:
@@ -36,6 +42,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     app.include_router(whatsapp.router)
     app.include_router(chat.router)
     app.include_router(staff.router)
+    app.include_router(providers.router)
 
     @app.get("/health")
     def health() -> dict:

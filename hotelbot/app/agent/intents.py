@@ -201,7 +201,8 @@ STATUS_PHRASES = [
     "moj zahtjev", "status zahtjeva", "ima li novosti", "ima li nesto novo",
     "мой запрос", "статус запроса", "есть новости", "есть ли новости",
 ]
-CONFIRMATION_WORDS = ["confirm*", "approv*", "accepted", "potvrd*", "odobr*", "prihvac*", "подтверд*", "одобр*", "приня*"]
+CONFIRMATION_WORDS = ["confirm*", "approv*", "accepted", "booked", "reserved", "potvrd*", "odobr*", "prihvac*",
+                      "rezervisan*", "подтверд*", "одобр*", "приня*", "забронирован*", "заказан*"]
 STATUS_QUESTION = ["is it", "is that", "has it", "was it", "did they", "da li", "je li", "li je", "ли", "is my", "has my"]
 
 _TIME_RE = re.compile(r"\b(\d{1,2})(?:[:.h](\d{2}))?\s*(am|pm|h|sati|casova)?\b")
@@ -284,6 +285,11 @@ class RuleIntentClassifier:
     @staticmethod
     def _request_type(f: str, signals: list[str]) -> RequestType | None:
         arrival = _hits(f, ARRIVAL_WORDS)
+        transport = _hits(f, REQUEST_TOPICS[RequestType.TRANSPORT])
+        if transport and not _hits(f, ["check in", "check-in", "checkin", "prijav*", "заезд*", "заселен*"]):
+            # "arriving at the airport at 22:30, need a transfer" is about transport
+            signals.extend(f"topic:transport:{p}" for p in transport)
+            return RequestType.TRANSPORT
         if arrival and (_hits(f, LATE_WORDS) or mentions_late_time(f)) and not _hits(f, REQUEST_TOPICS[RequestType.LATE_CHECK_OUT]):
             signals.append("topic:late_check_in")
             return RequestType.LATE_CHECK_IN

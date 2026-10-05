@@ -54,12 +54,23 @@ def action_for_topic(topic: RequestType) -> str:
 
 def request_type_for(action_type: str) -> RequestType:
     spec = ACTION_CATALOG.get(action_type)
-    return spec.topic if spec else RequestType.OTHER
+    if spec is not None:
+        return spec.topic
+    from app.transactions.catalog import TOPIC_SERVICES
+
+    for topic, services in TOPIC_SERVICES.items():   # external transaction types
+        if action_type in services:
+            return topic
+    return RequestType.OTHER
 
 
 def action_label(action_type: str, locale: str) -> str:
     spec = ACTION_CATALOG.get(action_type)
     if spec is None:
+        from app.transactions.catalog import SERVICE_CATALOG, service_label
+
+        if action_type in SERVICE_CATALOG:   # external transaction
+            return service_label(action_type, locale)
         return action_type.replace("_", " ")
     if locale == "cnr-Cyrl":
         return latin_to_cyrillic(spec.labels["cnr"])

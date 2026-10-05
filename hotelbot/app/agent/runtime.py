@@ -25,6 +25,7 @@ class PropertyRuntime:
     failure_policy: FailurePolicy
     emergency_number: str | None = None
     whatsapp_phone_number_id: str | None = None
+    timezone: str = "UTC"
 
 
 class UnknownProperty(LookupError):

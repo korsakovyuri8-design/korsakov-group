@@ -57,6 +57,30 @@ def status_message(action: Action, locale: str, property_name: str) -> str:
                  action=action_label(action.action_type, locale), property=property_name)
 
 
+# External transactions (provider-executed actions): same rule, provider wording.
+TRANSACTION_TEMPLATE: dict[ActionStatus, str] = {
+    ActionStatus.PROPOSED: "txn_sending",
+    ActionStatus.SUBMITTED: "txn_submitted",
+    ActionStatus.ACCEPTED: "txn_accepted",
+    ActionStatus.IN_PROGRESS: "txn_in_progress",
+    ActionStatus.COMPLETED: "txn_completed",
+    ActionStatus.REJECTED: "txn_rejected",
+    ActionStatus.FAILED: "txn_failed",
+    ActionStatus.CANCELLED: "txn_cancelled",
+}
+
+
+def transaction_status_message(view, locale: str, template: str | None = None) -> str:
+    """Sentence for a provider transaction, from its stored state (`view` is
+    a TransactionService.view()). `template` is only used for events that do
+    not change state (e.g. a refused cancellation)."""
+    key = template or TRANSACTION_TEMPLATE[view.status]
+    if key == "txn_failed" and view.was_accepted:
+        key = "txn_failed_after_accept"
+    return msg.t(key, locale, provider=view.provider_name, service=action_label(view.service_type, locale),
+                 summary=view.summary, reference=view.reference)
+
+
 _NEG = re.compile(r"(\bnot|n't|\bnever|\bnothing|\bne|\bnije|\bnisu|\bnijesu|\bnece|\bnista|\bnicego|\bnicto)"
                   r"\s+(\w+\s+){0,2}$")
 

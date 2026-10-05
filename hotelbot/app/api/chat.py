@@ -6,7 +6,7 @@ webhook; only the channel name differs ("demo").
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.agent.runtime import UnknownProperty
@@ -27,7 +27,7 @@ class ChatIn(BaseModel):
 
 
 @router.post("/chat", response_model=AgentReply)
-def chat(body: ChatIn, container: Container = Depends(get_container)) -> AgentReply:
+def chat(body: ChatIn, background: BackgroundTasks, container: Container = Depends(get_container)) -> AgentReply:
     try:
         container.properties.get(body.property)
     except UnknownProperty:
@@ -38,6 +38,9 @@ def chat(body: ChatIn, container: Container = Depends(get_container)) -> AgentRe
     )
     if reply.text:
         log_event("message_sent", channel="demo", conversation_id=reply.conversation_id, via="api_response")
+    # Provider submissions / notifications queued by this turn run right after
+    # the response; their results reach the guest via /api/dev/outbox.
+    background.add_task(container.kick)
     return reply
 
 

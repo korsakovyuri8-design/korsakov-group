@@ -206,6 +206,147 @@ CATALOG: dict[str, dict[str, str]] = {
         "cnr": "Izvinite, za sada mogu da čitam samo tekstualne poruke. Molimo vas, napišite pitanje.",
         "ru": "Извините, пока я понимаю только текстовые сообщения. Пожалуйста, напишите вопрос.",
     },
+    # ------------------------------------------- external transactions
+    # A quote is never a booking. Every state has its own template; nothing
+    # here may claim more than the stored state (tests/test_authority.py).
+    "quote_offer": {
+        "en": "{provider} can do this for {price}: {summary}. {conditions}The offer is valid until {valid_until}. "
+              "Nothing is booked yet - reply \"yes\" to book it (offer {code}).",
+        "cnr": "{provider} može ovo da obavi za {price}: {summary}. {conditions}Ponuda važi do {valid_until}. "
+               "Ništa još nije rezervisano - odgovorite \"da\" da biste rezervisali (ponuda {code}).",
+        "ru": "{provider} может выполнить это за {price}: {summary}. {conditions}Предложение действует до {valid_until}. "
+              "Пока ничего не забронировано — ответьте «да», чтобы забронировать (предложение {code}).",
+    },
+    "quote_updated": {
+        "en": "Updated offer: ", "cnr": "Nova ponuda: ", "ru": "Новое предложение: ",
+    },
+    "quote_expired": {
+        "en": "That offer has expired, so nothing was booked. ",
+        "cnr": "Ta ponuda je istekla, pa ništa nije rezervisano. ",
+        "ru": "Срок действия того предложения истёк, поэтому ничего не забронировано. ",
+    },
+    "quote_clarify": {
+        "en": "To book, I need a clear \"yes\" for offer {code} ({price}: {summary}). {provider} sets the price. "
+              "Reply \"no\" if you don't want it, or tell me what to change. Nothing is booked yet.",
+        "cnr": "Za rezervaciju mi je potrebno jasno \"da\" za ponudu {code} ({price}: {summary}). Cijenu određuje {provider}. "
+               "Odgovorite \"ne\" ako je ne želite ili mi recite šta da promijenim. Ništa još nije rezervisano.",
+        "ru": "Для бронирования мне нужно чёткое «да» на предложение {code} ({price}: {summary}). Цену устанавливает {provider}. "
+              "Ответьте «нет», если оно вам не нужно, или скажите, что изменить. Пока ничего не забронировано.",
+    },
+    "quote_declined": {
+        "en": "No problem, nothing has been booked.",
+        "cnr": "U redu, ništa nije rezervisano.",
+        "ru": "Хорошо, ничего не забронировано.",
+    },
+    "quote_unavailable": {
+        "en": "I couldn't get a price from {provider} right now, so nothing has been booked. I've passed your request "
+              "to the staff; they will reply here.",
+        "cnr": "Trenutno ne mogu da dobijem cijenu od: {provider}, pa ništa nije rezervisano. Vaš zahtjev je proslijeđen "
+               "osoblju; odgovoriće vam ovdje.",
+        "ru": "Сейчас не удаётся получить цену от {provider}, поэтому ничего не забронировано. Ваш запрос передан "
+              "сотрудникам; вам ответят здесь.",
+    },
+    "txn_draft_dropped": {
+        "en": "OK, I've dropped that request. Nothing was booked.",
+        "cnr": "U redu, odustali smo od tog zahtjeva. Ništa nije rezervisano.",
+        "ru": "Хорошо, этот запрос отменён. Ничего не забронировано.",
+    },
+    "txn_sending": {
+        "en": "Thank you. I'm sending your booking to {provider} now. It is not confirmed yet; I'll tell you as soon as "
+              "they reply.",
+        "cnr": "Hvala. Vaša rezervacija se šalje: {provider}. Još nije potvrđena; javiću vam čim odgovore.",
+        "ru": "Спасибо. Ваше бронирование отправляется в {provider}. Оно ещё не подтверждено; я сообщу, как только придёт ответ.",
+    },
+    "txn_submitted": {
+        "en": "{provider} has received your booking request ({service}). It is not confirmed yet; I'll tell you as soon "
+              "as they confirm.",
+        "cnr": "{provider} je primio vaš zahtjev za rezervaciju ({service}). Još nije potvrđen; javiću vam čim ga potvrde.",
+        "ru": "{provider} получил ваш запрос на бронирование ({service}). Он ещё не подтверждён; я сообщу, как только его подтвердят.",
+    },
+    "txn_accepted": {
+        "en": "{provider} has accepted your booking ({service}: {summary}). Reference: {reference}.",
+        "cnr": "{provider} je prihvatio vašu rezervaciju ({service}: {summary}). Broj rezervacije: {reference}.",
+        "ru": "{provider} принял ваше бронирование ({service}: {summary}). Номер брони: {reference}.",
+    },
+    "txn_in_progress": {
+        "en": "Your booking ({service}, {provider}) is under way.",
+        "cnr": "Vaša rezervacija ({service}, {provider}) je u toku.",
+        "ru": "Ваш заказ ({service}, {provider}) выполняется.",
+    },
+    "txn_completed": {
+        "en": "Your booking ({service}, {provider}) has been completed.",
+        "cnr": "Vaša rezervacija ({service}, {provider}) je izvršena.",
+        "ru": "Ваш заказ ({service}, {provider}) выполнен.",
+    },
+    "txn_rejected": {
+        "en": "{provider} could not accept your booking ({service}). Nothing has been booked.",
+        "cnr": "{provider} nije mogao da prihvati vašu rezervaciju ({service}). Ništa nije rezervisano.",
+        "ru": "{provider} не смог принять ваше бронирование ({service}). Ничего не забронировано.",
+    },
+    "txn_failed": {
+        "en": "I'm having trouble reaching {provider}. Nothing has been confirmed yet. I've sent this to the property team.",
+        "cnr": "Imam problem da dobijem odgovor od: {provider}. Ništa još nije potvrđeno. Ovo je proslijeđeno osoblju.",
+        "ru": "Не удаётся связаться с {provider}. Пока ничего не подтверждено. Это передано сотрудникам.",
+    },
+    "txn_failed_after_accept": {
+        "en": "{provider} reported a problem with your booking ({service}). It is no longer confirmed. "
+              "I've informed the property team.",
+        "cnr": "{provider} je prijavio problem sa vašom rezervacijom ({service}). Više nije potvrđena. Osoblje je obaviješteno.",
+        "ru": "{provider} сообщил о проблеме с вашим бронированием ({service}). Оно больше не подтверждено. "
+              "Сотрудники уведомлены.",
+    },
+    "txn_cancel_requested": {
+        "en": "I've asked {provider} to cancel your booking ({service}). It isn't cancelled until they confirm.",
+        "cnr": "Od: {provider} je zatraženo otkazivanje vaše rezervacije ({service}). Nije otkazana dok to ne potvrde.",
+        "ru": "{provider} получил просьбу отменить ваше бронирование ({service}). Оно не отменено, пока они не подтвердят.",
+    },
+    "txn_cancelled": {
+        "en": "Your booking ({service}) with {provider} has been cancelled.",
+        "cnr": "Vaša rezervacija ({service}) kod: {provider} je otkazana.",
+        "ru": "Ваше бронирование ({service}) в {provider} отменено.",
+    },
+    "txn_cancel_refused": {
+        "en": "{provider} could not cancel your booking ({service}), so it is still active. I've informed the property team.",
+        "cnr": "{provider} nije mogao da otkaže vašu rezervaciju ({service}), pa je i dalje aktivna. Osoblje je obaviješteno.",
+        "ru": "{provider} не смог отменить ваше бронирование ({service}), оно остаётся в силе. Сотрудники уведомлены.",
+    },
+    "txn_change_after_confirm": {
+        "en": "Your booking ({service}) has already been sent to {provider} with the earlier details, so I can't change "
+              "it here. I've asked the staff to help; nothing has been changed yet.",
+        "cnr": "Vaša rezervacija ({service}) je već poslata: {provider}, sa ranijim podacima, pa je ovdje ne mogu "
+               "promijeniti. Osoblje je zamoljeno da pomogne; ništa još nije promijenjeno.",
+        "ru": "Ваше бронирование ({service}) уже отправлено в {provider} с прежними данными, поэтому изменить его здесь "
+              "нельзя. Мы попросили сотрудников помочь; пока ничего не изменено.",
+    },
+    "quote_pending_status": {
+        "en": "You have a price offer ({code}, {price}), not a booking. Nothing is booked until you reply \"yes\".",
+        "cnr": "Imate ponudu ({code}, {price}), a ne rezervaciju. Ništa nije rezervisano dok ne odgovorite \"da\".",
+        "ru": "У вас есть предложение ({code}, {price}), а не бронирование. Ничего не забронировано, пока вы не ответите «да».",
+    },
+    "ask_pickup_time": {
+        "en": "When should the driver pick you up (date and time)?",
+        "cnr": "Kada vozač treba da vas sačeka (datum i vrijeme)?",
+        "ru": "Когда вас забрать (дата и время)?",
+    },
+    "ask_pickup": {
+        "en": "Where should the driver pick you up? (For example: at the property, or at the airport.)",
+        "cnr": "Gdje vozač treba da vas sačeka? (Na primjer: ispred smještaja ili na aerodromu.)",
+        "ru": "Откуда вас забрать? (Например: от места проживания или из аэропорта.)",
+    },
+    "ask_destination": {
+        "en": "Where would you like to go?",
+        "cnr": "Gdje želite da idete?",
+        "ru": "Куда вы хотите поехать?",
+    },
+    "ask_datetime": {
+        "en": "For what date and time?", "cnr": "Za koji datum i vrijeme?", "ru": "На какую дату и время?",
+    },
+    "ask_count": {
+        "en": "For how many people?", "cnr": "Za koliko osoba?", "ru": "На сколько человек?",
+    },
+    "ask_text": {
+        "en": "Please tell me the {field}.", "cnr": "Molim vas, navedite: {field}.", "ru": "Пожалуйста, уточните: {field}.",
+    },
 }
 
 # Back-compat key from Core v1.

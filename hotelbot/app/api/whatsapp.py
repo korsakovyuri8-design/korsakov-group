@@ -1,8 +1,9 @@
 """Meta WhatsApp Cloud API webhook.
 
 GET  /webhooks/whatsapp  - subscription verification (hub.challenge echo)
-POST /webhooks/whatsapp  - inbound messages; signature-checked, acknowledged
-                           immediately, processed in a background task.
+POST /webhooks/whatsapp  - inbound messages; signature-checked, persisted as
+                           durable jobs, acknowledged, then processed by the
+                           job worker (app/jobs/handlers.py: process_inbound).
 """
 
 from __future__ import annotations
@@ -13,12 +14,11 @@ import json
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 
-from app.agent import messages as msg
 from app.api.deps import get_container
 from app.container import Container
 from app.observability import log_event
-from app.schemas.messages import InboundMessage
-from app.whatsapp.meta import ParsedInbound, WAWebhook, parse_webhook, verify_signature
+from app.jobs.queue import enqueue
+from app.whatsapp.meta import WAWebhook, parse_webhook, verify_signature
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["whatsapp"])
 
@@ -69,29 +69,14 @@ async def receive(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unexpected object")
 
     inbound = parse_webhook(payload)
-    for item in inbound:
-        background.add_task(process_inbound, container, item)
-    # Meta retries non-2xx responses, so acknowledge fast; processing is async.
+    # Durable before acknowledging: each message becomes a job in the same
+    # commit, deduplicated on the WhatsApp message id (Meta retries).
+    with container.session_factory() as session:
+        for item in inbound:
+            enqueue(session, "process_inbound", item.model_dump(), f"inbound:{item.message_id}",
+                    clock=container.clock)
+        session.commit()
+    # Fast path: process right after responding. If this process dies first,
+    # the background/standalone worker picks the jobs up.
+    background.add_task(container.kick)
     return {"status": "accepted", "messages": len(inbound)}
-
-
-def process_inbound(container: Container, item: ParsedInbound) -> None:
-    transport = container.transport_for("whatsapp")
-    try:
-        runtime = container.properties.for_whatsapp_number(item.phone_number_id)
-        if item.text is None:
-            reply_text = msg.t("unsupported_media", "en")
-        else:
-            reply = container.orchestrator.handle(
-                InboundMessage(channel="whatsapp", sender_id=item.sender_id, text=item.text,
-                               external_id=item.message_id, display_name=item.display_name,
-                               property_slug=runtime.slug)
-            )
-            reply_text = reply.text
-        if not reply_text:
-            return
-        result = transport.send_text(item.sender_id, reply_text)
-        log_event("message_sent", channel="whatsapp", transport=transport.name, ok=result.ok,
-                  message_id=result.message_id, error=result.error)
-    except Exception as exc:  # never let one message kill the worker
-        log_event("error", where="whatsapp_process", error=type(exc).__name__, detail=str(exc)[:200])

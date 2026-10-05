@@ -31,8 +31,26 @@ capabilities:
     transport_booking:     {executor: staff}
     booking_inquiry:       {executor: staff}
     staff_question:        {executor: staff}
+  # External, transactional services: quote -> explicit guest consent -> provider.
+  services:
+    airport_transfer: {provider: demo-transfers}
+    taxi:             {provider: demo-transfers}
   integrations: [human_staff]
   external_services: [transport, activities]
+
+# External providers (SYNTHETIC). Secrets are referenced by env-var name only.
+providers:
+  - slug: demo-transfers
+    name: "Demo Transfers (synthetic)"
+    provider_type: transport
+    integration_type: mock
+    services: [airport_transfer, taxi]
+    config:
+      currency: EUR
+      pricing: {base: 30, per_extra_person: 5, night_surcharge: 10}
+      validity_minutes: 15
+      conditions: "Price per vehicle. Free cancellation up to 2 hours before pickup."
+      callback_secret_env: DEMO_TRANSFERS_CALLBACK_SECRET
 
 # Conversation policy (see FailurePolicy). Omitted keys use deployment defaults.
 policy:

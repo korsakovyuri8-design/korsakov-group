@@ -169,3 +169,51 @@ class PropertyOut(BaseModel):
     active: bool
     is_synthetic: bool
     capabilities: dict[str, Any]
+
+
+# ------------------------------------------------ external transactions
+class QuoteOut(_ORM):
+    id: str
+    code: str
+    property_id: str
+    stay_id: str
+    provider_id: str
+    service_type: str
+    request: dict[str, Any]
+    currency: str
+    amount: str
+    description: str
+    conditions: str | None
+    valid_until: datetime
+    status: str
+    consent: dict[str, Any]
+    created_at: datetime
+    decided_at: datetime | None
+
+
+class TransactionOut(BaseModel):
+    id: str
+    action_id: str
+    status: ActionStatus
+    service_type: str
+    provider: str
+    quote_id: str
+    idempotency_key: str
+    provider_reference: str | None
+    request: dict[str, Any]
+    last_error: str | None
+    created_at: datetime
+    submitted_at: datetime | None
+
+
+class JobOut(_ORM):
+    id: str
+    kind: str
+    status: str
+    attempts: int
+    max_attempts: int
+    next_attempt_at: datetime
+    last_error: str | None
+    idempotency_key: str
+    created_at: datetime
+    completed_at: datetime | None

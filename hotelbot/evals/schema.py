@@ -27,7 +27,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CATEGORIES = ("grounding", "actions", "authority", "handoff", "safety", "memory", "conversation", "languages")
+CATEGORIES = ("grounding", "actions", "authority", "handoff", "safety", "memory", "conversation", "languages",
+              "transactions")
 
 
 class _Strict(BaseModel):
@@ -57,6 +58,15 @@ class StepExpect(_Strict):
     # Staff-transition steps
     notification_contains: list[str] = Field(default_factory=list)
     notification_forbidden: list[str] = Field(default_factory=list)
+    # Transactions
+    quote: dict[str, Any] | None = None          # latest quote: {status, amount, currency}
+    no_new_quote: bool | None = None
+    transaction: dict[str, Any] | None = None    # latest transaction: {status, ...request fields}
+    notifications_contain: list[str] = Field(default_factory=list)    # async messages to the guest
+    notifications_forbidden: list[str] = Field(default_factory=list)
+    no_notifications: bool | None = None
+    callback_status: int | None = None
+    callback_result: str | None = None
 
 
 class StaffTransition(_Strict):
@@ -70,6 +80,15 @@ class StayUpdate(_Strict):
     party_size: int | None = None
 
 
+class ProviderCallback(_Strict):
+    event: str
+    event_id: str = "evt-1"
+    signature: Literal["valid", "invalid", "missing"] = "valid"
+    timestamp_offset_seconds: int = 0
+    reference: str = "auto"                    # "auto" = latest transaction's provider reference
+    provider: str = "demo-transfers"
+
+
 class Step(_Strict):
     guest: str | None = None
     guest_id: str = "eval-guest"
@@ -77,13 +96,17 @@ class Step(_Strict):
     channel: str = "demo"
     staff_transition: StaffTransition | None = None
     stay_update: StayUpdate | None = None
+    provider_callback: ProviderCallback | None = None
+    advance_minutes: float | None = None
     expect: StepExpect = Field(default_factory=StepExpect)
 
     @model_validator(mode="after")
     def _one_kind(self) -> Step:
-        kinds = [self.guest is not None, self.staff_transition is not None, self.stay_update is not None]
+        kinds = [self.guest is not None, self.staff_transition is not None, self.stay_update is not None,
+                 self.provider_callback is not None, self.advance_minutes is not None]
         if sum(kinds) != 1:
-            raise ValueError("a step is exactly one of: guest, staff_transition, stay_update")
+            raise ValueError("a step is exactly one of: guest, staff_transition, stay_update, provider_callback, "
+                             "advance_minutes")
         return self
 
 
@@ -103,6 +126,11 @@ class FinalExpect(_Strict):
     actions: list[ActionExpect] | None = None  # all actions in the scenario (exact multiset)
     handoffs: list[dict[str, str]] | None = None
     stays: list[StayExpect] = Field(default_factory=list)
+    quotes: list[str] | None = None            # statuses of all quotes (multiset)
+    transactions: list[str] | None = None      # statuses of all transactions (multiset)
+    provider_bookings: int | None = None       # bookings that exist at the (mock) provider
+    provider_submit_calls_max: int | None = None
+    dead_jobs: int | None = None
 
 
 class Integration(_Strict):
@@ -127,5 +155,7 @@ class Scenario(_Strict):
     capabilities: dict[str, Any] | None = None
     integration: Integration | None = None
     llm: list[Any] | None = None
+    # Merge into provider config of the default property's pack, by slug.
+    provider_config: dict[str, dict[str, Any]] | None = None
     steps: list[Step]
     final: FinalExpect = Field(default_factory=FinalExpect)

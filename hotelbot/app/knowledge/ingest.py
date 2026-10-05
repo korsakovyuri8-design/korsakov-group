@@ -21,7 +21,7 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import KnowledgeDocument, Property
+from app.db.models import ExternalProvider, KnowledgeDocument, Property
 from app.knowledge.schemas import KnowledgePack
 from app.observability import log_event
 
@@ -72,8 +72,26 @@ def _upsert_property(session: Session, pack: KnowledgePack) -> Property:
     return prop
 
 
+def _upsert_providers(session: Session, prop: Property, pack: KnowledgePack) -> None:
+    """Providers are upserted by (property, slug). Providers removed from the
+    pack are deactivated, not deleted: quotes and transactions reference them."""
+    existing = {p.slug: p for p in session.scalars(select(ExternalProvider).where(ExternalProvider.property_id == prop.id))}
+    seen = set()
+    for spec in pack.providers:
+        seen.add(spec.slug)
+        row = existing.get(spec.slug) or ExternalProvider(property_id=prop.id, slug=spec.slug)
+        row.name, row.provider_type, row.integration_type = spec.name, spec.provider_type, spec.integration_type
+        row.active, row.services, row.config = spec.active, {"service_types": spec.services}, spec.config
+        session.add(row)
+    for slug, row in existing.items():
+        if slug not in seen:
+            row.active = False
+    session.flush()
+
+
 def ingest_pack(session: Session, pack: KnowledgePack) -> IngestReport:
     prop = _upsert_property(session, pack)
+    _upsert_providers(session, prop, pack)
     report = IngestReport(property_id=prop.id)
     existing = {
         d.item_key: d

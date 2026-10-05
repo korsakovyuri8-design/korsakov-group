@@ -1,10 +1,14 @@
 """Domain persistence model (Stay Engine).
 
     Guest ──< Stay >── Property ──< KnowledgeDocument
-                │
+                │          └──< ExternalProvider
                 ├──< Conversation ──< Message
                 │         └──< HumanHandoff
+                ├──< Quote ──(guest consent)──> ExternalTransaction ── Action ──< ActionEvent
                 └──< Action ──< ActionEvent
+
+    ProviderEvent: signed provider callbacks (idempotency / replay log)
+    Job: durable outbox / work queue (PostgreSQL, SKIP LOCKED)
 
 Portable SQLAlchemy 2.0 types only (JSON, string-backed enums) so the same
 models run on PostgreSQL and SQLite. Schema changes go through Alembic
@@ -21,7 +25,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from decimal import Decimal
+
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -364,6 +370,134 @@ class HumanHandoff(Base):
     package: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column()
+
+
+# ------------------------------------------- external service transactions
+class QuoteStatus(str, enum.Enum):
+    OFFERED = "offered"
+    ACCEPTED_BY_GUEST = "accepted_by_guest"
+    DECLINED_BY_GUEST = "declined_by_guest"
+    EXPIRED = "expired"
+    SUPERSEDED = "superseded"
+
+
+class JobStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    DEAD = "dead"          # permanently failed or out of attempts
+
+
+class ExternalProvider(Base):
+    """A third party that fulfils services for a property (transfers,
+    restaurants, rentals...). Configuration holds no secrets - only the
+    *names* of environment variables that hold them."""
+
+    __tablename__ = "external_providers"
+    __table_args__ = (UniqueConstraint("property_id", "slug"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), index=True)
+    slug: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    provider_type: Mapped[str] = mapped_column(String(32))        # transport | restaurant | activities ...
+    integration_type: Mapped[str] = mapped_column(String(32))     # mock | webhook
+    active: Mapped[bool] = mapped_column(default=True)
+    services: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # {"service_types": [...]}
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class Quote(Base):
+    """A provider's priced offer. A quote is never a booking; only explicit
+    guest consent to *this* quote creates a transaction."""
+
+    __tablename__ = "quotes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    code: Mapped[str] = mapped_column(String(8), index=True)   # short id the guest can refer to
+    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), index=True)
+    stay_id: Mapped[str] = mapped_column(ForeignKey("stays.id"), index=True)
+    guest_id: Mapped[str] = mapped_column(ForeignKey("guests.id"), index=True)
+    conversation_id: Mapped[str | None] = mapped_column(ForeignKey("conversations.id"))
+    provider_id: Mapped[str] = mapped_column(ForeignKey("external_providers.id"))
+    service_type: Mapped[str] = mapped_column(String(64))
+    request: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # the details that were priced
+    currency: Mapped[str] = mapped_column(String(3))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    description: Mapped[str] = mapped_column(Text)
+    conditions: Mapped[str | None] = mapped_column(Text)
+    valid_until: Mapped[datetime] = mapped_column()
+    provider_reference: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[QuoteStatus] = mapped_column(_enum(QuoteStatus), default=QuoteStatus.OFFERED)
+    # Evidence of consent: message id, verbatim text, time.
+    consent: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column()
+
+
+class ExternalTransaction(Base):
+    """Provider-side details of an Action that commits a third party.
+    Its status is the Action's status (one state machine)."""
+
+    __tablename__ = "external_transactions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    action_id: Mapped[str] = mapped_column(ForeignKey("actions.id"), unique=True)
+    provider_id: Mapped[str] = mapped_column(ForeignKey("external_providers.id"), index=True)
+    quote_id: Mapped[str] = mapped_column(ForeignKey("quotes.id"), unique=True)   # one booking per quote
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
+    provider_reference: Mapped[str | None] = mapped_column(String(255), index=True)
+    request: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    submit_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    submitted_at: Mapped[datetime | None] = mapped_column()
+
+    action: Mapped[Action] = relationship()
+    provider: Mapped[ExternalProvider] = relationship()
+    quote: Mapped[Quote] = relationship()
+
+
+class ProviderEvent(Base):
+    """Every provider callback received (accepted or not): replay and
+    duplicate protection, plus an audit log."""
+
+    __tablename__ = "provider_events"
+    __table_args__ = (UniqueConstraint("provider_id", "event_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    provider_id: Mapped[str] = mapped_column(ForeignKey("external_providers.id"), index=True)
+    event_id: Mapped[str] = mapped_column(String(128))
+    event_type: Mapped[str] = mapped_column(String(32))
+    provider_reference: Mapped[str | None] = mapped_column(String(255))
+    action_id: Mapped[str | None] = mapped_column(ForeignKey("actions.id"))
+    outcome: Mapped[str] = mapped_column(String(32))   # applied | already_in_state | invalid_transition | unknown_reference
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    received_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class Job(Base):
+    """Durable unit of work (outbox). Written in the same DB transaction as
+    the state change that requires it, so an acknowledged request can never
+    lose its follow-up work."""
+
+    __tablename__ = "jobs"
+    __table_args__ = (Index("ix_jobs_due", "status", "next_attempt_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    kind: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True)
+    status: Mapped[JobStatus] = mapped_column(_enum(JobStatus), default=JobStatus.PENDING)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=6)
+    next_attempt_at: Mapped[datetime] = mapped_column(default=utcnow)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    locked_by: Mapped[str | None] = mapped_column(String(64))
+    locked_at: Mapped[datetime | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column()
 
 
 # ---------------------------------------------------- Core v1 aliases
