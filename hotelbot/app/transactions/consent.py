@@ -72,3 +72,33 @@ def classify(text: str, code: str | None, details_changed: bool) -> ConsentDecis
     if normalized in _DECLINE:
         return ConsentDecision.DECLINE
     return ConsentDecision.NONE
+
+
+_FILLER = {fold(w) for w in """the a an and both please i we us me my our for to also too it them that this
+    i a oba obje mi nam molim taj tu to и а оба обе мне нам пожалуйста это эту этот""".split()}
+_ALL = {fold(w) for w in "all everything both sve svi oba obje все всё оба обе".split()}
+_VERBS = {_NOISE.sub(" ", fold(p)).strip() for p in """yes book confirm reserve go ahead ok
+    da rezervisi rezervisite potvrdjujem potvrdi
+    да бронируй бронируйте подтверждаю закажи заказывай""".split()}
+
+
+def classify_selection(text: str, references: list[str]) -> tuple[ConsentDecision, bool]:
+    """Consent when several offers are open. Returns (decision, all_requested).
+
+    The message must consist only of a consent verb, references to offers
+    (codes or service words, removed by the caller-provided `references`),
+    filler words and optionally "all/both". Anything else is not consent."""
+    folded = fold(text)
+    for ref in sorted(references, key=len, reverse=True):
+        folded = re.sub(rf"\b{re.escape(fold(ref).rstrip('*'))}\w*", " ", folded)
+    words = [w for w in _NOISE.sub(" ", folded).split() if w]
+    all_requested = any(w in _ALL for w in words)
+    rest = [w for w in words if w not in _FILLER and w not in _ALL]
+    if not rest:
+        return (ConsentDecision.CONSENT if all_requested else ConsentDecision.NONE), all_requested
+    if all(w in _VERBS for w in rest):
+        return ConsentDecision.CONSENT, all_requested
+    normalized = " ".join(rest)
+    if normalized in _DECLINE:
+        return ConsentDecision.DECLINE, all_requested
+    return ConsentDecision.NONE, all_requested

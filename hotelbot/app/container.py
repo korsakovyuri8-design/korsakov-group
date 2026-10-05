@@ -29,6 +29,7 @@ from app.db.repositories import PropertyRepository
 from app.db.session import create_schema, make_engine, make_session_factory
 from app.knowledge.ingest import ingest_pack, load_pack
 from app.knowledge.service import KnowledgeService
+from app.places.pack import ingest_region, load_region_pack
 from app.llm.base import LLMProvider
 from app.llm.factory import build_llm
 from app.tools import default_registry
@@ -88,6 +89,17 @@ class Container:
             session.commit()
 
 
+def _resolve(path: str, settings: Settings) -> str:
+    """Region pack paths are relative to the project root unless absolute,
+    so tests and the CLI work from any working directory."""
+    from pathlib import Path
+
+    p = Path(path)
+    if p.is_absolute() or p.exists():
+        return str(p)
+    return str(Path(__file__).resolve().parents[1] / p)
+
+
 def build_runtime(session: Session, prop: Property, settings: Settings) -> PropertyRuntime:
     knowledge = KnowledgeService.from_db(session, prop.id, settings.grounding_min_score)
     extra = prop.extra or {}
@@ -104,6 +116,8 @@ def build_runtime(session: Session, prop: Property, settings: Settings) -> Prope
         emergency_number=extra.get("emergency_number"),
         whatsapp_phone_number_id=extra.get("whatsapp_phone_number_id"),
         timezone=prop.timezone,
+        region=extra.get("region"),
+        location=(extra["location"]["lat"], extra["location"]["lon"]) if extra.get("location") else None,
     )
 
 
@@ -128,6 +142,8 @@ def build_container(
         )
     runtimes = []
     with session_factory() as session:
+        for path in settings.region_pack_paths:   # regions first: properties may use their providers
+            ingest_region(session, load_region_pack(_resolve(path, settings)))
         for pack in packs:
             report = ingest_pack(session, pack)
             prop = PropertyRepository(session).get(report.property_id)

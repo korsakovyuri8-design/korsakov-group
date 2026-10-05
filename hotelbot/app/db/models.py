@@ -27,7 +27,7 @@ from typing import Any
 
 from decimal import Decimal
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -394,10 +394,13 @@ class ExternalProvider(Base):
     *names* of environment variables that hold them."""
 
     __tablename__ = "external_providers"
-    __table_args__ = (UniqueConstraint("property_id", "slug"),)
+    __table_args__ = (UniqueConstraint("property_id", "slug"), UniqueConstraint("region", "slug"))
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), index=True)
+    # Scope: a property's own partner (property_id) or a regional provider
+    # usable by any property in the region / by travellers without a property.
+    property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id"), index=True)
+    region: Mapped[str | None] = mapped_column(String(64), index=True)
     slug: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(200))
     provider_type: Mapped[str] = mapped_column(String(32))        # transport | restaurant | activities ...
@@ -498,6 +501,141 @@ class Job(Base):
     locked_at: Mapped[datetime | None] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column()
+
+
+# ------------------------------------------- local travel infrastructure
+class ItemStatus(str, enum.Enum):
+    """Lightweight plan states for items that are NOT transactions. Items
+    linked to a quote/action take their status from that stored state."""
+
+    SAVED = "saved"
+    SHORTLISTED = "shortlisted"
+    PROPOSED = "proposed"
+    DISMISSED = "dismissed"
+
+
+class _Provenance:
+    """Every external factual record carries where it came from and how
+    fresh it is (dynamic facts - hours, prices, events - go stale)."""
+
+    source: Mapped[str] = mapped_column(String(255), default="unknown")
+    last_verified_at: Mapped[datetime | None] = mapped_column()
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    provider_owned: Mapped[bool] = mapped_column(default=False)   # supplied by the business itself
+    is_synthetic: Mapped[bool] = mapped_column(default=False)
+
+
+class Place(_Provenance, Base):
+    """Anything a traveller can go to: restaurant, bar, museum, pharmacy, ATM,
+    beach, bus stop... One table: `category` (top-level taxonomy) +
+    `subcategory` (open vocabulary) + structured `attributes`. Adding a new
+    kind of place is a data change, not a schema change."""
+
+    __tablename__ = "places"
+    __table_args__ = (UniqueConstraint("region", "slug"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    region: Mapped[str] = mapped_column(String(64), index=True)
+    slug: Mapped[str] = mapped_column(String(96))
+    name: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(32), index=True)
+    subcategory: Mapped[str] = mapped_column(String(64), index=True)
+    tags: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)          # {"tags": [...]}
+    description: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # per locale
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    address: Mapped[str | None] = mapped_column(String(300))
+    service_area_km: Mapped[float | None] = mapped_column(Float)
+    hours: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)        # see app/places/hours.py
+    active: Mapped[bool] = mapped_column(default=True)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class Event(_Provenance, Base):
+    """Something happening at a time: concert, market, festival, match..."""
+
+    __tablename__ = "events"
+    __table_args__ = (UniqueConstraint("region", "slug"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    region: Mapped[str] = mapped_column(String(64), index=True)
+    slug: Mapped[str] = mapped_column(String(96))
+    title: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)        # per locale
+    category: Mapped[str] = mapped_column(String(64))
+    tags: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    place_id: Mapped[str | None] = mapped_column(ForeignKey("places.id"))
+    start_at: Mapped[datetime] = mapped_column(index=True)
+    end_at: Mapped[datetime | None] = mapped_column()
+    ticket_required: Mapped[bool] = mapped_column(default=False)
+    ticket_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str | None] = mapped_column(String(3))
+    age_limit: Mapped[int | None] = mapped_column(Integer)
+    language: Mapped[str | None] = mapped_column(String(16))
+    booking_source: Mapped[str | None] = mapped_column(String(200))
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class Offering(_Provenance, Base):
+    """Something that can be reserved, rented, bought or booked: a table at
+    a restaurant, a ski set, a guided day, a rafting trip. Sold through the
+    transaction layer by `provider`; `place` is where it happens (optional)."""
+
+    __tablename__ = "offerings"
+    __table_args__ = (UniqueConstraint("region", "slug"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    region: Mapped[str] = mapped_column(String(64), index=True)
+    slug: Mapped[str] = mapped_column(String(96))
+    service_type: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    place_id: Mapped[str | None] = mapped_column(ForeignKey("places.id"))
+    provider_id: Mapped[str | None] = mapped_column(ForeignKey("external_providers.id"))
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    price_from: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str | None] = mapped_column(String(3))
+    active: Mapped[bool] = mapped_column(default=True)
+
+
+class AvailabilitySlot(Base):
+    """Bookable capacity of an offering. Deterministic demo inventory today,
+    provider-synchronised later. The bot never claims availability that is
+    not recorded here or returned by a provider."""
+
+    __tablename__ = "availability"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    offering_id: Mapped[str] = mapped_column(ForeignKey("offerings.id", ondelete="CASCADE"), index=True)
+    starts_at: Mapped[datetime] = mapped_column()
+    ends_at: Mapped[datetime] = mapped_column()
+    capacity: Mapped[int] = mapped_column(Integer)
+    remaining: Mapped[int] = mapped_column(Integer)
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # e.g. {"languages": ["ru"]}
+    source: Mapped[str] = mapped_column(String(255), default="unknown")
+    last_verified_at: Mapped[datetime | None] = mapped_column()
+
+
+class ItineraryItem(Base):
+    """One entry of a stay's trip plan. Saved/shortlisted items carry their
+    own lightweight status; items linked to a quote or action never store a
+    status of their own - it is read from the quote/action."""
+
+    __tablename__ = "itinerary_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    stay_id: Mapped[str] = mapped_column(ForeignKey("stays.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))             # taxonomy category, e.g. FOOD, TRANSPORT
+    title: Mapped[str] = mapped_column(String(300))
+    status: Mapped[ItemStatus] = mapped_column(_enum(ItemStatus), default=ItemStatus.SAVED)
+    starts_at: Mapped[datetime | None] = mapped_column()
+    place_id: Mapped[str | None] = mapped_column(ForeignKey("places.id"))
+    event_id: Mapped[str | None] = mapped_column(ForeignKey("events.id"))
+    offering_id: Mapped[str | None] = mapped_column(ForeignKey("offerings.id"))
+    quote_id: Mapped[str | None] = mapped_column(ForeignKey("quotes.id"))
+    action_id: Mapped[str | None] = mapped_column(ForeignKey("actions.id"))
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
 
 # ---------------------------------------------------- Core v1 aliases

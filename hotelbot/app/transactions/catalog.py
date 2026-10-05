@@ -19,13 +19,13 @@ from app.db.models import RequestType
 from app.text import latin_to_cyrillic
 
 PROVIDER_TYPES = ("transport", "restaurant", "activities", "ski_rental", "car_rental", "spa", "tickets",
-                  "food_delivery", "other")
+                  "food_delivery", "guide", "nightlife", "other")
 
 
 @dataclass(frozen=True)
 class FieldSpec:
     key: str
-    kind: str                    # datetime | count | place | text
+    kind: str                    # datetime | count | place | text | language | place_ref
     labels: dict[str, str]
     required: bool = True
 
@@ -36,6 +36,8 @@ class ServiceSpec:
     domain: str                  # provider_type that can fulfil it
     labels: dict[str, str]
     fields: tuple[FieldSpec, ...]
+    # Phrases (folded matching, "*" = prefix) that ask for this service.
+    keywords: tuple[str, ...] = ()
 
 
 _WHEN = {"en": "time", "cnr": "vrijeme", "ru": "время"}
@@ -51,16 +53,30 @@ _TRANSPORT_FIELDS = (
 _SPECS = [
     ServiceSpec("airport_transfer", "transport",
                 {"en": "airport transfer", "cnr": "transfer do aerodroma", "ru": "трансфер в аэропорт"},
-                _TRANSPORT_FIELDS),
-    ServiceSpec("taxi", "transport", {"en": "taxi", "cnr": "taksi", "ru": "такси"}, _TRANSPORT_FIELDS),
+                _TRANSPORT_FIELDS,
+                keywords=("airport transfer", "transfer", "shuttle", "pick us up", "pick me up", "transfer do aerodrom*", "transfer*", "трансфер*")),
+    ServiceSpec("taxi", "transport", {"en": "taxi", "cnr": "taksi", "ru": "такси"}, _TRANSPORT_FIELDS,
+                keywords=("taxi", "cab", "ride to", "taksi", "такси")),
     ServiceSpec("restaurant_reservation", "restaurant",
-                {"en": "restaurant reservation", "cnr": "rezervacija restorana", "ru": "бронирование ресторана"},
-                (FieldSpec("reservation_time", "datetime", _WHEN), FieldSpec("party_size", "count", _GUESTS))),
+                {"en": "table reservation", "cnr": "rezervacija stola", "ru": "бронирование столика"},
+                (FieldSpec("venue", "place_ref", {"en": "venue", "cnr": "mjesto", "ru": "заведение"}),
+                 FieldSpec("reservation_time", "datetime", _WHEN), FieldSpec("party_size", "count", _GUESTS)),
+                keywords=("table for", "book a table", "reserve a table", "table at", "sto za", "stol za", "rezervis* sto", "столик*")),
+    ServiceSpec("bar_table", "nightlife",
+                {"en": "bar table", "cnr": "rezervacija stola u baru", "ru": "столик в баре"},
+                (FieldSpec("venue", "place_ref", {"en": "venue", "cnr": "mjesto", "ru": "заведение"}),
+                 FieldSpec("reservation_time", "datetime", _WHEN), FieldSpec("party_size", "count", _GUESTS)),
+                keywords=("table at the bar", "bar table", "sto u baru", "столик в бар*")),
+    ServiceSpec("guide_booking", "guide", {"en": "guide", "cnr": "vodič", "ru": "гид"},
+                (FieldSpec("start_time", "datetime", _WHEN), FieldSpec("party_size", "count", _GUESTS),
+                 FieldSpec("language", "language", {"en": "language", "cnr": "jezik", "ru": "язык"}, required=False)),
+                keywords=("guide", "tour guide", "vodic*", "гид*", "экскурсовод*")),
     ServiceSpec("activity_booking", "activities", {"en": "activity", "cnr": "aktivnost", "ru": "экскурсия"},
                 (FieldSpec("activity", "text", {"en": "activity", "cnr": "aktivnost", "ru": "активность"}),
                  FieldSpec("start_time", "datetime", _WHEN), FieldSpec("party_size", "count", _GUESTS))),
     ServiceSpec("ski_rental", "ski_rental", {"en": "ski rental", "cnr": "najam skija", "ru": "прокат лыж"},
-                (FieldSpec("start_time", "datetime", _WHEN), FieldSpec("party_size", "count", _GUESTS))),
+                (FieldSpec("start_time", "datetime", _WHEN), FieldSpec("party_size", "count", _GUESTS)),
+                keywords=("skis", "ski rental", "rent skis", "ski equipment", "ski set*", "skije", "skija", "najam skija", "ski oprem*", "лыж*", "прокат лыж*")),
     ServiceSpec("car_rental", "car_rental", {"en": "car rental", "cnr": "najam automobila", "ru": "аренда автомобиля"},
                 (FieldSpec("start_time", "datetime", _WHEN),)),
     ServiceSpec("spa_booking", "spa", {"en": "spa booking", "cnr": "spa termin", "ru": "запись в спа"},
@@ -81,6 +97,9 @@ TOPIC_SERVICES: dict[RequestType, tuple[str, ...]] = {
     RequestType.RESTAURANT: ("restaurant_reservation",),
 }
 
+# Fields of kind place_ref may only reference places of these categories.
+VENUE_CATEGORIES = {"restaurant_reservation": ("FOOD",), "bar_table": ("NIGHTLIFE",)}
+
 
 def localized(labels: dict[str, str], locale: str) -> str:
     if locale == "cnr-Cyrl":
@@ -91,3 +110,11 @@ def localized(labels: dict[str, str], locale: str) -> str:
 def service_label(service_type: str, locale: str) -> str:
     spec = SERVICE_CATALOG.get(service_type)
     return localized(spec.labels, locale) if spec else service_type.replace("_", " ")
+
+
+def detect_services(text: str) -> list[str]:
+    """Service types the message asks for, by keyword (catalogue order)."""
+    from app.text import contains_phrase, fold
+
+    folded = fold(text)
+    return [spec.key for spec in _SPECS if any(contains_phrase(folded, k) for k in spec.keywords)]

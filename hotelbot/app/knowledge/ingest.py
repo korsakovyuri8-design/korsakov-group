@@ -17,13 +17,14 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-import yaml
+from functools import lru_cache
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import ExternalProvider, KnowledgeDocument, Property
 from app.knowledge.schemas import KnowledgePack
 from app.observability import log_event
+from app.yamlio import yaml_load
 
 
 @dataclass
@@ -40,8 +41,14 @@ class IngestReport:
 
 
 def load_pack(path: str | Path) -> KnowledgePack:
+    p = Path(path)
+    return _load_pack_cached(str(p.resolve()), p.stat().st_mtime_ns)
+
+
+@lru_cache(maxsize=64)
+def _load_pack_cached(path: str, _mtime: int) -> KnowledgePack:
     raw = Path(path).read_text(encoding="utf-8")
-    data = json.loads(raw) if str(path).endswith(".json") else yaml.safe_load(raw)
+    data = json.loads(raw) if path.endswith(".json") else yaml_load(raw)
     return KnowledgePack.model_validate(data)
 
 
@@ -67,6 +74,8 @@ def _upsert_property(session: Session, pack: KnowledgePack) -> Property:
         "whatsapp_phone_number_id": info.whatsapp_phone_number_id,
         "policy": pack.policy.model_dump(),
         "pack_version": info.version,
+        "region": info.region,
+        "location": info.location,
     }
     session.flush()
     return prop

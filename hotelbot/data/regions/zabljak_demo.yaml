@@ -1,0 +1,520 @@
+# =============================================================================
+#  SYNTHETIC DEVELOPMENT DATA - NOT REAL BUSINESSES
+# =============================================================================
+#  Every place, event, provider, price, schedule and availability below is
+#  invented to exercise the Local Travel Infrastructure Layer. Names are
+#  fictional ("Demo ..."). Real geography (Žabljak, Black Lake, Savin Kuk,
+#  Podgorica) is used only for orientation. Replace with verified data,
+#  partner feeds or provider integrations before any real use.
+#
+#  Deliberate variety (each one is exercised by an evaluation scenario):
+#   - Konoba Demo Durmitor is closed on Mondays; its kitchen closes at 22:30
+#   - Restoran Demo Ponoć keeps its kitchen open until midnight Fri/Sat
+#   - Restoran Demo Jezero requires a reservation; fully vegetarian/vegan-friendly
+#   - Bar Demo Koktel is open late (last entry 01:30) and lively
+#   - Ski Demo Mali rents only 3 ski sets per slot; Ski Demo Savin has 20
+#   - Guide Mila (Russian) is unavailable on Sundays; guide Ivan (Russian/English) is
+#   - Demo Apoteka Centar is closed on Sundays; Demo Apoteka Sjever is open
+#   - "New Year concert" is in the past and must never be recommended
+# =============================================================================
+
+region:
+  slug: zabljak-demo
+  name: "Žabljak area (synthetic data)"
+  timezone: Europe/Podgorica
+  center: {lat: 43.1544, lon: 19.1225}
+  source: synthetic-dev-dataset
+  synthetic: true
+  verified_at: "2026-09-25"
+
+providers:
+  - slug: demo-tables
+    name: "Demo Tables (synthetic)"
+    provider_type: restaurant
+    integration_type: mock
+    services: [restaurant_reservation]
+    config:
+      currency: EUR
+      pricing: {base: 0}
+      validity_minutes: 15
+      conditions: "No deposit. The table is held for 15 minutes."
+      callback_secret_env: DEMO_TABLES_CALLBACK_SECRET
+  - slug: demo-bar-tables
+    name: "Demo Bar Tables (synthetic)"
+    provider_type: nightlife
+    integration_type: mock
+    services: [bar_table]
+    config:
+      currency: EUR
+      pricing: {base: 0}
+      validity_minutes: 15
+      conditions: "Minimum spend 40 EUR per table."
+  - slug: demo-ski-rental
+    name: "Demo Ski Rental (synthetic)"
+    provider_type: ski_rental
+    integration_type: mock
+    services: [ski_rental]
+    config:
+      currency: EUR
+      pricing: {base: 25, per_extra_person: 25}
+      validity_minutes: 15
+      conditions: "Per person per day: skis, boots and poles. ID required at pickup."
+  - slug: demo-guides
+    name: "Demo Mountain Guides (synthetic)"
+    provider_type: guide
+    integration_type: mock
+    services: [guide_booking]
+    config:
+      currency: EUR
+      pricing: {base: 120, per_extra_person: 10}
+      validity_minutes: 15
+      conditions: "Full day (6 hours). Free cancellation up to 24 hours before."
+
+places:
+  # ------------------------------------------------------------------ FOOD
+  - slug: konoba-demo-durmitor
+    name: "Konoba Demo Durmitor"
+    subcategory: konoba
+    tags: [local, traditional, cozy]
+    description: {en: "Traditional Montenegrin tavern: lamb under the sača, kačamak, local cheese.",
+                  cnr: "Tradicionalna crnogorska konoba: jagnjetina ispod sača, kačamak, domaći sir."}
+    attributes: {cuisine: [montenegrin], price_range: 2, vegetarian_options: true, vegan_options: false,
+                 gluten_free_options: false, reservation_supported: true, walk_in_supported: true,
+                 outdoor_seating: true, children_allowed: true, child_friendly: true, pets_allowed: true,
+                 wheelchair_access: false, noise_level: moderate}
+    location: {lat: 43.1550, lon: 19.1201, address: "Demo street 1, Žabljak"}
+    hours:
+      weekly: {mon: [], tue: [["12:00", "23:00"]], wed: [["12:00", "23:00"]], thu: [["12:00", "23:00"]],
+               fri: [["12:00", "23:00"]], sat: [["12:00", "23:00"]], sun: [["12:00", "23:00"]]}
+      kitchen: {mon: [], tue: [["12:00", "22:30"]], wed: [["12:00", "22:30"]], thu: [["12:00", "22:30"]],
+                fri: [["12:00", "22:30"]], sat: [["12:00", "22:30"]], sun: [["12:00", "22:30"]]}
+
+  - slug: restoran-demo-ponoc
+    name: "Restoran Demo Ponoć"
+    subcategory: konoba
+    tags: [local, late, grill]
+    description: {en: "Grill and Montenegrin dishes, kitchen open late at weekends.",
+                  cnr: "Roštilj i crnogorska jela, kuhinja radi do kasno vikendom."}
+    attributes: {cuisine: [montenegrin, grill], price_range: 2, vegetarian_options: true, vegan_options: false,
+                 reservation_supported: true, walk_in_supported: true, children_allowed: true,
+                 wheelchair_access: true, pets_allowed: false, noise_level: lively}
+    location: {lat: 43.1538, lon: 19.1240, address: "Demo square 4, Žabljak"}
+    hours:
+      weekly: {mon: [["13:00", "23:00"]], tue: [["13:00", "23:00"]], wed: [["13:00", "23:00"]],
+               thu: [["13:00", "23:00"]], fri: [["13:00", "01:00"]], sat: [["13:00", "01:00"]], sun: [["13:00", "23:00"]]}
+      kitchen: {mon: [["13:00", "22:00"]], tue: [["13:00", "22:00"]], wed: [["13:00", "22:00"]],
+                thu: [["13:00", "22:00"]], fri: [["13:00", "00:00"]], sat: [["13:00", "00:00"]], sun: [["13:00", "22:00"]]}
+
+  - slug: restoran-demo-jezero
+    name: "Restoran Demo Jezero"
+    subcategory: restaurant
+    tags: [view, healthy]
+    description: {en: "Lakeside restaurant with many vegetarian and vegan dishes. Reservation required.",
+                  cnr: "Restoran pored jezera sa mnogo vegetarijanskih i veganskih jela. Rezervacija obavezna."}
+    attributes: {cuisine: [international, mediterranean], price_range: 3, vegetarian_options: true,
+                 vegan_options: true, gluten_free_options: true, reservation_supported: true,
+                 reservation_required: true, walk_in_supported: false, outdoor_seating: true,
+                 children_allowed: true, wheelchair_access: true, accessible_toilet: true, pets_allowed: false}
+    location: {lat: 43.1460, lon: 19.0960, address: "Black Lake road, Žabljak"}
+    hours:
+      weekly: {mon: [["12:00", "22:00"]], tue: [["12:00", "22:00"]], wed: [["12:00", "22:00"]], thu: [["12:00", "22:00"]],
+               fri: [["12:00", "22:00"]], sat: [["12:00", "22:00"]], sun: [["12:00", "22:00"]]}
+      kitchen: {mon: [["12:00", "21:30"]], tue: [["12:00", "21:30"]], wed: [["12:00", "21:30"]], thu: [["12:00", "21:30"]],
+                fri: [["12:00", "21:30"]], sat: [["12:00", "21:30"]], sun: [["12:00", "21:30"]]}
+
+  - slug: pizzeria-demo
+    name: "Pizzeria Demo"
+    subcategory: fast_food
+    tags: [pizza, takeaway]
+    attributes: {cuisine: [pizza, italian], price_range: 1, vegetarian_options: true, vegan_options: true,
+                 takeaway_supported: true, delivery_supported: true, reservation_supported: false,
+                 children_allowed: true, wheelchair_access: true}
+    location: {lat: 43.1547, lon: 19.1230}
+    hours:
+      weekly: {mon: [["11:00", "00:00"]], tue: [["11:00", "00:00"]], wed: [["11:00", "00:00"]], thu: [["11:00", "00:00"]],
+               fri: [["11:00", "00:00"]], sat: [["11:00", "00:00"]], sun: [["11:00", "00:00"]]}
+      kitchen: {mon: [["11:00", "23:30"]], tue: [["11:00", "23:30"]], wed: [["11:00", "23:30"]], thu: [["11:00", "23:30"]],
+                fri: [["11:00", "23:30"]], sat: [["11:00", "23:30"]], sun: [["11:00", "23:30"]]}
+
+  - slug: kafic-demo-centar
+    name: "Kafić Demo Centar"
+    subcategory: cafe
+    tags: [coffee, breakfast, wifi]
+    attributes: {price_range: 1, vegetarian_options: true, wifi: true, power_outlets: true, children_allowed: true,
+                 pets_allowed: true, outdoor_seating: true}
+    location: {lat: 43.1545, lon: 19.1222}
+    hours:
+      weekly: {mon: [["07:00", "22:00"]], tue: [["07:00", "22:00"]], wed: [["07:00", "22:00"]], thu: [["07:00", "22:00"]],
+               fri: [["07:00", "23:00"]], sat: [["07:00", "23:00"]], sun: [["08:00", "22:00"]]}
+
+  - slug: pekara-demo
+    name: "Pekara Demo"
+    subcategory: bakery
+    attributes: {price_range: 1, vegetarian_options: true, takeaway_supported: true}
+    location: {lat: 43.1541, lon: 19.1219}
+    hours:
+      weekly: {mon: [["06:00", "20:00"]], tue: [["06:00", "20:00"]], wed: [["06:00", "20:00"]], thu: [["06:00", "20:00"]],
+               fri: [["06:00", "20:00"]], sat: [["06:00", "20:00"]], sun: [["07:00", "14:00"]]}
+
+  # ------------------------------------------------------------- NIGHTLIFE
+  - slug: bar-demo-koktel
+    name: "Bar Demo Koktel"
+    subcategory: cocktail_bar
+    tags: [lively, cocktails, dj]
+    attributes: {noise_level: lively, music_type: [house, pop], dj: true, live_music: false, age_restriction: 18,
+                 dress_code: smart casual, table_booking: true, reservation_supported: true, average_price: 9,
+                 indoor: true, smoking_policy: outdoor terrace only}
+    location: {lat: 43.1536, lon: 19.1228}
+    hours:
+      weekly: {mon: [], tue: [], wed: [["19:00", "02:00"]], thu: [["19:00", "02:00"]], fri: [["19:00", "02:00"]],
+               sat: [["19:00", "02:00"]], sun: [["19:00", "00:00"]]}
+      last_entry: "01:30"
+
+  - slug: pub-demo
+    name: "Pub Demo"
+    subcategory: pub
+    tags: [quiet, sports]
+    attributes: {noise_level: quiet, live_music: false, sports_tv: true, average_price: 4, reservation_supported: false}
+    location: {lat: 43.1549, lon: 19.1235}
+    hours:
+      weekly: {mon: [["16:00", "00:00"]], tue: [["16:00", "00:00"]], wed: [["16:00", "00:00"]], thu: [["16:00", "00:00"]],
+               fri: [["16:00", "01:00"]], sat: [["16:00", "01:00"]], sun: [["16:00", "00:00"]]}
+
+  - slug: club-demo
+    name: "Club Demo"
+    subcategory: nightclub
+    tags: [lively, dancing]
+    attributes: {noise_level: very_lively, dj: true, age_restriction: 21, cover_charge: 10, dress_code: no sportswear}
+    location: {lat: 43.1530, lon: 19.1250}
+    hours:
+      weekly: {fri: [["23:00", "04:00"]], sat: [["23:00", "04:00"]]}
+      last_entry: "03:00"
+
+  - slug: vinski-bar-demo
+    name: "Vinski Bar Demo"
+    subcategory: wine_bar
+    tags: [quiet, wine, jazz]
+    attributes: {noise_level: quiet, live_music: true, music_type: [jazz], average_price: 6, reservation_supported: false}
+    location: {lat: 43.1552, lon: 19.1214}
+    hours:
+      weekly: {mon: [], tue: [["17:00", "23:00"]], wed: [["17:00", "23:00"]], thu: [["17:00", "23:00"]],
+               fri: [["17:00", "00:00"]], sat: [["17:00", "00:00"]], sun: [["17:00", "23:00"]]}
+
+  # ------------------------------------------------- CULTURE / ATTRACTIONS
+  - slug: muzej-demo-durmitor
+    name: "Demo Durmitor Museum"
+    subcategory: museum
+    tags: [history, nature, indoor]
+    attributes: {ticket_required: true, ticket_price: 3, currency: EUR, estimated_visit_minutes: 60,
+                 wheelchair_access: true, languages: [cnr, en], child_friendly: true}
+    location: {lat: 43.1548, lon: 19.1209}
+    hours:
+      weekly: {mon: [], tue: [["10:00", "17:00"]], wed: [["10:00", "17:00"]], thu: [["10:00", "17:00"]],
+               fri: [["10:00", "17:00"]], sat: [["10:00", "17:00"]], sun: [["10:00", "15:00"]]}
+      last_entry: "16:30"
+
+  - slug: crkva-demo
+    name: "Demo Church of St. Preobraženje"
+    subcategory: religious_site
+    tags: [architecture, history]
+    attributes: {ticket_required: false, estimated_visit_minutes: 20, dress_code: shoulders covered}
+    location: {lat: 43.1557, lon: 19.1226}
+    hours:
+      weekly: {mon: [["08:00", "19:00"]], tue: [["08:00", "19:00"]], wed: [["08:00", "19:00"]], thu: [["08:00", "19:00"]],
+               fri: [["08:00", "19:00"]], sat: [["08:00", "19:00"]], sun: [["07:00", "19:00"]]}
+
+  - slug: crno-jezero-demo
+    name: "Black Lake (demo entry)"
+    subcategory: lake
+    tags: [nature, walk, family]
+    attributes: {ticket_required: true, ticket_price: 3, currency: EUR, estimated_visit_minutes: 90,
+                 child_friendly: true, stroller_access: true, pets_allowed: true, weather_dependent: true}
+    location: {lat: 43.1452, lon: 19.0930}
+    hours:
+      weekly: {mon: [["00:00", "00:00"]], tue: [["00:00", "00:00"]], wed: [["00:00", "00:00"]], thu: [["00:00", "00:00"]],
+               fri: [["00:00", "00:00"]], sat: [["00:00", "00:00"]], sun: [["00:00", "00:00"]]}
+
+  - slug: vidikovac-demo
+    name: "Demo Viewpoint Kurozeb"
+    subcategory: viewpoint
+    tags: [view, nature]
+    attributes: {ticket_required: false, estimated_visit_minutes: 30, weather_dependent: true}
+    location: {lat: 43.1610, lon: 19.1300}
+
+  - slug: spa-demo
+    name: "Demo Mountain Spa"
+    subcategory: spa
+    tags: [sauna, massage]
+    attributes: {reservation_required: true, price_range: 3, children_allowed: false}
+    location: {lat: 43.1560, lon: 19.1190}
+    hours:
+      weekly: {mon: [["10:00", "21:00"]], tue: [["10:00", "21:00"]], wed: [["10:00", "21:00"]], thu: [["10:00", "21:00"]],
+               fri: [["10:00", "21:00"]], sat: [["10:00", "21:00"]], sun: [["10:00", "21:00"]]}
+
+  # ------------------------------------------------------------- SHOPPING
+  - slug: market-demo
+    name: "Demo Supermarket"
+    subcategory: supermarket
+    attributes: {payment: [cash, card]}
+    location: {lat: 43.1540, lon: 19.1232}
+    hours:
+      weekly: {mon: [["07:00", "22:00"]], tue: [["07:00", "22:00"]], wed: [["07:00", "22:00"]], thu: [["07:00", "22:00"]],
+               fri: [["07:00", "22:00"]], sat: [["07:00", "22:00"]], sun: [["08:00", "14:00"]]}
+
+  - slug: elektronika-demo
+    name: "Demo Electronics & Phones"
+    subcategory: electronics_store
+    tags: [chargers, adapters, sim]
+    attributes: {sells: [phone chargers, power adapters, sim cards, cables]}
+    location: {lat: 43.1543, lon: 19.1238}
+    hours:
+      weekly: {mon: [["09:00", "19:00"]], tue: [["09:00", "19:00"]], wed: [["09:00", "19:00"]], thu: [["09:00", "19:00"]],
+               fri: [["09:00", "19:00"]], sat: [["09:00", "14:00"]], sun: []}
+
+  - slug: planinar-demo
+    name: "Demo Outdoor Shop"
+    subcategory: outdoor_store
+    tags: [hiking boots, outdoor gear]
+    location: {lat: 43.1546, lon: 19.1205}
+    hours:
+      weekly: {mon: [["09:00", "19:00"]], tue: [["09:00", "19:00"]], wed: [["09:00", "19:00"]], thu: [["09:00", "19:00"]],
+               fri: [["09:00", "19:00"]], sat: [["09:00", "17:00"]], sun: [["10:00", "14:00"]]}
+
+  # ------------------------------------------- ESSENTIAL / HEALTH / MONEY
+  - slug: apoteka-demo-centar
+    name: "Demo Apoteka Centar"
+    subcategory: pharmacy
+    location: {lat: 43.1542, lon: 19.1227}
+    hours:
+      weekly: {mon: [["08:00", "20:00"]], tue: [["08:00", "20:00"]], wed: [["08:00", "20:00"]], thu: [["08:00", "20:00"]],
+               fri: [["08:00", "20:00"]], sat: [["08:00", "15:00"]], sun: []}
+
+  - slug: apoteka-demo-sjever
+    name: "Demo Apoteka Sjever"
+    subcategory: pharmacy
+    location: {lat: 43.1580, lon: 19.1260}
+    hours:
+      weekly: {mon: [["09:00", "21:00"]], tue: [["09:00", "21:00"]], wed: [["09:00", "21:00"]], thu: [["09:00", "21:00"]],
+               fri: [["09:00", "21:00"]], sat: [["09:00", "21:00"]], sun: [["10:00", "18:00"]]}
+
+  - slug: dom-zdravlja-demo
+    name: "Demo Health Centre"
+    subcategory: clinic
+    attributes: {emergency_department: false, note: "For emergencies call the emergency number from your property's emergency information."}
+    location: {lat: 43.1565, lon: 19.1245}
+    hours:
+      weekly: {mon: [["07:00", "20:00"]], tue: [["07:00", "20:00"]], wed: [["07:00", "20:00"]], thu: [["07:00", "20:00"]],
+               fri: [["07:00", "20:00"]], sat: [["08:00", "13:00"]], sun: []}
+
+  - slug: bankomat-demo
+    name: "Demo ATM (town square)"
+    subcategory: atm
+    attributes: {currency: EUR, fee_note: "Foreign cards may be charged a fee by the bank."}
+    location: {lat: 43.1544, lon: 19.1226}
+    hours:
+      weekly: {mon: [["00:00", "00:00"]], tue: [["00:00", "00:00"]], wed: [["00:00", "00:00"]], thu: [["00:00", "00:00"]],
+               fri: [["00:00", "00:00"]], sat: [["00:00", "00:00"]], sun: [["00:00", "00:00"]]}
+
+  - slug: mjenjacnica-demo
+    name: "Demo Exchange Office"
+    subcategory: currency_exchange
+    location: {lat: 43.1539, lon: 19.1229}
+    hours:
+      weekly: {mon: [["08:00", "18:00"]], tue: [["08:00", "18:00"]], wed: [["08:00", "18:00"]], thu: [["08:00", "18:00"]],
+               fri: [["08:00", "18:00"]], sat: [["09:00", "13:00"]], sun: []}
+
+  - slug: sim-demo
+    name: "Demo Mobile Shop (SIM / eSIM)"
+    subcategory: sim_shop
+    attributes: {esim: true, tourist_packages: true}
+    location: {lat: 43.1543, lon: 19.1236}
+    hours:
+      weekly: {mon: [["09:00", "19:00"]], tue: [["09:00", "19:00"]], wed: [["09:00", "19:00"]], thu: [["09:00", "19:00"]],
+               fri: [["09:00", "19:00"]], sat: [["09:00", "14:00"]], sun: []}
+
+  - slug: coworking-demo
+    name: "Demo Cowork Durmitor"
+    subcategory: coworking
+    attributes: {wifi: true, power_outlets: true, price_per_hour: 4, currency: EUR, printing: true, quiet: true}
+    location: {lat: 43.1551, lon: 19.1218}
+    hours:
+      weekly: {mon: [["08:00", "20:00"]], tue: [["08:00", "20:00"]], wed: [["08:00", "20:00"]], thu: [["08:00", "20:00"]],
+               fri: [["08:00", "20:00"]], sat: [["10:00", "16:00"]], sun: []}
+
+  - slug: garderoba-demo
+    name: "Demo Luggage Storage (bus station)"
+    subcategory: luggage_storage
+    attributes: {price_per_bag_per_day: 3, currency: EUR}
+    location: {lat: 43.1520, lon: 19.1170}
+    hours:
+      weekly: {mon: [["07:00", "21:00"]], tue: [["07:00", "21:00"]], wed: [["07:00", "21:00"]], thu: [["07:00", "21:00"]],
+               fri: [["07:00", "21:00"]], sat: [["07:00", "21:00"]], sun: [["07:00", "21:00"]]}
+
+  - slug: autobuska-demo
+    name: "Demo Bus Station"
+    subcategory: bus_station
+    location: {lat: 43.1519, lon: 19.1168}
+    hours:
+      weekly: {mon: [["06:00", "22:00"]], tue: [["06:00", "22:00"]], wed: [["06:00", "22:00"]], thu: [["06:00", "22:00"]],
+               fri: [["06:00", "22:00"]], sat: [["06:00", "22:00"]], sun: [["06:00", "22:00"]]}
+
+  - slug: punjac-demo
+    name: "Demo EV Charger (town car park)"
+    subcategory: ev_charger
+    attributes: {connectors: [Type 2, CCS], power_kw: 50}
+    location: {lat: 43.1532, lon: 19.1190}
+    hours:
+      weekly: {mon: [["00:00", "00:00"]], tue: [["00:00", "00:00"]], wed: [["00:00", "00:00"]], thu: [["00:00", "00:00"]],
+               fri: [["00:00", "00:00"]], sat: [["00:00", "00:00"]], sun: [["00:00", "00:00"]]}
+
+  - slug: parking-demo
+    name: "Demo Town Car Park"
+    subcategory: car_park
+    attributes: {paid: true, price_per_hour: 0.5, currency: EUR}
+    location: {lat: 43.1533, lon: 19.1192}
+
+  # ------------------------------------------------------- RENTAL / GUIDE
+  - slug: ski-demo-mali
+    name: "Ski Demo Mali"
+    subcategory: ski_rental
+    attributes: {sets_total: 3}
+    location: {lat: 43.1547, lon: 19.1211}
+    hours:
+      seasonal: [{from: "12-15", to: "04-10", weekly: {mon: [["08:30", "17:00"]], tue: [["08:30", "17:00"]],
+                  wed: [["08:30", "17:00"]], thu: [["08:30", "17:00"]], fri: [["08:30", "17:00"]],
+                  sat: [["08:00", "17:00"]], sun: [["08:00", "17:00"]]}}]
+      weekly: {}
+
+  - slug: ski-demo-savin
+    name: "Ski Demo Savin Kuk"
+    subcategory: ski_rental
+    attributes: {sets_total: 20}
+    location: {lat: 43.1310, lon: 19.0820, address: "Savin Kuk lower station"}
+    hours:
+      seasonal: [{from: "12-15", to: "04-10", weekly: {mon: [["08:00", "16:30"]], tue: [["08:00", "16:30"]],
+                  wed: [["08:00", "16:30"]], thu: [["08:00", "16:30"]], fri: [["08:00", "16:30"]],
+                  sat: [["08:00", "16:30"]], sun: [["08:00", "16:30"]]}}]
+      weekly: {}
+
+events:
+  - slug: jazz-friday-jan
+    title: {en: "Live jazz evening", cnr: "Džez veče uživo", ru: "Вечер живого джаза"}
+    category: concert
+    tags: [jazz, live music]
+    place: vinski-bar-demo
+    start: "2027-01-15T21:00:00"
+    end: "2027-01-15T23:30:00"
+  - slug: winter-concert-jan
+    title: {en: "Winter festival concert", cnr: "Koncert zimskog festivala", ru: "Концерт зимнего фестиваля"}
+    category: concert
+    tags: [festival, live music]
+    start: "2027-01-16T20:00:00"
+    end: "2027-01-16T23:00:00"
+    ticket_required: true
+    ticket_price: 15
+    currency: EUR
+  - slug: farmers-market-jan
+    title: {en: "Farmers' market", cnr: "Pijaca domaćih proizvoda", ru: "Фермерский рынок"}
+    category: market
+    tags: [local food, market]
+    start: "2027-01-16T08:00:00"
+    end: "2027-01-16T13:00:00"
+  - slug: new-year-concert
+    title: {en: "New Year concert", cnr: "Novogodišnji koncert", ru: "Новогодний концерт"}
+    category: concert
+    tags: [live music]
+    start: "2026-12-31T21:00:00"
+    end: "2027-01-01T02:00:00"
+  - slug: dj-night-oct
+    title: {en: "DJ night", cnr: "DJ veče", ru: "DJ-вечеринка"}
+    category: nightlife_event
+    tags: [dj, dancing]
+    place: club-demo
+    start: "2026-10-09T23:00:00"
+    end: "2026-10-10T04:00:00"
+    age_limit: 21
+  - slug: autumn-market-oct
+    title: {en: "Autumn food market", cnr: "Jesenji sajam hrane", ru: "Осенняя ярмарка еды"}
+    category: market
+    tags: [local food, market]
+    start: "2026-10-10T09:00:00"
+    end: "2026-10-10T14:00:00"
+  - slug: rafting-fest-past
+    title: {en: "Summer rafting festival", cnr: "Ljetnji rafting festival", ru: "Летний рафтинг-фестиваль"}
+    category: festival
+    tags: [rafting, outdoor]
+    start: "2026-08-15T10:00:00"
+    end: "2026-08-15T18:00:00"
+
+offerings:
+  - slug: table-konoba-durmitor
+    service_type: restaurant_reservation
+    title: {en: "Table at Konoba Demo Durmitor"}
+    place: konoba-demo-durmitor
+    provider: demo-tables
+    recurring:
+      - {days: [tue, wed, thu, fri, sat, sun], start: "12:00", end: "22:30", capacity: 30, from: "2026-10-01", to: "2027-03-31"}
+  - slug: table-restoran-ponoc
+    service_type: restaurant_reservation
+    title: {en: "Table at Restoran Demo Ponoć"}
+    place: restoran-demo-ponoc
+    provider: demo-tables
+    recurring:
+      - {days: [mon, tue, wed, thu, sun], start: "13:00", end: "22:00", capacity: 24, from: "2026-10-01", to: "2027-03-31"}
+      - {days: [fri, sat], start: "13:00", end: "00:00", capacity: 24, from: "2026-10-01", to: "2027-03-31"}
+  - slug: table-restoran-jezero
+    service_type: restaurant_reservation
+    title: {en: "Table at Restoran Demo Jezero"}
+    place: restoran-demo-jezero
+    provider: demo-tables
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "12:00", end: "21:30", capacity: 40, from: "2026-10-01", to: "2027-03-31"}
+  - slug: table-bar-koktel
+    service_type: bar_table
+    title: {en: "Table at Bar Demo Koktel"}
+    place: bar-demo-koktel
+    provider: demo-bar-tables
+    recurring:
+      - {days: [wed, thu, fri, sat, sun], start: "19:00", end: "01:30", capacity: 24, from: "2026-10-01", to: "2027-03-31"}
+  - slug: skis-mali
+    service_type: ski_rental
+    title: {en: "Ski set at Ski Demo Mali", cnr: "Ski oprema - Ski Demo Mali"}
+    place: ski-demo-mali
+    provider: demo-ski-rental
+    price_from: 25
+    currency: EUR
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "08:30", end: "13:00", capacity: 3, from: "2026-12-15", to: "2027-04-10"}
+  - slug: skis-savin
+    service_type: ski_rental
+    title: {en: "Ski set at Ski Demo Savin Kuk", cnr: "Ski oprema - Ski Demo Savin Kuk"}
+    place: ski-demo-savin
+    provider: demo-ski-rental
+    price_from: 25
+    currency: EUR
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "08:00", end: "13:00", capacity: 20, from: "2026-12-15", to: "2027-04-10"}
+  - slug: guide-ana
+    service_type: guide_booking
+    title: {en: "Guide Ana (English, Montenegrin)"}
+    provider: demo-guides
+    attributes: {languages: [en, cnr], max_party: 8}
+    recurring:
+      - {days: [mon, tue, wed, thu, fri, sat, sun], start: "09:00", end: "15:00", capacity: 1,
+         attributes: {unit: group}, from: "2026-10-01", to: "2027-03-31"}
+  - slug: guide-mila
+    service_type: guide_booking
+    title: {en: "Guide Mila (Russian)"}
+    provider: demo-guides
+    attributes: {languages: [ru], max_party: 8}
+    recurring:   # Mila does not work on Sundays
+      - {days: [mon, tue, wed, thu, fri, sat], start: "09:00", end: "15:00", capacity: 1,
+         attributes: {unit: group}, from: "2026-10-01", to: "2027-03-31"}
+  - slug: guide-ivan
+    service_type: guide_booking
+    title: {en: "Guide Ivan (Russian, English)"}
+    provider: demo-guides
+    attributes: {languages: [ru, en], max_party: 6}
+    recurring:
+      - {days: [sat, sun], start: "09:00", end: "15:00", capacity: 1,
+         attributes: {unit: group}, from: "2026-10-01", to: "2027-03-31"}

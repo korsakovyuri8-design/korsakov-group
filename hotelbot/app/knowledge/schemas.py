@@ -60,6 +60,9 @@ class PackInfo(BaseModel):
     emergency_number: str | None = None
     # Routes inbound WhatsApp messages for this number to this property.
     whatsapp_phone_number_id: str | None = None
+    # Local travel layer: the region pack this property belongs to, and where it is.
+    region: str | None = None
+    location: dict[str, float] | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -138,15 +141,16 @@ class KnowledgePack(BaseModel):
     providers: list[ProviderSpec] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _services_have_providers(self) -> KnowledgePack:
+    def _declared_providers_offer_service(self) -> KnowledgePack:
+        """A service pinned to a provider declared in this pack must be offered
+        by it. Services may also be fulfilled by region-scoped providers
+        (region packs); those are resolved at runtime."""
         if not self.capabilities:
             return self
+        own = {p.slug: p for p in self.providers}
         for svc, cap in self.capabilities.services.items():
-            offering = [p for p in self.providers if svc in p.services]
-            if cap.provider:
-                offering = [p for p in offering if p.slug == cap.provider]
-            if not offering:
-                raise ValueError(f"service {svc!r} has no provider in this pack that offers it")
+            if cap.provider in own and svc not in own[cap.provider].services:
+                raise ValueError(f"provider {cap.provider!r} does not offer service {svc!r}")
         return self
 
     @field_validator("items")

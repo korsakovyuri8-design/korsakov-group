@@ -43,6 +43,26 @@ _DAY_WORDS = [
     (re.compile(r"\b(tomorrow|sutra|zavtra)\b"), 1),
     (re.compile(r"\b(today|tonight|danas|veceras|segodnya)\b"), 0),
 ]
+# Weekdays (en / cnr incl. inflections / ru folded) -> 0=Monday
+_WEEKDAYS = [
+    (0, r"monday|ponedjelj\w*|ponedelj\w*|ponedelnik\w*"),
+    (1, r"tuesday|utor\w*|vtornik\w*"),
+    (2, r"wednesday|srijed\w*|sred\w*"),
+    (3, r"thursday|cetvrt\w*|cetverg\w*"),
+    (4, r"friday|petak|petk\w*|pyatnic\w*"),
+    (5, r"saturday|subot\w*|subbot\w*"),
+    (6, r"sunday|nedjelj\w*|nedelj\w*|voskresen\w*"),
+]
+_WEEKDAY_RES = [(n, re.compile(rf"\b(?:{p})\b")) for n, p in _WEEKDAYS]
+# Vague day parts -> a concrete time that is SHOWN to the guest for confirmation.
+DAY_PARTS = [
+    (re.compile(r"\b(morning|ujutru|ujutro|prije podne|utrom|s utra)\b"), time(9, 0)),
+    (re.compile(r"\b(noon|midday|podne|v polden|v obed)\b"), time(12, 0)),
+    (re.compile(r"\b(afternoon|popodne|posle obeda|dnem)\b"), time(15, 0)),
+    (re.compile(r"\b(evening|uvece|navece|vecerom)\b"), time(19, 0)),
+    (re.compile(r"\b(night|tonight|nocu|veceras|nochyu|noch)\b"), time(22, 0)),
+]
+
 _AM = re.compile(r"\b(am|a\.m\.|morning|ujutru|ujutro|izjutra|utra|utrom)\b")
 _PM = re.compile(r"\b(pm|p\.m\.|evening|tonight|uvece|navece|vecera|vecerom|popodne|dnya|afternoon)\b")
 _TIME_RES = [
@@ -68,6 +88,25 @@ _TO_PROPERTY = re.compile(rf"\b(?:to|do|u|v|na)\s+{_PROPERTY_WORDS}\b")
 _BARE_PROPERTY = re.compile(rf"^\s*(?:at\s+|from\s+|iz\s+|ot\s+|ispred\s+)?{_PROPERTY_WORDS}\s*$")
 _NAMED_DEST = re.compile(rf"\b(?:to|do|в|до)\s+({_NAME}(?:\s+{_NAME})*)", re.UNICODE)
 _NAMED_FROM = re.compile(rf"\b(?:from|iz|из|от)\s+({_NAME}(?:\s+{_NAME})*)", re.UNICODE)
+
+
+LANGUAGE_PHRASES = {
+    "ru": ["russian", "russian-speaking", "in russian", "ruski", "ruskom", "na ruskom", "russk*", "na russkom",
+           "русск*", "русскоговорящ*", "на русском"],
+    "en": ["english", "english-speaking", "in english", "engleski", "engleskom", "na engleskom", "anglijsk*",
+           "английск*", "англоговорящ*"],
+    "cnr": ["montenegrin", "serbian", "local language", "crnogorsk*", "srpsk*", "na nasem", "черногорск*", "сербск*"],
+    "de": ["german", "german-speaking", "njemack*", "nemack*", "немецк*"],
+}
+
+
+def parse_language(folded: str) -> str | None:
+    from app.text import contains_phrase
+
+    for code, phrases in LANGUAGE_PHRASES.items():
+        if any(contains_phrase(folded, p) for p in phrases):
+            return code
+    return None
 
 
 @dataclass
@@ -104,6 +143,11 @@ def parse_when(folded: str, today: date) -> WhenParts:
             parts.day = today + timedelta(days=offset)
             break
     if parts.day is None:
+        for weekday, pattern in _WEEKDAY_RES:
+            if pattern.search(folded):
+                parts.day = today + timedelta(days=(weekday - today.weekday()) % 7)
+                break
+    if parts.day is None:
         dates = extract_dates(folded, today)
         if dates:
             parts.day = dates[0][1]
@@ -132,6 +176,12 @@ def parse_when(folded: str, today: date) -> WhenParts:
             break
         if parts.time:
             break
+    if parts.time is None:
+        for pattern, t in DAY_PARTS:
+            if pattern.search(folded):
+                parts.time = t
+                parts.day = parts.day or today   # "this evening"
+                break
     return parts
 
 
@@ -192,6 +242,10 @@ def extract(text: str, spec: ServiceSpec, today: date) -> Extraction:
             for f in spec.fields:
                 if f.kind == "datetime":
                     out.when[f.key] = parts
+    if "language" in kinds and (lang := parse_language(folded)):
+        for f in spec.fields:
+            if f.kind == "language":
+                out.values[f.key] = lang
     if "place" in kinds:
         places, inferred = parse_places(text)
         for f in spec.fields:

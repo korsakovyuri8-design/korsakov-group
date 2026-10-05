@@ -26,6 +26,8 @@ class PropertyRuntime:
     emergency_number: str | None = None
     whatsapp_phone_number_id: str | None = None
     timezone: str = "UTC"
+    region: str | None = None
+    location: tuple[float, float] | None = None   # (lat, lon)
 
 
 class UnknownProperty(LookupError):

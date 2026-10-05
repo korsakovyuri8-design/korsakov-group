@@ -48,7 +48,16 @@ class WebhookExternalProvider:
         self.clock = clock
         self.base_url = str(config.get("base_url") or "").rstrip("/")
         self.timeout = float(config.get("timeout", 10))
-        self._client = client or httpx.Client()
+        self._given = client
+        self._lazy: httpx.Client | None = None
+
+    @property
+    def _client(self) -> httpx.Client:
+        if self._given is not None:
+            return self._given
+        if self._lazy is None:
+            self._lazy = httpx.Client()
+        return self._lazy
 
     # -------------------------------------------------------------- plumbing
     def _headers(self, body: bytes, idempotency_key: str | None) -> dict[str, str]:

@@ -67,7 +67,17 @@ class WebhookExecutor:
     DEFAULT_TIMEOUT = 10.0
 
     def __init__(self, client: httpx.Client | None = None) -> None:
-        self._client = client or httpx.Client()
+        self._given = client
+        self._lazy: httpx.Client | None = None
+
+    @property
+    def _client(self) -> httpx.Client:
+        # Created on first use: building an SSL context is not free.
+        if self._given is not None:
+            return self._given
+        if self._lazy is None:
+            self._lazy = httpx.Client()
+        return self._lazy
 
     def submit(self, action: Action, config: dict[str, Any]) -> ExecutionOutcome:
         url = config.get("url")

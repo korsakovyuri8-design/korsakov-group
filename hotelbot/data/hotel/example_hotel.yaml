@@ -14,6 +14,8 @@ pack:
   timezone: Europe/Podgorica
   default_language: en
   emergency_number: "112"
+  region: zabljak-demo
+  location: {lat: 43.1556, lon: 19.1210}
   source: "synthetic-dev-dataset"
   synthetic: true
   version: "0.2"
@@ -35,6 +37,11 @@ capabilities:
   services:
     airport_transfer: {provider: demo-transfers}
     taxi:             {provider: demo-transfers}
+    # Fulfilled by region-scoped providers (data/regions/zabljak_demo.yaml)
+    restaurant_reservation: {}
+    bar_table: {}
+    ski_rental: {}
+    guide_booking: {}
   integrations: [human_staff]
   external_services: [transport, activities]
 

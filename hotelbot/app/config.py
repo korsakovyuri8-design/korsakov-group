@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     knowledge_path: str = "data/hotel/example_hotel.yaml"
     # Additional properties served by this deployment (JSON list of pack paths).
     extra_pack_paths: list[str] = Field(default_factory=list)
+    # Local travel data: places, events, offerings, regional providers.
+    region_pack_paths: list[str] = Field(default_factory=lambda: ["data/regions/zabljak_demo.yaml"])
     # Minimum retrieval score for an answer to count as grounded.
     grounding_min_score: float = 0.5
 

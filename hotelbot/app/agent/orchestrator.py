@@ -98,7 +98,8 @@ class _Turn:
     succeeded: bool = False
     facts: dict[str, Any] = field(default_factory=dict)  # guest-stated facts in this message
     guest_message_id: str | None = None
-    offered_quote_id: str | None = None   # set when this turn presents a quote awaiting consent
+    # Offers presented in this turn (consent is scoped to them); [] ends the scope.
+    offered_quote_ids: list[str] = field(default_factory=list)
 
     @property
     def state(self) -> dict[str, Any]:
@@ -195,8 +196,8 @@ class Orchestrator:
         elif not self._resolve_pending_offer(turn):
             self._route(turn)
 
-        # Consent is scoped to the offer the bot just made: any other reply ends it.
-        turn.set_state(awaiting_quote=turn.offered_quote_id)
+        # Consent is scoped to the offers the bot just made: any other reply ends it.
+        turn.set_state(awaiting_quotes=list(dict.fromkeys(turn.offered_quote_ids)) or None, awaiting_quote=None)
         self._update_failures(turn)
         if turn.reply:
             convs.add_message(conv, MessageRole.BOT, turn.reply, language=language,
@@ -359,7 +360,7 @@ class Orchestrator:
             # A price offer is not a booking.
             turn.reply = msg.t("quote_pending_status", turn.language, code=quote.code,
                                price=format_price(quote.amount, quote.currency))
-            turn.offered_quote_id = quote.id
+            turn.offered_quote_ids.append(quote.id)
         elif not actions:
             turn.reply = msg.t("no_actions_yet", turn.language)
         elif actions[0].executor == "provider" and self.transactions is not None:

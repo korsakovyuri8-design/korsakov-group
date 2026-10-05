@@ -347,6 +347,57 @@ CATALOG: dict[str, dict[str, str]] = {
     "ask_text": {
         "en": "Please tell me the {field}.", "cnr": "Molim vas, navedite: {field}.", "ru": "Пожалуйста, уточните: {field}.",
     },
+    "which_offer": {
+        "en": "You have several open offers: {offers}. Which should I book? For example \"book {example}\" or \"book all\". Nothing is booked yet.",
+        "cnr": "Imate više otvorenih ponuda: {offers}. Koju da rezervišem? Na primjer \"rezerviši {example}\" ili \"rezerviši sve\". Ništa još nije rezervisano.",
+        "ru": "У вас несколько открытых предложений: {offers}. Какое забронировать? Например, «забронируй {example}» или «забронируй все». Пока ничего не забронировано.",
+    },
+    "which_booking": {
+        "en": "You have several bookings: {bookings}. Which one do you mean?",
+        "cnr": "Imate više rezervacija: {bookings}. Na koju mislite?",
+        "ru": "У вас несколько бронирований: {bookings}. Какое вы имеете в виду?",
+    },
+    "no_availability": {
+        "en": "{service}: nothing is available for that ({reason}). {alternatives}Nothing is booked.",
+        "cnr": "{service}: nema slobodnih mjesta za to ({reason}). {alternatives}Ništa nije rezervisano.",
+        "ru": "{service}: на это время нет мест ({reason}). {alternatives}Ничего не забронировано.",
+    },
+    "alternatives": {
+        "en": "Nearest available: {list}. ", "cnr": "Najbliži slobodni termini: {list}. ",
+        "ru": "Ближайшие свободные варианты: {list}. ",
+    },
+    "reason_no_capacity": {"en": "fully booked", "cnr": "popunjeno", "ru": "всё занято"},
+    "reason_not_offered_at_that_time": {"en": "not offered at that time", "cnr": "nije u ponudi u to vrijeme",
+                                        "ru": "в это время не предлагается"},
+    "reason_language_unavailable": {"en": "nobody available in that language", "cnr": "nema nikoga na tom jeziku",
+                                    "ru": "нет никого с этим языком"},
+    "reason_slot_gone": {"en": "just taken", "cnr": "upravo zauzeto", "ru": "только что заняли"},
+    "saved": {
+        "en": "Saved to your plan: {title}. Nothing is reserved.",
+        "cnr": "Sačuvano u vašem planu: {title}. Ništa nije rezervisano.",
+        "ru": "Сохранено в ваш план: {title}. Ничего не забронировано.",
+    },
+    "not_bookable": {
+        "en": "{title} can't be reserved through me{walkin}. It stays in the list; nothing is reserved.",
+        "cnr": "{title} ne mogu rezervisati{walkin}. Ništa nije rezervisano.",
+        "ru": "{title} забронировать через меня нельзя{walkin}. Ничего не забронировано.",
+    },
+    "walk_in_ok": {"en": " (walk-ins are welcome)", "cnr": " (može i bez rezervacije)", "ru": " (можно прийти без брони)"},
+    "plan_header": {"en": "Your plan{ctx}:", "cnr": "Vaš plan{ctx}:", "ru": "Ваш план{ctx}:"},
+    "plan_empty": {
+        "en": "There is nothing in your plan{ctx} yet.", "cnr": "U vašem planu{ctx} još nema ničega.",
+        "ru": "В вашем плане{ctx} пока ничего нет.",
+    },
+    "trip_header": {
+        "en": "Here is your plan. Each item has its own status - nothing is booked until you confirm it:",
+        "cnr": "Evo vašeg plana. Svaka stavka ima svoj status - ništa nije rezervisano dok ne potvrdite:",
+        "ru": "Вот ваш план. У каждого пункта свой статус — ничего не забронировано, пока вы не подтвердите:",
+    },
+    "trip_footer": {
+        "en": "To book, reply for example \"book {example}\" (or name the item, e.g. \"book the transfer\"), or \"book all\".",
+        "cnr": "Za rezervaciju odgovorite npr. \"rezerviši {example}\" (ili navedite stavku), ili \"rezerviši sve\".",
+        "ru": "Чтобы забронировать, ответьте, например, «забронируй {example}» (или назовите пункт), или «забронируй все».",
+    },
 }
 
 # Back-compat key from Core v1.
@@ -390,3 +441,30 @@ def describe_facts(facts: dict[str, object], locale: str) -> str:
         parts.append(f"{label}: {value}")
     text = "; ".join(parts)
     return latin_to_cyrillic(text) if locale == "cnr-Cyrl" else text
+
+
+# Plan item status labels (effective status read from stored state).
+STATUS_LABELS: dict[str, dict[str, str]] = {
+    "saved": {"en": "saved", "cnr": "sačuvano", "ru": "сохранено"},
+    "shortlisted": {"en": "shortlisted", "cnr": "u užem izboru", "ru": "в списке вариантов"},
+    "proposed": {"en": "proposed", "cnr": "predloženo", "ru": "предложено"},
+    "offered": {"en": "price offered - not booked", "cnr": "ponuda - nije rezervisano", "ru": "есть цена - не забронировано"},
+    "accepted_by_guest": {"en": "sending", "cnr": "šalje se", "ru": "отправляется"},
+    "expired": {"en": "offer expired", "cnr": "ponuda istekla", "ru": "предложение истекло"},
+    "unavailable": {"en": "not available", "cnr": "nije dostupno", "ru": "недоступно"},
+    "proposed_action": {"en": "sending", "cnr": "šalje se", "ru": "отправляется"},
+    "submitted": {"en": "requested - not confirmed", "cnr": "zatraženo - nije potvrđeno", "ru": "запрошено - не подтверждено"},
+    "accepted": {"en": "CONFIRMED by provider", "cnr": "POTVRĐENO", "ru": "ПОДТВЕРЖДЕНО"},
+    "in_progress": {"en": "in progress", "cnr": "u toku", "ru": "выполняется"},
+    "completed": {"en": "completed", "cnr": "izvršeno", "ru": "выполнено"},
+    "rejected": {"en": "declined by provider", "cnr": "odbijeno", "ru": "отклонено"},
+    "failed": {"en": "failed - staff informed", "cnr": "neuspješno - osoblje obaviješteno", "ru": "ошибка - сотрудники уведомлены"},
+    "cancelled": {"en": "cancelled", "cnr": "otkazano", "ru": "отменено"},
+}
+
+
+def status_label(status: str, locale: str) -> str:
+    entry = STATUS_LABELS.get(status, {"en": status})
+    if locale == "cnr-Cyrl":
+        return latin_to_cyrillic(entry.get("cnr", entry["en"]))
+    return entry.get(locale.split("-")[0]) or entry["en"]

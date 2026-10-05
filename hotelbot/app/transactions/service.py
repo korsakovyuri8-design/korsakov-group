@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.actions.executors import ExecutorRegistry
@@ -32,6 +32,7 @@ from app.clock import Clock, as_utc
 from app.db.models import (
     Action,
     ActionEvent,
+    AvailabilitySlot,
     ActionStatus,
     Conversation,
     ExternalProvider,
@@ -46,6 +47,7 @@ from app.db.models import (
 from app.db.repositories import ConversationRepository
 from app.jobs.queue import PermanentJobError, RetryableJobError, enqueue
 from app.observability import log_event
+from app.places import availability
 from app.transactions.format import format_price, format_summary
 from app.transactions.providers.base import ProviderError, QuoteRequest, SubmitRequest
 from app.transactions.providers.registry import ProviderRegistry
@@ -86,13 +88,17 @@ class TransactionService:
         self.clock = deps.clock
 
     # ------------------------------------------------------------ discovery
-    def provider_for(self, property_id: str, declared_provider: str | None, service_type: str) -> ExternalProvider | None:
+    def provider_for(self, property_id: str, declared_provider: str | None, service_type: str,
+                     region: str | None = None) -> ExternalProvider | None:
         """The declared provider if it is active and offers the service,
-        otherwise the first active provider of this property offering it."""
-        candidates = [p for p in self.s.scalars(
-            select(ExternalProvider).where(ExternalProvider.property_id == property_id, ExternalProvider.active)
-            .order_by(ExternalProvider.slug))
-            if service_type in (p.services or {}).get("service_types", [])]
+        otherwise the first active provider offering it - the property's own
+        partners first, then region-scoped providers."""
+        scope = ExternalProvider.property_id == property_id
+        if region:
+            scope = or_(scope, ExternalProvider.region == region)
+        rows = self.s.scalars(select(ExternalProvider).where(scope, ExternalProvider.active)
+                              .order_by(ExternalProvider.region.is_not(None), ExternalProvider.slug))
+        candidates = [p for p in rows if service_type in (p.services or {}).get("service_types", [])]
         if declared_provider:
             candidates = [p for p in candidates if p.slug == declared_provider]
         return candidates[0] if candidates else None
@@ -100,9 +106,17 @@ class TransactionService:
     # ---------------------------------------------------------------- quotes
     def request_quote(self, *, stay: Stay, conv: Conversation, provider: ExternalProvider, service_type: str,
                       details: dict[str, Any], locale: str) -> Quote:
-        """Ask the provider for a price. Raises ProviderError on failure."""
-        result = self.deps.providers.adapter(provider).request_quote(QuoteRequest(service_type, details, locale))
-        self.supersede_open(conv.id)
+        """Check modelled inventory, then ask the provider for a price.
+        Raises NoAvailability (with real alternatives) or ProviderError."""
+        details = dict(details)
+        match = self._match_inventory(provider, service_type, details)
+        if match is not None:
+            details["_offering_id"], details["_slot_id"] = match.offering.id, match.slot.id
+            details["offering"] = (match.offering.title or {}).get("en") or match.offering.slug
+        provider_details = {k: v for k, v in details.items() if not k.startswith("_")}
+        result = self.deps.providers.adapter(provider).request_quote(QuoteRequest(service_type, provider_details,
+                                                                                  locale))
+        self.supersede_open(conv.id, service_type)
         quote = Quote(
             code="".join(secrets.choice(_CODE_ALPHABET) for _ in range(4)),
             property_id=stay.property_id, stay_id=stay.id, guest_id=stay.guest_id, conversation_id=conv.id,
@@ -117,15 +131,38 @@ class TransactionService:
                   amount=str(quote.amount), currency=quote.currency)
         return quote
 
+    def _match_inventory(self, provider: ExternalProvider, service_type: str, details: dict[str, Any]):
+        from datetime import datetime as _dt
+
+        from app.transactions.catalog import SERVICE_CATALOG
+
+        spec = SERVICE_CATALOG[service_type]
+        when_key = next((f.key for f in spec.fields if f.kind == "datetime"), None)
+        if not when_key or not details.get(when_key):
+            return None
+        offerings = availability.offerings_for(self.s, provider.id, service_type, details.get("_venue_id"))
+        party = int(details.get("party_size") or 1)
+        return availability.find_slot(self.s, offerings, _dt.fromisoformat(details[when_key]), party,
+                                      details.get("language"))
+
+    def open_quotes(self, conversation_id: str) -> list[Quote]:
+        return list(self.s.scalars(select(Quote).where(Quote.conversation_id == conversation_id,
+                                                       Quote.status == QuoteStatus.OFFERED)
+                                   .order_by(Quote.created_at.desc())))
+
     def open_quote(self, conversation_id: str) -> Quote | None:
         return self.s.scalar(select(Quote).where(Quote.conversation_id == conversation_id,
                                                  Quote.status == QuoteStatus.OFFERED)
                              .order_by(Quote.created_at.desc()).limit(1))
 
-    def supersede_open(self, conversation_id: str) -> None:
-        for q in self.s.scalars(select(Quote).where(Quote.conversation_id == conversation_id,
-                                                    Quote.status == QuoteStatus.OFFERED)):
-            q.status, q.decided_at = QuoteStatus.SUPERSEDED, self.clock.now()
+    def supersede_open(self, conversation_id: str, service_type: str | None = None) -> None:
+        """A new offer replaces open offers for the SAME service only; a trip
+        plan may hold several open offers (transfer, skis, guide) at once."""
+        q = select(Quote).where(Quote.conversation_id == conversation_id, Quote.status == QuoteStatus.OFFERED)
+        if service_type:
+            q = q.where(Quote.service_type == service_type)
+        for quote in self.s.scalars(q):
+            quote.status, quote.decided_at = QuoteStatus.SUPERSEDED, self.clock.now()
 
     def is_expired(self, quote: Quote) -> bool:
         return as_utc(quote.valid_until) <= self.clock.now()
@@ -147,6 +184,13 @@ class TransactionService:
         if self.is_expired(quote):
             self.expire(quote)
             raise QuoteExpired(quote.id)
+        hold_info = None
+        if quote.request.get("_slot_id"):
+            slot = self.s.get(AvailabilitySlot, quote.request["_slot_id"])
+            if slot is None:
+                raise availability.NoAvailability("slot_gone")
+            units = availability.hold(slot, int(quote.request.get("party_size") or 1))
+            hold_info = {"slot_id": slot.id, "units": units}
         quote.status, quote.decided_at = QuoteStatus.ACCEPTED_BY_GUEST, self.clock.now()
         quote.consent = {"message_id": message_id, "text": text, "at": self.clock.now().isoformat(),
                          "amount": str(quote.amount), "currency": quote.currency, "code": quote.code}
@@ -155,10 +199,12 @@ class TransactionService:
             action_type=quote.service_type, executor="provider",
             summary=f"{quote.service_type} via provider, {format_price(quote.amount, quote.currency)}",
             params={"quote_id": quote.id, "details": quote.request, "amount": str(quote.amount),
-                    "currency": quote.currency},
+                    "currency": quote.currency, "hold": hold_info},
         )
         txn = ExternalTransaction(action_id=action.id, provider_id=quote.provider_id, quote_id=quote.id,
-                                  idempotency_key=f"txn-{quote.id}", request=quote.request, submit_attempts=0,
+                                  idempotency_key=f"txn-{quote.id}",
+                                  request={k: v for k, v in quote.request.items() if not k.startswith("_")},
+                                  submit_attempts=0,
                                   created_at=self.clock.now())
         self.s.add(txn)
         self.s.flush()
@@ -200,6 +246,11 @@ class TransactionService:
                       target=target.value, actor=actor)
             return "invalid_transition"
         self.queue_notification(action, target)
+        if target in (S.REJECTED, S.CANCELLED, S.FAILED):
+            hold_info = (action.params or {}).get("hold")
+            if hold_info:
+                availability.release(self.s, hold_info["slot_id"], hold_info["units"])
+                action.params = {**action.params, "hold": None}
         if target == S.FAILED:
             self._escalate(txn, detail)
         return "applied"
