@@ -1,0 +1,166 @@
+# =============================================================================
+#  SYNTHETIC DEVELOPMENT DATA - NOT REAL HOTEL INFORMATION
+# =============================================================================
+#  Every value in this file is invented for development and testing.
+#  None of it describes Hotel Aleksandar (Žabljak) or any real hotel.
+#  Replace this pack with the official "Informacije o Hotelu" data once
+#  available (see README: "Replacing the knowledge pack").
+# =============================================================================
+
+pack:
+  hotel_slug: example-hotel
+  hotel_name: "Demo Mountain Hotel (synthetic data)"
+  source: "synthetic-dev-dataset"
+  synthetic: true
+  version: "0.1"
+
+items:
+  - key: check_in_out_times
+    category: check_in_out
+    content:
+      en: "Check-in is from 14:00 and check-out is until 11:00."
+      cnr: "Prijava (check-in) je od 14:00, a odjava (check-out) do 11:00."
+    keywords:
+      en: [check-in, checkin, check-out, checkout, arrival, departure, arrive, leave]
+      cnr: [prijava, odjava, dolazak, odlazak, ulazak, napuštanje, sobe]
+    metadata: {synthetic: true}
+
+  - key: late_arrival_policy
+    category: check_in_out
+    content:
+      en: "Arrivals after 22:00 are possible but must be arranged with reception in advance. Late arrival is confirmed only by hotel staff."
+      cnr: "Dolazak poslije 22:00 je moguć, ali se mora unaprijed dogovoriti sa recepcijom. Kasni dolazak potvrđuje isključivo osoblje hotela."
+    keywords:
+      en: [late, arrival, check-in, night, after, midnight, 11pm, "23"]
+      cnr: [kasni, kasno, dolazak, prijava, noću, poslije, ponoć]
+    metadata: {synthetic: true, requires_staff_approval: [late_check_in]}
+
+  - key: early_late_checkout_policy
+    category: check_in_out
+    content:
+      en: "Early check-in and late check-out depend on availability and must be approved by reception."
+      cnr: "Raniji check-in i kasniji check-out zavise od raspoloživosti i mora ih odobriti recepcija."
+    keywords:
+      en: [early, late, check-out, checkout, check-in, extend, stay, longer]
+      cnr: [rani, raniji, kasni, kasniji, odjava, prijava, produžiti, duže]
+    metadata: {synthetic: true, requires_staff_approval: [early_check_in, late_check_out]}
+
+  - key: breakfast
+    category: dining
+    content:
+      en: "Breakfast is served buffet-style in the restaurant every day from 07:30 to 10:00 and is included in the room rate."
+      cnr: "Doručak se služi na švedskom stolu u restoranu svakog dana od 07:30 do 10:00 i uključen je u cijenu sobe."
+    keywords:
+      en: [breakfast, morning, meal, buffet, food, eat]
+      cnr: [doručak, jutro, obrok, švedski, sto, hrana, jelo]
+    metadata: {synthetic: true}
+
+  - key: restaurant
+    category: dining
+    content:
+      en: "The hotel restaurant serves lunch from 12:00 to 15:00 and dinner from 18:30 to 22:00, with local Durmitor-region dishes. Table reservations for groups are handled by reception."
+      cnr: "Hotelski restoran služi ručak od 12:00 do 15:00 i večeru od 18:30 do 22:00, uz domaća jela durmitorskog kraja. Rezervacije stolova za grupe preuzima recepcija."
+    keywords:
+      en: [restaurant, lunch, dinner, food, eat, menu, table, local, dishes]
+      cnr: [restoran, ručak, večera, hrana, jelo, meni, sto, domaća, jela]
+    metadata: {synthetic: true, requires_staff_approval: [restaurant]}
+
+  - key: wifi
+    category: amenities
+    content:
+      en: "Free Wi-Fi is available throughout the hotel. The network name and password are printed on the key card holder."
+      cnr: "Besplatan Wi-Fi je dostupan u cijelom hotelu. Naziv mreže i lozinka su odštampani na omotu kartice za sobu."
+    keywords:
+      en: [wifi, wi-fi, internet, password, network, connection, online]
+      cnr: [wifi, wi-fi, internet, lozinka, šifra, mreža, konekcija]
+    metadata: {synthetic: true}
+
+  - key: parking
+    category: amenities
+    content:
+      en: "Free outdoor parking is available for hotel guests. No reservation is needed."
+      cnr: "Besplatan parking na otvorenom dostupan je gostima hotela. Rezervacija nije potrebna."
+    keywords:
+      en: [parking, park, car, vehicle, garage]
+      cnr: [parking, parkiranje, parkirati, auto, automobil, vozilo, garaža]
+    metadata: {synthetic: true}
+
+  - key: pets
+    category: policies
+    content:
+      en: "Small pets are allowed on request for a fee of 10 EUR per night. Pets are not allowed in the restaurant."
+      cnr: "Mali kućni ljubimci su dozvoljeni uz prethodnu najavu, uz doplatu od 10 EUR po noćenju. Ljubimci nijesu dozvoljeni u restoranu."
+    keywords:
+      en: [pet, pets, dog, cat, animal, cost, price, fee]
+      cnr: [ljubimac, ljubimci, ljubimce, pas, psa, psom, mačka, mačku, mačkom, životinja, cijena, košta, doplata]
+    metadata: {synthetic: true}
+
+  - key: smoking
+    category: policies
+    content:
+      en: "All rooms and indoor areas are non-smoking. Smoking is allowed on the outdoor terrace."
+      cnr: "Sve sobe i zatvoreni prostori su za nepušače. Pušenje je dozvoljeno na otvorenoj terasi."
+    keywords:
+      en: [smoke, smoking, cigarette]
+      cnr: [pušenje, pušiti, cigarete, nepušači]
+    metadata: {synthetic: true}
+
+  - key: housekeeping
+    category: services
+    content:
+      en: "Rooms are cleaned daily between 10:00 and 15:00. Extra towels, bedding or toiletries can be requested at any time."
+      cnr: "Sobe se čiste svakodnevno između 10:00 i 15:00. Dodatni peškiri, posteljina ili toaletni pribor mogu se zatražiti u bilo kom trenutku."
+    keywords:
+      en: [cleaning, clean, housekeeping, towels, towel, sheets, bedding, toiletries, maid]
+      cnr: [čišćenje, čistiti, sobarica, peškiri, peškir, posteljina, pribor]
+    metadata: {synthetic: true, requires_staff_approval: [housekeeping]}
+
+  - key: reception
+    category: services
+    content:
+      en: "Reception is open 24 hours a day."
+      cnr: "Recepcija radi 24 sata dnevno."
+    keywords:
+      en: [reception, front, desk, open, hours, staff]
+      cnr: [recepcija, recepciji, radno, vrijeme, osoblje]
+    metadata: {synthetic: true}
+
+  - key: airport_transfer
+    category: transport
+    content:
+      en: "Airport transfers from Podgorica and Tivat airports can be arranged on request. Prices depend on the number of passengers and are confirmed by reception."
+      cnr: "Transfer sa aerodroma Podgorica i Tivat može se organizovati na zahtjev. Cijena zavisi od broja putnika i potvrđuje je recepcija."
+    keywords:
+      en: [airport, transfer, taxi, pickup, pick-up, shuttle, transport, podgorica, tivat, cost, price]
+      cnr: [aerodrom, aerodroma, transfer, taksi, prevoz, prijevoz, podgorica, tivat, cijena, košta]
+    metadata: {synthetic: true, requires_staff_approval: [transport]}
+
+  - key: ski_storage
+    category: amenities
+    content:
+      en: "The hotel has a free ski and snowboard storage room with boot dryers, open during the winter season."
+      cnr: "Hotel ima besplatnu ostavu za skije i snoubord sa sušačima za pancerice, otvorenu tokom zimske sezone."
+    keywords:
+      en: [ski, skis, snowboard, storage, boots, equipment, winter]
+      cnr: [skije, skija, snoubord, ostava, pancerice, oprema, zima]
+    metadata: {synthetic: true}
+
+  - key: payment_methods
+    category: billing
+    content:
+      en: "The hotel accepts cash (EUR) and major credit and debit cards. Billing questions are handled by reception."
+      cnr: "Hotel prihvata gotovinu (EUR) i sve veće kreditne i debitne kartice. Pitanja u vezi sa računom rješava recepcija."
+    keywords:
+      en: [pay, payment, card, cash, credit, debit, euro, invoice, bill]
+      cnr: [plaćanje, platiti, kartica, karticom, gotovina, gotovinom, račun, faktura]
+    metadata: {synthetic: true}
+
+  - key: local_durmitor
+    category: local_activities
+    content:
+      en: "Popular nearby activities include walking to the Black Lake, hiking in Durmitor National Park, rafting on the Tara river in summer and skiing at Savin Kuk in winter. Reception can help with tour bookings."
+      cnr: "Popularne aktivnosti u blizini su šetnja do Crnog jezera, planinarenje u Nacionalnom parku Durmitor, rafting na Tari ljeti i skijanje na Savinom kuku zimi. Recepcija može pomoći oko rezervacije tura."
+    keywords:
+      en: [activities, do, visit, see, hiking, hike, lake, black, durmitor, rafting, tara, skiing, ski, tour, excursion, recommend, nearby]
+      cnr: [aktivnosti, posjetiti, vidjeti, planinarenje, jezero, crno, durmitor, rafting, tara, skijanje, tura, izlet, preporuka, preporučiti, blizini]
+    metadata: {synthetic: true, recommendation: true}
