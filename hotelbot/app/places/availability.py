@@ -79,6 +79,12 @@ def find_slot(session: Session, offerings: list[Offering], at: datetime, party: 
         key=lambda m: abs(as_utc(m.slot.starts_at) - at))
     covering = [s for s in slots if as_utc(s.starts_at) <= at < as_utc(s.ends_at)]
     reason = "no_capacity" if covering else "not_offered_at_that_time"
+    speaking = [s for s in covering if not language
+                or language in (ids[s.offering_id].attributes or {}).get("languages", [language])]
+    if speaking and all(s.remaining >= 1 and (s.attributes or {}).get("unit") == "group"
+                        and party > int((ids[s.offering_id].attributes or {}).get("max_party", 99))
+                        for s in speaking):
+        reason = "party_too_large"
     if language and not any(language in (o.attributes or {}).get("languages", [language]) for o in offerings):
         reason = "language_unavailable"
     raise NoAvailability(reason, nearby[:3])

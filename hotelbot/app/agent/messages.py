@@ -338,6 +338,9 @@ CATALOG: dict[str, dict[str, str]] = {
         "cnr": "Gdje želite da idete?",
         "ru": "Куда вы хотите поехать?",
     },
+    "ask_time_on": {
+        "en": "What time on {day}?", "cnr": "U koliko sati, {day}?", "ru": "Во сколько, {day}?",
+    },
     "ask_datetime": {
         "en": "For what date and time?", "cnr": "Za koji datum i vrijeme?", "ru": "На какую дату и время?",
     },
@@ -371,6 +374,9 @@ CATALOG: dict[str, dict[str, str]] = {
                                         "ru": "в это время не предлагается"},
     "reason_language_unavailable": {"en": "nobody available in that language", "cnr": "nema nikoga na tom jeziku",
                                     "ru": "нет никого с этим языком"},
+    "reason_party_too_large": {"en": "the group is too large for what is free then",
+                               "cnr": "grupa je prevelika za ono što je tada slobodno",
+                               "ru": "группа слишком большая для свободных вариантов"},
     "reason_slot_gone": {"en": "just taken", "cnr": "upravo zauzeto", "ru": "только что заняли"},
     "saved": {
         "en": "Saved to your plan: {title}. Nothing is reserved.",

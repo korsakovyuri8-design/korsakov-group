@@ -28,7 +28,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CATEGORIES = ("grounding", "actions", "authority", "handoff", "safety", "memory", "conversation", "languages",
-              "transactions")
+              "transactions", "local")
 
 
 class _Strict(BaseModel):
@@ -131,6 +131,8 @@ class FinalExpect(_Strict):
     provider_bookings: int | None = None       # bookings that exist at the (mock) provider
     provider_submit_calls_max: int | None = None
     dead_jobs: int | None = None
+    bookings: list[str] | None = None          # "service_type:status" of all provider transactions (multiset)
+    plan: list[str] | None = None              # effective statuses of all itinerary items (multiset)
 
 
 class Integration(_Strict):
@@ -157,5 +159,7 @@ class Scenario(_Strict):
     llm: list[Any] | None = None
     # Merge into provider config of the default property's pack, by slug.
     provider_config: dict[str, dict[str, Any]] | None = None
+    # Frozen clock start (ISO, UTC); default is the harness CLOCK_START.
+    clock_start: str | None = None
     steps: list[Step]
     final: FinalExpect = Field(default_factory=FinalExpect)

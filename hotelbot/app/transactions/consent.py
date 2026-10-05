@@ -75,11 +75,15 @@ def classify(text: str, code: str | None, details_changed: bool) -> ConsentDecis
 
 
 _FILLER = {fold(w) for w in """the a an and both please i we us me my our for to also too it them that this
-    i a oba obje mi nam molim taj tu to и а оба обе мне нам пожалуйста это эту этот""".split()}
+    only just i a oba obje mi nam molim taj tu to samo и а оба обе мне нам пожалуйста это эту этот только""".split()}
 _ALL = {fold(w) for w in "all everything both sve svi oba obje все всё оба обе".split()}
-_VERBS = {_NOISE.sub(" ", fold(p)).strip() for p in """yes book confirm reserve go ahead ok
+_VERBS = {_NOISE.sub(" ", fold(p)).strip() for p in """yes book confirm reserve go ahead
     da rezervisi rezervisite potvrdjujem potvrdi
-    да бронируй бронируйте подтверждаю закажи заказывай""".split()}
+    да бронируй бронируйте забронируй забронируйте подтверждаю закажи закажите заказывай""".split()}
+
+
+_DECLINE_VERBS = {fold(w) for w in """no cancel decline drop skip remove dont don't not ne otkazi otkazite odustajem
+    ukloni preskoci нет отмени отмените отменить убери не надо""".split()}
 
 
 def classify_selection(text: str, references: list[str]) -> tuple[ConsentDecision, bool]:
@@ -99,6 +103,6 @@ def classify_selection(text: str, references: list[str]) -> tuple[ConsentDecisio
     if all(w in _VERBS for w in rest):
         return ConsentDecision.CONSENT, all_requested
     normalized = " ".join(rest)
-    if normalized in _DECLINE:
+    if normalized in _DECLINE or all(w in _DECLINE_VERBS for w in rest):
         return ConsentDecision.DECLINE, all_requested
     return ConsentDecision.NONE, all_requested

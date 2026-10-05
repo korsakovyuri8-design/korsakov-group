@@ -34,6 +34,7 @@ from app.db.models import (
     Action,
     ActionStatus,
     ExternalTransaction,
+    ItineraryItem,
     Guest,
     HumanHandoff,
     Job,
@@ -151,7 +152,7 @@ def _build(scenario: Scenario, workdir: Path) -> tuple[Container, dict[str, str]
     from datetime import datetime
 
     container = build_container(settings, llm=llm, http_client=httpx.Client(transport=httpx.MockTransport(handler)),
-                                clock=FrozenClock(datetime.fromisoformat(CLOCK_START)))
+                                clock=FrozenClock(datetime.fromisoformat(scenario.clock_start or CLOCK_START)))
     return container, slugs
 
 
@@ -315,6 +316,17 @@ def _check_final(scenario: Scenario, container: Container, slugs: dict[str, str]
             actual_t = sorted(t.action.status.value for t in s.scalars(select(ExternalTransaction)))
             if actual_t != sorted(f.transactions):
                 failures.append(f"final: transactions {actual_t}, expected {sorted(f.transactions)}")
+        if f.bookings is not None:
+            actual_b = sorted(f"{t.action.action_type}:{t.action.status.value}"
+                              for t in s.scalars(select(ExternalTransaction)))
+            if actual_b != sorted(f.bookings):
+                failures.append(f"final: bookings {actual_b}, expected {sorted(f.bookings)}")
+        if f.plan is not None:
+            from app.trip.itinerary import effective_status
+
+            actual_p = sorted(effective_status(s, it) for it in s.scalars(select(ItineraryItem)))
+            if actual_p != sorted(f.plan):
+                failures.append(f"final: plan {actual_p}, expected {sorted(f.plan)}")
         if f.dead_jobs is not None:
             dead = len(list(s.scalars(select(Job).where(Job.status == JobStatus.DEAD))))
             if dead != f.dead_jobs:

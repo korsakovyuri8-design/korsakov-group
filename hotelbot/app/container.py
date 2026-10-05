@@ -36,6 +36,7 @@ from app.tools import default_registry
 from app.transactions.dialogue import TransactionDialogue
 from app.transactions.providers.registry import ProviderRegistry
 from app.transactions.service import TxnDeps
+from app.trip.concierge import Concierge
 from app.whatsapp.base import MessageTransport
 from app.whatsapp.meta import MetaWhatsAppTransport
 from app.whatsapp.mock import MockWhatsAppTransport
@@ -189,6 +190,7 @@ def build_container(
         executors=executors,
         handoff_context_messages=settings.handoff_context_messages,
         max_inbound_chars=settings.max_inbound_chars,
+        concierge=Concierge(clock, transactions),
         transactions=transactions,
     )
     orchestrator_ref.append(orchestrator)

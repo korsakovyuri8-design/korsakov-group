@@ -53,7 +53,7 @@ C = Category
 SUBCATEGORIES: dict[str, Subcategory] = {s.key: s for s in [
     # FOOD
     _s("restaurant", C.FOOD, "restaurant", "restoran", "ресторан", "restaurant*", "restoran*", "ресторан*"),
-    _s("konoba", C.FOOD, "traditional tavern", "konoba", "конoба", "konoba", "tavern", "traditional food", "local food",
+    _s("konoba", C.FOOD, "traditional tavern", "konoba", "коноба", "konoba", "tavern", "traditional food", "local food",
        "montenegrin food", "domaca hrana", "tradicionaln*", "местн* кухн*", "национальн* кухн*"),
     _s("cafe", C.FOOD, "cafe", "kafić", "кафе", "cafe", "coffee", "kafic*", "kafa", "kafu", "kofe", "кофе", "кафе"),
     _s("bakery", C.FOOD, "bakery", "pekara", "пекарня", "bakery", "bread", "pastry", "pekar*", "burek", "пекарн*", "выпечк*"),

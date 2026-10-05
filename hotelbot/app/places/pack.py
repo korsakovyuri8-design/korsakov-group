@@ -165,11 +165,16 @@ def _load_region_cached(path: str, _mtime: int) -> RegionPack:
 
 def _verified(d: date | None, default: date | None, tz: ZoneInfo) -> datetime | None:
     day = d or default
-    return datetime.combine(day, datetime.min.time(), tzinfo=tz) if day else None
+    return datetime.combine(day, datetime.min.time(), tzinfo=tz).astimezone(_UTC) if day else None
+
+
+_UTC = ZoneInfo("UTC")
 
 
 def _local(dt: datetime, tz: ZoneInfo) -> datetime:
-    return dt if dt.tzinfo else dt.replace(tzinfo=tz)
+    """Pack times are local wall-clock times; stored as UTC (SQLite keeps no
+    offsets, so anything else would silently shift by the zone offset)."""
+    return (dt if dt.tzinfo else dt.replace(tzinfo=tz)).astimezone(_UTC)
 
 
 def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
@@ -271,8 +276,8 @@ def _expand(spec: OfferingSpec, tz: ZoneInfo):
         t_end = datetime.strptime(r.end, "%H:%M").time()
         while day <= r.to:
             if DAYS[day.weekday()] in r.days:
-                start = datetime.combine(day, t_start, tzinfo=tz)
-                end = datetime.combine(day, t_end, tzinfo=tz)
+                start = datetime.combine(day, t_start, tzinfo=tz).astimezone(_UTC)
+                end = datetime.combine(day, t_end, tzinfo=tz).astimezone(_UTC)
                 if end <= start:
                     end += timedelta(days=1)
                 yield start, end, r.capacity, r.attributes

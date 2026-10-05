@@ -55,6 +55,9 @@ providers:
     config:
       currency: EUR
       pricing: {base: 30, per_extra_person: 5, night_surcharge: 10}
+      # Synthetic: typical Podgorica airport -> Žabljak journey, used only to
+      # estimate arrival for a trip plan (always shown as an estimate).
+      estimated_duration_minutes: 150
       validity_minutes: 15
       conditions: "Price per vehicle. Free cancellation up to 2 hours before pickup."
       callback_secret_env: DEMO_TRANSFERS_CALLBACK_SECRET

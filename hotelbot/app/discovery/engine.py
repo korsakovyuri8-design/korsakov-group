@@ -75,6 +75,13 @@ def _attr_ok(attrs: dict[str, Any], key: str, want: Any) -> bool:
     return have == want
 
 
+_OPPOSITE = {"noise_level": {"lively": {"quiet"}, "very_lively": {"quiet"}, "quiet": {"lively", "very_lively"}}}
+
+
+def _contradicts(attrs: dict[str, Any], preferred: dict[str, Any]) -> bool:
+    return any(attrs.get(k) in _OPPOSITE.get(k, {}).get(v, set()) for k, v in preferred.items())
+
+
 def discover_places(session: Session, q: DiscoveryQuery, now_utc: datetime, tz: str) -> list[Candidate]:
     stmt = select(Place).where(Place.region == q.region, Place.active)
     if q.subcategories:
@@ -91,6 +98,8 @@ def discover_places(session: Session, q: DiscoveryQuery, now_utc: datetime, tz: 
             continue
         if any(not (set(v) & set(attrs.get(k) or [])) for k, v in q.any_of.items()):
             continue
+        if _contradicts(attrs, q.preferred):
+            continue   # "lively" never returns a place recorded as quiet (and vice versa)
         dist = None
         if q.near and place.latitude is not None and place.longitude is not None:
             dist = distance_km(q.near, Point(place.latitude, place.longitude))
@@ -124,7 +133,7 @@ def _explain(place: Place, attrs: dict[str, Any], q: DiscoveryQuery, status: Hou
     for k, v in q.any_of.items():
         reasons.append(f"match:{k}:{','.join(sorted(set(v) & set(attrs.get(k) or [])))}")
     for k, v in q.preferred.items():
-        if _attr_ok(attrs, k, v):
+        if _attr_ok(attrs, k, v) or (k == "noise_level" and v == "lively" and attrs.get(k) == "very_lively"):
             score += 1.0
             reasons.append(f"pref:{k}")
     tags = set((place.tags or {}).get("tags", []))

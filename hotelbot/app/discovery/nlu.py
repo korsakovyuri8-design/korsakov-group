@@ -46,6 +46,7 @@ GENERIC = [
 ]
 EVENTS = ["event*", "happening", "concert*", "festival*", "show", "gig", "dogadjaj*", "koncert*", "festival*",
           "desava", "событи*", "концерт*", "фестивал*", "мероприяти*", "происходит"]
+MUSIC = ["live music", "jazz", "svirka", "muzika uzivo", "dzez", "живая музыка", "живой музык*", "джаз"]
 EXCLUDE_PREFIX = ["not a", "not an", "no", "without", "but not", "ne", "nije", "bez", "не", "без"]
 
 REQUIRED = [
@@ -71,7 +72,8 @@ NOW = ["now", "right now", "open now", "currently", "sada", "trenutno", "sad", "
 AFTER_MIDNIGHT = ["after midnight", "after 12", "late night", "posle ponoci", "poslije ponoci", "после полуночи"]
 NEAR = ["nearby", "near the hotel", "near here", "near me", "close by", "walking distance", "around here",
         "u blizini", "blizu", "рядом", "поблизости", "недалеко"]
-SERVING = ["still serving", "kitchen open", "serving", "radi kuhinja", "kuhinja", "кухня работает"]
+SERVING = ["still serving", "kitchen open", "serving", "radi kuhinja", "kuhinja radi", "kuhinja jos radi",
+           "кухня работает", "работает кухня", "работать кухня", "кухня будет работать", "кухня еще работает"]
 
 
 @dataclass
@@ -88,8 +90,9 @@ def _any(folded: str, phrases: list[str]) -> bool:
     return any(contains_phrase(folded, p) for p in phrases)
 
 
-def _subcategory_hits(folded: str) -> set[str]:
-    hits = {key for key, sub in SUBCATEGORIES.items() if sub.keywords and _any(folded, list(sub.keywords))}
+def _subcategory_hits(folded: str, excluded: set[str]) -> set[str]:
+    hits = {key for key, sub in SUBCATEGORIES.items()
+            if sub.keywords and _any(folded, list(sub.keywords))} - excluded
     # Prefer specific kinds over generic ones within the same family.
     if hits & {"cocktail_bar", "wine_bar", "pub", "nightclub", "live_music_venue"}:
         hits.discard("bar")
@@ -100,7 +103,7 @@ def _subcategory_hits(folded: str) -> set[str]:
 
 def parse_discovery(text: str, today_local: datetime, *, require_cue: bool = True) -> DiscoveryRequest | None:
     folded = fold(text)
-    cue = _any(folded, CUES)
+    cue = _any(folded, CUES) or _any(folded, EVENTS) or _any(folded, MUSIC)   # events are always outside
     if require_cue and not cue:
         return None
     q = DiscoveryQuery(region="")
@@ -111,7 +114,7 @@ def parse_discovery(text: str, today_local: datetime, *, require_cue: bool = Tru
         for kw in sub.keywords:
             if any(contains_phrase(folded, f"{neg} {kw}") for neg in EXCLUDE_PREFIX):
                 excluded.add(key)
-    subs = _subcategory_hits(folded) - excluded
+    subs = _subcategory_hits(folded, excluded)
     for generic, family in FAMILIES.items():
         if generic in subs:
             subs |= family - excluded
@@ -130,7 +133,7 @@ def parse_discovery(text: str, today_local: datetime, *, require_cue: bool = Tru
     q.categories = cats
     q.exclude_subcategories = excluded
     req.events = _any(folded, EVENTS)
-    music = _any(folded, ["live music", "jazz", "svirka", "muzika uzivo", "живая музыка", "живой музык*", "джаз"])
+    music = _any(folded, MUSIC)
     if music:
         req.events = True                      # concerts AND places with live music
         if not q.subcategories:

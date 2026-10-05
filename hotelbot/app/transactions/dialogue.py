@@ -20,13 +20,17 @@ Safety rules:
 
 from __future__ import annotations
 
+import copy
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
+
+from app.clock import as_utc
 
 from app.actions.catalog import action_label
 from app.agent import messages as msg
@@ -35,7 +39,6 @@ from app.agent.intents import REQUEST_MARKERS, Intent
 from app.agent.policies import AFFIRMATIVE, NEGATIVE
 from app.db.models import Action, ExternalProvider, ExternalTransaction, Offering, Place, Quote, RequestType
 from app.observability import log_event
-from app.places import availability
 from app.places.availability import NoAvailability
 from app.schemas.messages import ActionTaken
 from app.text import contains_phrase, fold
@@ -98,6 +101,7 @@ class PlannedOffer:
     provider: ExternalProvider | None = None
     missing: list[str] = field(default_factory=list)
     detail: str = ""
+    draft: dict[str, Any] | None = None
 
 
 class TransactionDialogue:
@@ -113,9 +117,13 @@ class TransactionDialogue:
             return False   # safety and complaints always win
         svc = TransactionService(turn.session, self.deps)
         quotes = svc.open_quotes(turn.conv.id)
+        draft = turn.state.get("txn_draft")
+        if draft and quotes and self._absorb(turn, copy.deepcopy(draft)):
+            # A trip plan can hold open offers AND a draft that is waiting for
+            # a detail ("what time on Sunday?") - an answer goes to the draft.
+            return self._draft_turn(turn, svc, draft)
         if quotes and self._quotes_turn(turn, svc, quotes):
             return True
-        draft = turn.state.get("txn_draft")
         if draft and self._draft_turn(turn, svc, draft):
             return True
         active = svc.active_for_stay(turn.stay.id)
@@ -200,6 +208,42 @@ class TransactionDialogue:
                   provider=provider.slug)
         return self._advance(turn, svc, draft)
 
+    def prepare(self, turn: _Turn, service_type: str, text: str, *, preset: dict[str, Any] | None = None,
+                inferred: list[str] | None = None, venue: Place | None = None) -> PlannedOffer:
+        """Prepare one service of a multi-part request without replying:
+        an offer, or the details still missing (never guessed)."""
+        svc = TransactionService(turn.session, self.deps)
+        provider = self.resolve_provider(turn, svc, service_type, venue)
+        if provider is None:
+            return PlannedOffer(service_type, "unsupported")
+        draft = {"service_type": service_type, "provider_id": provider.id, "values": {}, "partial": {},
+                 "inferred": [], "asked": None}
+        if venue is not None:
+            draft["values"]["venue"], draft["values"]["_venue_id"] = venue.name, venue.id
+        self._absorb(turn, draft, text=text)
+        for key, value in (preset or {}).items():
+            if key not in draft["values"] and key not in draft["partial"]:
+                draft["values"][key] = value
+                if key in (inferred or []):
+                    draft["inferred"] = sorted(set(draft["inferred"]) | {key})
+        self._fill_from_stay(turn, draft)
+        missing = self._missing(draft)
+        if missing:
+            draft["asked"] = missing[0].key
+            return PlannedOffer(service_type, "missing", provider=provider, missing=[f.key for f in missing],
+                                draft=draft)
+        return self.make_offer(turn, svc, provider, service_type, dict(draft["values"]))
+
+    def question(self, turn: _Turn, draft: dict[str, Any]) -> str:
+        spec_field = next(f for f in self._spec(draft).fields if f.key == draft["asked"])
+        if spec_field.kind == "datetime" and draft["partial"].get(spec_field.key):
+            day = date.fromisoformat(draft["partial"][spec_field.key])
+            return msg.t("ask_time_on", turn.language, day=day.strftime("%d.%m.%Y"))
+        key = f"ask_{spec_field.key}" if f"ask_{spec_field.key}" in msg.CATALOG else f"ask_{spec_field.kind}"
+        if key not in msg.CATALOG:
+            key = "ask_text"
+        return msg.t(key, turn.language, field=spec_field.labels.get(turn.language.split("-")[0], spec_field.key))
+
     def _spec(self, draft: dict[str, Any]) -> ServiceSpec:
         return SERVICE_CATALOG[draft["service_type"]]
 
@@ -260,14 +304,9 @@ class TransactionDialogue:
         self._fill_from_stay(turn, draft)
         missing = self._missing(draft)
         if missing:
-            spec_field = missing[0]
-            draft["asked"] = spec_field.key
+            draft["asked"] = missing[0].key
             turn.set_state(txn_draft=draft)
-            key = f"ask_{spec_field.key}" if f"ask_{spec_field.key}" in msg.CATALOG else f"ask_{spec_field.kind}"
-            if key not in msg.CATALOG:
-                key = "ask_text"
-            turn.reply = msg.t(key, turn.language,
-                               field=spec_field.labels.get(turn.language.split("-")[0], spec_field.key))
+            turn.reply = self.question(turn, draft)
             turn.succeeded = True
             return True
         turn.set_state(txn_draft=None)
@@ -331,18 +370,17 @@ class TransactionDialogue:
         for m in exc.alternatives:
             title = (m.offering.title or {}).get(turn.language.split("-")[0]) or (m.offering.title or {}).get("en") \
                 or m.offering.slug
-            start = m.slot.starts_at
-            alts.append(f"{title} {start.astimezone(__import__('zoneinfo').ZoneInfo(tz)).strftime('%d.%m %H:%M')}"
-                        if start.tzinfo else f"{title} {start.strftime('%d.%m %H:%M')}")
+            start = as_utc(m.slot.starts_at).astimezone(ZoneInfo(tz))
+            alts.append(f"{title} {start.strftime('%d.%m %H:%M')}")
         alt_text = msg.t("alternatives", turn.language, list="; ".join(alts)) if alts else ""
         reason_key = f"reason_{exc.reason}"
         reason = msg.t(reason_key, turn.language) if reason_key in msg.CATALOG else exc.reason
         return msg.t("no_availability", turn.language, service=action_label(service_type, turn.language),
                      reason=reason, alternatives=alt_text)
 
-    def _summary(self, turn: _Turn, quote: Quote) -> str:
+    def _summary(self, turn: _Turn, quote: Quote, *, with_label: bool = True) -> str:
         text = format_summary(quote.service_type, {k: v for k, v in quote.request.items() if not k.startswith("_")},
-                              turn.language, turn.runtime.timezone, turn.prop.name)
+                              turn.language, turn.runtime.timezone, turn.prop.name, with_label=with_label)
         if quote.request.get("offering") and quote.service_type not in VENUE_CATEGORIES:
             text += f"; {quote.request['offering']}"
         return text
@@ -355,8 +393,9 @@ class TransactionDialogue:
             valid_until=format_until(quote.valid_until, tz, self.deps.clock.now()), code=quote.code,
         )
 
-    def offer_line(self, turn: _Turn, quote: Quote) -> str:
-        return f"{self._summary(turn, quote)} - {format_price(quote.amount, quote.currency)} ({quote.code})"
+    def offer_line(self, turn: _Turn, quote: Quote, *, with_label: bool = True) -> str:
+        return f"{self._summary(turn, quote, with_label=with_label)} - " \
+               f"{format_price(quote.amount, quote.currency)} ({quote.code})"
 
     def _modified(self, turn: _Turn, quote: Quote) -> dict[str, Any] | None:
         draft = {"service_type": quote.service_type, "values": dict(quote.request), "partial": {}, "inferred": [],

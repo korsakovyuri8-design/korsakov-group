@@ -162,3 +162,25 @@ def test_upgraded_v1_database_serves_the_app(engine, tmp_path):
                                                  text="Is my request confirmed?"))
     # The migrated guest keeps their stay; the latest migrated action answers.
     assert reply.intent == "REQUEST_STATUS" and reply.text
+
+
+def test_transaction_data_survives_local_travel_upgrade(engine):
+    """0003 -> 0004: provider rows keep their property scope and gain an empty region."""
+    _upgrade(engine, "0001_core_v1")
+    with engine.begin() as conn:
+        _seed_v1(conn)
+    _upgrade(engine, "0003_transactions")
+    with engine.begin() as conn:
+        [prop] = _rows(conn, "select id from properties")
+        conn.execute(sa.text(
+            "insert into external_providers (id, property_id, slug, name, provider_type, integration_type, active,"
+            " services, config, created_at) values ('p1', :pid, 'demo-transfers', 'Demo', 'transport', 'mock',"
+            " :active, :services, :config, :now)"),
+            {"pid": prop["id"], "active": True, "services": '["taxi"]', "config": "{}", "now": NOW})
+    _upgrade(engine, "head")
+    with engine.connect() as conn:
+        [row] = _rows(conn, "select id, property_id, slug, region from external_providers")
+        assert row == {"id": "p1", "property_id": prop["id"], "slug": "demo-transfers", "region": None}
+        tables = set(sa.inspect(conn).get_table_names())
+        assert {"places", "events", "offerings", "availability", "itinerary_items"} <= tables
+    assert _diff(engine) == []

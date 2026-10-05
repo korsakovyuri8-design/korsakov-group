@@ -69,6 +69,7 @@ from app.tools.registry import ToolContext, ToolRegistry
 from app.transactions.dialogue import TransactionDialogue
 from app.transactions.format import format_price
 from app.transactions.service import TransactionService
+from app.trip.concierge import Concierge
 
 # Staff-handled action types that a provider-backed service can replace.
 _TRANSACTIONAL_TOPICS = {"transport_booking": RequestType.TRANSPORT, "restaurant_booking": RequestType.RESTAURANT}
@@ -125,6 +126,7 @@ class Orchestrator:
         handoff_context_messages: int = 10,
         max_inbound_chars: int = 2000,
         transactions: TransactionDialogue | None = None,
+        concierge: Concierge | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.properties = properties
@@ -135,6 +137,7 @@ class Orchestrator:
         self.handoff_context = handoff_context_messages
         self.max_chars = max_inbound_chars
         self.transactions = transactions
+        self.concierge = concierge
 
     # ------------------------------------------------------------------ entry
     def handle(self, inbound: InboundMessage) -> AgentReply:
@@ -191,10 +194,15 @@ class Orchestrator:
 
         if conv.status == ConversationStatus.HANDED_OFF:
             self._while_handed_off(turn)
+        elif self.concierge is not None and self.concierge.handle_command(turn):
+            pass   # "save 2" / "book 1" on shown results, "my plan"
+        elif self.concierge is not None and self.concierge.handle_plan(turn):
+            pass   # several independent requests -> independent plan items
         elif self.transactions is not None and self.transactions.handle(turn):
             pass   # quote / consent / booking dialogue
         elif not self._resolve_pending_offer(turn):
-            self._route(turn)
+            if not (self.concierge is not None and self.concierge.handle_discovery(turn)):
+                self._route(turn)
 
         # Consent is scoped to the offers the bot just made: any other reply ends it.
         turn.set_state(awaiting_quotes=list(dict.fromkeys(turn.offered_quote_ids)) or None, awaiting_quote=None)

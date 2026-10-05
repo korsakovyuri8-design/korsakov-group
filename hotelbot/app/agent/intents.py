@@ -71,7 +71,11 @@ class IntentClassifier(Protocol):
 EMERGENCY = [
     "emergency", "ambulance", "fire", "heart attack", "can't breathe", "cannot breathe",
     "not breathing", "unconscious", "bleeding", "injured", "gas leak", "call the police",
-    "call a doctor", "need a doctor", "overdose", "smoke in the room",
+    "call a doctor", "need a doctor", "overdose", "smoke in the room", "chest pain", "pain in his chest",
+    "pain in her chest", "stroke", "seizure", "allergic reaction", "anaphyla*", "choking", "fainted", "collapsed",
+    "bol u grudima", "bole ga grudi", "bole je grudi", "mozdani udar", "alergijska reakcija", "gusi se",
+    "боль в груди", "болит сердце", "инсульт", "судорог*", "аллергическая реакция", "задыхается", "потерял сознание",
+    "потеряла сознание",
     "hitna pomoc", "hitnu pomoc", "hitan slucaj", "pozar*", "vatra", "zapalil*", "treba mi ljekar",
     "treba nam ljekar", "potreban ljekar", "potreban je ljekar", "zovite ljekara", "krvari*",
     "povrijedj*", "onesvijest*", "ne mogu da disem", "ne dise", "curi gas", "zovite policiju",

@@ -8,7 +8,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import Connection, Engine, create_engine, inspect
+from sqlalchemy import Connection, Engine, create_engine, event, inspect
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -23,8 +23,25 @@ def make_engine(database_url: str) -> Engine:
     if database_url.startswith("sqlite"):
         kwargs: dict = {"connect_args": {"check_same_thread": False}}
         if ":memory:" in database_url or database_url == "sqlite://":
-            kwargs["poolclass"] = StaticPool  # share one in-memory DB across threads
-        return create_engine(database_url, **kwargs)
+            # One shared connection (tests, evals, demo): sessions share its
+            # transaction, so savepoint isolation is not available here.
+            kwargs["poolclass"] = StaticPool
+            return create_engine(database_url, **kwargs)
+        engine = create_engine(database_url, **kwargs)
+
+        # File SQLite: pysqlite does not emit BEGIN itself, which breaks
+        # SAVEPOINT semantics (a "nested" write would survive the outer
+        # rollback). Take over transaction control, as the SQLAlchemy docs
+        # recommend. PostgreSQL needs nothing of the kind.
+        @event.listens_for(engine, "connect")
+        def _no_autobegin(dbapi_connection, _record) -> None:  # type: ignore[no-untyped-def]
+            dbapi_connection.isolation_level = None
+
+        @event.listens_for(engine, "begin")
+        def _begin(connection) -> None:  # type: ignore[no-untyped-def]
+            connection.exec_driver_sql("BEGIN")
+
+        return engine
     return create_engine(database_url, pool_pre_ping=True)
 
 

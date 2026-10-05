@@ -10,13 +10,13 @@ disagree with the transaction state.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.clock import as_utc
-from app.db.models import Action, ItemStatus, ItineraryItem, Quote, QuoteStatus
+from app.db.models import Action, ActionStatus, ItemStatus, ItineraryItem, Quote, QuoteStatus
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,8 @@ def add(session: Session, *, stay_id: str, kind: str, title: str, status: ItemSt
         starts_at: datetime | None = None, place_id: str | None = None, event_id: str | None = None,
         offering_id: str | None = None, quote_id: str | None = None, action_id: str | None = None,
         details: dict | None = None) -> ItineraryItem:
+    if starts_at is not None and starts_at.tzinfo is not None:
+        starts_at = starts_at.astimezone(timezone.utc)   # stored as UTC (SQLite drops offsets)
     item = ItineraryItem(stay_id=stay_id, kind=kind, title=title[:300], status=status, starts_at=starts_at,
                          place_id=place_id, event_id=event_id, offering_id=offering_id, quote_id=quote_id,
                          action_id=action_id, details=details or {})
@@ -48,6 +50,8 @@ def link_quote(session: Session, *, stay_id: str, kind: str, title: str, quote: 
         old = session.get(Quote, item.quote_id)
         if old is not None and old.service_type == quote.service_type and old.status in (
                 QuoteStatus.OFFERED, QuoteStatus.SUPERSEDED, QuoteStatus.EXPIRED):
+            if starts_at is not None and starts_at.tzinfo is not None:
+                starts_at = starts_at.astimezone(timezone.utc)
             item.quote_id, item.title, item.starts_at = quote.id, title[:300], starts_at
             return item
     return add(session, stay_id=stay_id, kind=kind, title=title, status=ItemStatus.PROPOSED,
@@ -62,7 +66,11 @@ def link_action(session: Session, quote_id: str, action_id: str) -> None:
 def effective_status(session: Session, item: ItineraryItem) -> str:
     if item.action_id:
         action = session.get(Action, item.action_id)
-        return action.status.value if action else "unknown"
+        if action is None:
+            return "unknown"
+        if action.executor == "provider" and action.status == ActionStatus.PROPOSED:
+            return "accepted_by_guest"   # consent given, being sent to the provider
+        return action.status.value
     if item.quote_id:
         quote = session.get(Quote, item.quote_id)
         return quote.status.value if quote else "unknown"

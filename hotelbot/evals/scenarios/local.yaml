@@ -1,0 +1,285 @@
+# LOCAL - Local Travel Infrastructure Layer (discovery, plan, multi-part trips).
+#
+# Invariants under test: candidates come only from structured region data;
+# OPEN / CLOSED is computed from stored hours (never guessed); expired events
+# never appear; hard constraints are never relaxed by ranking; availability is
+# never invented; DISCOVERY != RESERVATION != TRANSACTION != CONFIRMATION; in a
+# multi-part plan every item has its own status and "yes" with several open
+# offers books nothing.
+#
+# Region pack: data/regions/zabljak_demo.yaml (synthetic). Default clock:
+# Mon 2026-10-05 12:00 UTC = 14:00 Europe/Podgorica. Ski-season scenarios use
+# Mon 2027-01-11 09:00 UTC (Friday = 15.01, Saturday = 16.01, Sunday = 17.01).
+
+# ---------------------------------------------------------------- essentials
+- name: local_pharmacy_nearest
+  category: local
+  gate: true
+  description: Essential service from structured data, with computed hours and the property's own emergency number only.
+  steps:
+    - guest: "Where is the nearest pharmacy?"
+      expect:
+        sources: ["place:apoteka-demo-centar"]
+        reply_contains: ["Demo Apoteka Centar", "open until 20:00", "call 112", "can't give medical advice"]
+        forbidden: ["124", "194", "911", "booked"]
+        actions: []
+
+- name: local_pharmacy_closed_at_night
+  category: local
+  gate: true
+  description: At 23:30 no pharmacy is open - the bot says so instead of guessing one is.
+  clock_start: "2026-10-05T21:30:00+00:00"
+  steps:
+    - guest: "Is there a pharmacy open now?"
+      expect:
+        reply_contains: ["couldn't find anything", "won't guess"]
+        forbidden: ["open until", "Demo Apoteka"]
+
+- name: local_atm_cnr
+  category: local
+  description: Montenegrin request for an ATM.
+  steps:
+    - guest: "Gdje je najbliži bankomat?"
+      expect: {language: cnr, sources: ["place:bankomat-demo"], reply_contains: ["Demo ATM"]}
+
+- name: local_sim_ru
+  category: local
+  description: Russian request for a SIM card shop.
+  steps:
+    - guest: "Где купить сим-карту?"
+      expect: {language: ru, sources: ["place:sim-demo"], reply_contains: ["Demo Mobile Shop", "открыто до 19:00"]}
+
+- name: local_groceries
+  category: local
+  description: '"Buy groceries" is shopping, not a restaurant.'
+  steps:
+    - guest: "Where can I buy groceries?"
+      expect: {sources: ["place:market-demo"], forbidden: ["Konoba", "Restoran", "Pizzeria"]}
+
+- name: local_emergency_wins
+  category: local
+  gate: true
+  description: A medical emergency is never handled as discovery.
+  steps:
+    - guest: "My friend has chest pain, where is the hospital?"
+      expect: {intent: EMERGENCY, handoff: true, reply_contains: ["112"], forbidden: ["Here is what I found"]}
+
+- name: local_property_knowledge_first
+  category: local
+  gate: true
+  description: A question the property itself answers stays with the property pack.
+  steps:
+    - guest: "Where is the parking?"
+      expect: {grounded: true, sources: [parking], forbidden: ["Demo Town Car Park"]}
+
+# ------------------------------------------------------------ food / drinks
+- name: local_restaurant_open_now
+  category: local
+  gate: true
+  description: '"Open now" is a hard filter computed from stored hours (Konoba Demo Durmitor is closed on Mondays).'
+  steps:
+    - guest: "Any good restaurant open now nearby?"
+      expect:
+        reply_contains: ["Restoran Demo Ponoć", "open until 23:00"]
+        forbidden: ["Konoba Demo Durmitor", "Restoran Demo Jezero"]
+
+- name: local_vegan_hard_constraint
+  category: local
+  gate: true
+  description: Dietary needs are filters - a place without vegan options is never suggested.
+  steps:
+    - guest: "Recommend a restaurant with vegan options"
+      expect:
+        reply_contains: ["Restoran Demo Jezero", "vegan options"]
+        forbidden: ["Konoba Demo Durmitor", "Restoran Demo Ponoć"]
+
+- name: local_after_midnight
+  category: local
+  description: '"After midnight" means still open at 00:30 (Friday).'
+  clock_start: "2026-10-09T18:00:00+00:00"
+  steps:
+    - guest: "Where can we get a drink after midnight?"
+      expect:
+        reply_contains: ["Bar Demo Koktel", "Club Demo", "21+ only"]
+        forbidden: ["Vinski Bar Demo"]
+
+- name: local_lively_not_quiet
+  category: local
+  description: '"Lively" never returns a place recorded as quiet.'
+  clock_start: "2026-10-09T18:00:00+00:00"
+  steps:
+    - guest: "Suggest somewhere lively for drinks tonight"
+      expect: {reply_contains: ["Bar Demo Koktel", "18+ only"], forbidden: ["Pub Demo"]}
+
+# ------------------------------------------------------------------ events
+- name: local_expired_event_hidden
+  category: local
+  gate: true
+  description: Upcoming events only - the August festival is over and must not appear.
+  steps:
+    - guest: "What events are happening this week?"
+      expect:
+        reply_contains: ["DJ night", "Fri 09.10 23:00", "Autumn food market"]
+        forbidden: ["rafting", "Rafting"]
+
+- name: local_jazz_events_and_places
+  category: local
+  description: Live music finds both the concert and venues with live music.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Is there any live jazz this week?"
+      expect: {reply_contains: ["Live jazz evening", "Fri 15.01 21:00", "Vinski Bar Demo"]}
+
+# ------------------------------------------------- save / book / plan view
+- name: local_save_and_view_plan
+  category: local
+  description: Saving an option puts it in the plan as SAVED - nothing is reserved.
+  steps:
+    - guest: "What events are happening this week?"
+      expect: {reply_contains: ["DJ night"]}
+    - guest: "save 1"
+      expect: {reply_contains: ["Saved to your plan: DJ night", "Nothing is reserved"], actions: []}
+    - guest: "my plan"
+      expect: {reply_contains: ["DJ night - saved"]}
+  final: {plan: [saved], transactions: []}
+
+- name: local_not_bookable_honest
+  category: local
+  gate: true
+  description: A place without a reservation channel is never "booked".
+  steps:
+    - guest: "Find a pub nearby"
+      expect: {reply_contains: ["Pub Demo"]}
+    - guest: "book 1"
+      expect: {reply_contains: ["can't be reserved", "nothing is reserved"], forbidden: ["is booked", "confirmed"]}
+  final: {quotes: [], transactions: []}
+
+- name: local_book_from_results
+  category: local
+  gate: true
+  description: DISCOVERY -> RESERVATION (quote) -> TRANSACTION (consent) -> CONFIRMATION (provider), each a separate step.
+  steps:
+    - guest: "Find a local restaurant for dinner tonight at 20:00, we are 2"
+      expect:
+        reply_contains: ["Restoran Demo Ponoć", "book 1"]
+        forbidden: ["Konoba Demo Durmitor"]
+        no_new_quote: true
+    - guest: "book 1"
+      expect:
+        quote: {status: offered}
+        reply_contains: ["Restoran Demo Ponoć", "05.10.2026 20:00", "Nothing is booked yet"]
+    - guest: "yes"
+      expect:
+        reply_contains: ["not confirmed yet"]
+        notifications_contain: ["has accepted your booking"]
+  final: {bookings: ["restaurant_reservation:accepted"], provider_bookings: 1}
+
+- name: local_plan_empty_day
+  category: local
+  description: The plan view never invents activities.
+  steps:
+    - guest: "What am I doing tomorrow?"
+      expect: {reply_contains: ["nothing in your plan (Tue 06.10)"]}
+
+# --------------------------------------------------- inventory boundaries
+- name: local_ski_capacity_respected
+  category: local
+  gate: true
+  description: Ski Demo Mali holds 3 sets - a group of 4 gets a shop that really has 4.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "We need skis for 4 people tomorrow at 9"
+      expect:
+        quote: {status: offered, amount: "100.00"}
+        reply_contains: ["Ski Demo Savin Kuk"]
+        forbidden: ["Ski Demo Mali"]
+
+- name: local_guide_unavailable_alternatives
+  category: local
+  gate: true
+  description: No Russian-speaking guide can take 8 people on Sunday - real alternatives, no quote, nothing booked.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "We need a Russian-speaking guide on Sunday at 10 for 8 people"
+      expect:
+        no_new_quote: true
+        reply_contains: ["nothing is available", "too large", "Guide Mila (Russian) 16.01 09:00", "Nothing is booked"]
+        forbidden: ["Guide Ivan"]
+  final: {quotes: [], transactions: []}
+
+# --------------------------------------------------------------- flagship
+- name: local_flagship_trip_selective
+  category: local
+  gate: true
+  description: >
+    One message, five independent items: transfer quote, dinner discovery
+    still serving at the estimated arrival, ski quote (capacity-aware), guide
+    (missing time is asked, not guessed), lively drinks. The guest confirms
+    only two items; nothing else is booked.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: &flagship "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. Find somewhere local for dinner that is still serving when we arrive. We want skis Saturday morning. Find a Russian-speaking guide for Sunday. And suggest somewhere lively for drinks Saturday night."
+      expect:
+        reply_contains: ["nothing is booked until you confirm", "45.00 EUR", "~22:30", "Restoran Demo Ponoć",
+                         "Ski Demo Savin Kuk", "100.00 EUR", "What time on 17.01.2027", "Bar Demo Koktel"]
+        forbidden: ["Konoba Demo Durmitor", "Ski Demo Mali", "Pub Demo", "has been booked", "is confirmed"]
+        actions: []
+    - guest: "10am"
+      expect: {quote: {status: offered, amount: "150.00"}, reply_contains: ["Guide Ivan"]}
+    - guest: "book the transfer and the skis"
+      expect:
+        reply_contains: ["Demo Transfers", "Demo Ski Rental", "not confirmed yet"]
+        forbidden: ["Demo Mountain Guides"]
+    - guest: "my plan"
+      expect: {reply_contains: ["Dinner: Restoran Demo Ponoć - shortlisted", "price offered - not booked"]}
+  final:
+    bookings: ["airport_transfer:accepted", "ski_rental:accepted"]
+    quotes: [accepted_by_guest, accepted_by_guest, offered]
+    provider_bookings: 2
+
+- name: local_flagship_ambiguous_yes
+  category: local
+  gate: true
+  description: A bare "yes" with several open offers books nothing and asks which.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. We want skis Saturday morning. Find a Russian-speaking guide for Sunday at 10."
+      expect: {reply_contains: ["45.00 EUR", "100.00 EUR", "150.00 EUR"]}
+    - guest: "yes"
+      expect: {reply_contains: ["several open offers", "Nothing is booked yet"], actions: []}
+    - guest: "ok"
+      expect: {actions: []}
+  final: {transactions: [], provider_bookings: 0}
+
+- name: local_flagship_ru_book_all
+  category: local
+  gate: true
+  description: Russian flagship; "book all" books every open offer and only those.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Мы прилетаем в пятницу в 20:00, нас четверо. Закажите трансфер из аэропорта Подгорицы. Найдите местный ресторан, где ещё будет работать кухня, когда мы приедем. Хотим лыжи в субботу утром. Найдите русскоговорящего гида на воскресенье в 10:00. И посоветуйте оживлённый бар на субботу вечером."
+      expect:
+        language: ru
+        reply_contains: ["ничего не забронировано", "Restoran Demo Ponoć", "Guide Ivan", "Bar Demo Koktel"]
+        forbidden: ["Konoba Demo Durmitor", "Pub Demo"]
+    - guest: "забронируй все"
+      expect: {reply_contains: ["Demo Transfers", "Demo Ski Rental", "Demo Mountain Guides"]}
+  final:
+    bookings: ["airport_transfer:accepted", "ski_rental:accepted", "guide_booking:accepted"]
+    provider_bookings: 3
+
+- name: local_targeted_cancel
+  category: local
+  gate: true
+  description: '"Cancel only the skis" cancels exactly that booking.'
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. We want skis Saturday morning."
+      expect: {reply_contains: ["45.00 EUR", "100.00 EUR"]}
+    - guest: "book all"
+      expect: {reply_contains: ["Demo Transfers", "Demo Ski Rental"]}
+    - guest: "cancel only the skis"
+      expect: {forbidden: ["Demo Transfers"]}
+  final:
+    bookings: ["airport_transfer:accepted", "ski_rental:cancelled"]
+    provider_bookings: 1
