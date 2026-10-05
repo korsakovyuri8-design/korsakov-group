@@ -37,15 +37,16 @@ Guest ──< Stay >── Property ──< KnowledgeDocument
 | LLM | `none` / `openai` (any OpenAI-compatible API) / `anthropic` |
 | Persistence | PostgreSQL (or SQLite). Alembic migrations run automatically on startup; Core v1 databases are upgraded in place. |
 | Transactions | Quotes, explicit scoped consent, provider adapters (mock, signed webhook), idempotent submission via a PostgreSQL job queue with retries/backoff, signed replay-protected callbacks, honest failure + staff handoff. See [`docs/PROVIDER_INTEGRATION.md`](docs/PROVIDER_INTEGRATION.md). |
+| Marketplace | Transport (taxi / airport / intercity), rentals (skis, snowboards, bikes, e-bikes, cars, gear) and guides/tours on one model: provider discovery by fit + availability + price + property relationships, inventory holds, material terms before consent, weather-conditional bookings, changes as replacement offers, policy-checked cancellation, multi-service requests with per-item consent. See [`docs/MARKETPLACE.md`](docs/MARKETPLACE.md). |
 | Local travel | Region packs of places / events / offerings / inventory; discovery ("open now", "still serving at 22:30", "after midnight", vegan, wheelchair, pets, lively); save / book from results; trip plan with per-item status; multi-part trip requests. See [`docs/LOCAL_TRAVEL.md`](docs/LOCAL_TRAVEL.md). |
-| Evaluation | 115 deterministic product scenarios; invariant scenarios (65) are gates (see below). |
+| Evaluation | 144 deterministic product scenarios; invariant scenarios (89) are gates (see below). |
 
 ## Quick start
 
 ```bash
 cd hotelbot
 pip install -r requirements-dev.txt
-pytest                                      # 514 tests (SQLite)
+pytest                                      # 562 tests (SQLite)
 python -m evals                             # product evaluation summary
 uvicorn app.main:create_app --factory --reload
 ```
@@ -138,11 +139,11 @@ python -m evals --category authority
 python -m evals --markdown docs/EVAL_REPORT.md --json eval.json
 ```
 
-Scenarios live in `evals/scenarios/*.yaml` (grounding, actions, authority, handoff, safety, memory, conversation, languages, transactions, local). Each one runs through a fresh real container: real packs plus scenario edits, an optional scripted LLM, and an optional mocked partner endpoint. Every bot message is also checked against the authority invariant. `gate: true` scenarios are product invariants: they run in pytest, and the CLI exits 1 if one fails. Latest report: [`docs/EVAL_REPORT.md`](docs/EVAL_REPORT.md). Retrieval findings: [`docs/RETRIEVAL_ANALYSIS.md`](docs/RETRIEVAL_ANALYSIS.md).
+Scenarios live in `evals/scenarios/*.yaml` (grounding, actions, authority, handoff, safety, memory, conversation, languages, transactions, local, marketplace). Each one runs through a fresh real container: real packs plus scenario edits, an optional scripted LLM, and an optional mocked partner endpoint. Every bot message is also checked against the authority invariant. `gate: true` scenarios are product invariants: they run in pytest, and the CLI exits 1 if one fails. Latest report: [`docs/EVAL_REPORT.md`](docs/EVAL_REPORT.md). Retrieval findings: [`docs/RETRIEVAL_ANALYSIS.md`](docs/RETRIEVAL_ANALYSIS.md).
 
 ## Migrations
 
-New databases are created from the models and stamped. Existing databases are upgraded with Alembic on startup (`HOTELBOT_AUTO_MIGRATE=true`); Core v1 databases (no version table) are detected and upgraded. Manual alternative: `HOTELBOT_AUTO_MIGRATE=false alembic upgrade head`. `0002_stay_engine` is forward-only; `0003_transactions` and `0004_local_travel` are additive. **Back up first** - see [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for backup, restore and worker operations.
+New databases are created from the models and stamped. Existing databases are upgraded with Alembic on startup (`HOTELBOT_AUTO_MIGRATE=true`); Core v1 databases (no version table) are detected and upgraded. Manual alternative: `HOTELBOT_AUTO_MIGRATE=false alembic upgrade head`. `0002_stay_engine` is forward-only; `0003_transactions`, `0004_local_travel` and `0005_marketplace` are additive. **Back up first** - see [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for backup, restore and worker operations.
 
 ## Testing
 
@@ -162,13 +163,14 @@ app/
   stays/        service
   knowledge/    schemas (pack format), ingest, service (retriever)
   transactions/ catalog, slots, consent, service, dialogue, callbacks, format, providers/ (mock, webhook)
+  marketplace/  discovery, pricing, terms
   jobs/         queue (outbox, SKIP LOCKED, retries), handlers
   places/       taxonomy, hours, geo, freshness, availability, pack (region ingest)
   discovery/    nlu, engine, render
   trip/         itinerary, concierge (discovery, save/book, plan, multi-part trips)
   llm/  tools/  db/  whatsapp/  api/  schemas/   worker.py, clock.py
-migrations/     Alembic (0001_core_v1, 0002_stay_engine, 0003_transactions, 0004_local_travel)
+migrations/     Alembic (0001_core_v1 ... 0005_marketplace)
 evals/          harness, report, scenarios/
 data/           hotel/example_hotel.yaml, properties/demo_apartment.yaml, regions/zabljak_demo.yaml   (SYNTHETIC)
-docs/           DECISIONS.md, EVAL_REPORT.md, RETRIEVAL_ANALYSIS.md, PROVIDER_INTEGRATION.md, OPERATIONS.md, LOCAL_TRAVEL.md
+docs/           DECISIONS.md, EVAL_REPORT.md, RETRIEVAL_ANALYSIS.md, PROVIDER_INTEGRATION.md, OPERATIONS.md, LOCAL_TRAVEL.md, MARKETPLACE.md
 ```

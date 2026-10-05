@@ -542,3 +542,130 @@ The ETA is arrival plus the transport provider's `estimated_duration_minutes`, s
 **Decision.** Region pack times (events, slots, verification dates) and plan item times are converted from the region timezone to UTC at write time.
 
 **Reason.** SQLite drops offsets. Storing local wall time silently shifted every event by the zone offset; the evals caught it ("DJ night 01:00" instead of 23:00). File-based SQLite also needed explicit BEGIN handling for correct SAVEPOINT rollback; the in-memory test engine shares one connection and documents that limitation.
+
+---
+
+# Iteration 3, second addendum: service marketplace (transport, rentals, guides)
+
+## D-044 - One marketplace model, three first-class families
+
+**Decision.** Transport, rentals and guides/tours share one model:
+`ExternalProvider` (profile, policies, commercial metadata) → `Offering` (pricing, policies, attributes, inventory) → `Quote` → `ExternalTransaction` on the Action state machine.
+
+Vertical behaviour lives in data:
+
+- **Transport** offerings declare `max_passengers`, `luggage_capacity`, `child_seats`, `vehicle_types` and a timed window.
+- **Rentals** are ONE `rental` service with a `category` field (skis, snowboard, bicycle, e-bike, car, scooter, hiking or camping equipment). An offering lists its `categories`, sizing `variants` and the details it `requires` (e.g. heights).
+- **Guides** declare `languages`, `specialties`, `format` (private/group), `max_party`, schedule, `weather_dependent`, meeting point, difficulty, inclusions and exclusions.
+
+There is no engine per vertical.
+
+**Reason.** "Change the skis to snowboards" and "move my taxi to 7am" must use the same machinery. A new rental category is one line of taxonomy plus offerings, not a schema change.
+
+**Alternatives considered.**
+
+- `ski_rental` / `car_rental` / `bike_rental` services (Iteration 3's first cut): rejected because they multiply services and flows.
+- A per-vertical booking table: rejected because it duplicates consent, status and authority.
+
+**Consequences.** `ski_rental` and `car_rental` services were replaced by `rental` (packs updated). Provider types: transport, rental, guide, restaurant, nightlife...
+
+---
+
+## D-045 - Provider discovery returns structured candidates; relationships shape, never override
+
+**Decision.** `app/marketplace/discovery.py` evaluates every active offering of every provider in scope (the property's own partners plus the region's shared providers). Each check rejects or keeps it, in this order:
+
+1. static fit (category, language, specialty, format, vehicle size, child seats, luggage, group size, minimum duration);
+2. offering-specific missing details;
+3. a concrete time window;
+4. live inventory;
+5. a price estimate from the offering's pricing.
+
+Property relationships (`provider_relationships` in the property pack → `property_providers`):
+
+- BLOCKED removes a provider.
+- EXCLUSIVE restricts its services to that provider.
+- DEFAULT, PREFERRED and a capability's declared provider rank first among suitable candidates.
+
+Ranking never re-admits a candidate that failed a constraint. Guides are presented as one option per format (private vs group) when the guest has not chosen one. Otherwise the best candidate is quoted.
+
+**Reason.** "Do not allow the LLM to invent providers." The same function serves a property or, with `property_id=None`, a traveller without one.
+
+**Consequences.** Providers are not owned by properties (`property_id` nullable since 0004). The demo transfer partner moved from the hotel pack to the region pack and is the hotel's DEFAULT transport relationship.
+
+---
+
+## D-046 - Inventory = capacity minus live holds (InventoryHold)
+
+**Decision.** `AvailabilitySlot` holds capacity only. Bookings are `InventoryHold`s (offering, variant, window, quantity, status HELD/CONFIRMED/RELEASED, `expires_at`, quote, transaction):
+
+- A hold is created when a QUOTE is made and expires with it.
+- Consent confirms it.
+- Decline, supersede, expiry, rejection, cancellation and failure release it.
+
+Availability counts CONFIRMED holds plus HELD holds that have not expired, so an expired quote frees stock with no sweeper. Hold creation takes a row lock on the offering (`SELECT ... FOR UPDATE` on PostgreSQL), and a concurrency test proves the last item cannot be held twice. A change of a booking may reuse that booking's own stock (`ignore_transaction`).
+
+Windows:
+
+- "slot": the slot that contains the start. Multi-day rentals need a slot on every day. Fixed-schedule offerings resolve a day-only request to their scheduled start and quote that start, never the guest's guess.
+- "duration": start plus `duration_minutes` (transfers).
+
+Variants: sizes from heights via offering bands (ski or board length, bike S/M/L).
+
+**Alternatives considered.** Decrementing `remaining` on the slot (Iteration 3 first cut) was rejected: it needs a sweeper for expiry, loses bookings when slots are re-ingested, and cannot represent quote-time holds.
+
+---
+
+## D-047 - Material terms are part of the offer and of the consent
+
+**Decision.** Provider policies are merged with offering policies and attributes into `quote.terms`:
+
+- deposit, damage deposit, ID, licence, minimum age, minimum duration;
+- pickup hours, return rules, late return fee;
+- meeting point, duration, difficulty, equipment, included and excluded items;
+- weather dependency, free-cancellation window, cancellation fee.
+
+The terms are rendered ("Important terms: ...") with the price, and the consent record stores the exact terms the guest agreed to. No deposit or payment is processed.
+
+---
+
+## D-048 - PENDING_CONDITION for weather-dependent services
+
+**Decision.** New Action status between SUBMITTED and ACCEPTED: a provider may accept *subject to a condition*. Signals are the mock/webhook outcome `accepted_conditional` and the callback `conditional`. The guest is told "provisionally accepted, subject to the weather - not confirmed yet". The template backs no confirmation claim (authority tests). The callback `condition_met` moves it to ACCEPTED, and `condition_failed` to CANCELLED ("called off because of the weather"). Plan view: "provisional - subject to weather, not confirmed".
+
+---
+
+## D-049 - Changes are replacement offers; cancellation policy is checked before promising
+
+**Decision.**
+
+- **"Move my taxi to 7am" / "Change the skis to snowboards".** The confirmed booking's details plus the change form a NEW offer that replaces it (`quote.replaces_transaction_id`). Nothing changes before consent.
+  - If the provider supports modification (`supports_modification: true`, adapter `modify()`), the booking is modified in place (same reference), and the old record ends as CANCELLED ("replaced").
+  - Otherwise the new booking is submitted, and the old one is cancelled only once the new one is ACCEPTED. A failed change never leaves the guest with nothing.
+- **A change the bot cannot pin down** still goes to staff.
+- **Cancellation.** Before promising anything, the bot reads `free_cancellation_hours` and `cancellation_fee` from the quote's terms.
+  - Inside the window, it says the cancellation is free and requests it.
+  - After the deadline, it states the fee and cancels only after "yes, cancel".
+  - Without a policy, the provider decides (as before).
+
+---
+
+## D-050 - Multi-service conversations: split per service, decide per sentence
+
+**Decision.**
+
+- One sentence asking for several services is split at the delimiter before each service's keyword, with positions mapped through `fold()` so Cyrillic works.
+- Trip context fills only what an item lacks: party, arrival day and time, origin ("from Podgorica"), destination = property. Everything filled is shown in the offer.
+- A vague "Friday evening" is never a pickup time: the transfer asks for the exact time.
+- Several missing details are asked one at a time (a queue of drafts). An answer always goes to the draft asked about, even while offers are open, and asking does not withdraw the open offers.
+- Replies to open offers are read sentence by sentence:
+  - "Book the transfer and the guide. I'll decide about the skis later." books two and keeps the skis offer open, said explicitly.
+  - Any sentence that is neither a decision nor a deferral cancels the whole interpretation (nothing booked).
+  - "book all" names every open offer.
+- A new request that does not name an open offer is a new request, not an edit of that offer.
+
+---
+
+## D-051 - Commercial metadata without commercial influence
+
+**Decision.** Providers and offerings carry `commission_type` / `commission_value`; offerings also carry `partner_price` / `guest_price`. Each quote stores a `commercial` snapshot: guest price, commission, partner price. The price shown and consented to is the quote amount, and commission never changes it or the ranking of unsuitable candidates. Enough for commission-per-booking, markup or revenue-share accounting later. No accounting is built.

@@ -19,6 +19,7 @@ A DEAD `provider_submit` has already marked the booking FAILED, told the guest a
 | `0002_stay_engine` | Property / Stay / Action generalisation, data migration | **forward-only** |
 | `0003_transactions` | providers, quotes, external transactions, provider events, jobs | additive |
 | `0004_local_travel` | places, events, offerings, availability, itinerary; provider region | additive |
+| `0005_marketplace` | inventory holds, property-provider relationships, offering pricing/policies, commercial metadata, quote terms | additive (reversible) |
 
 The app migrates on startup when `HOTELBOT_AUTO_MIGRATE=true`:
 
@@ -63,6 +64,10 @@ Docker Compose:
 docker compose exec db pg_dump -Fc -U hotelbot hotelbot > hotelbot.dump
 docker compose exec -T db pg_restore -U hotelbot -d hotelbot --clean --no-owner < hotelbot.dump
 ```
+
+## Inventory holds
+
+Open quotes hold stock until they expire (15 minutes by default), so no sweeper job is needed. To see what is held, inspect `inventory_holds` (status `held` + `expires_at`, `confirmed`, `released`). Re-ingesting a region pack replaces slots (capacity) but never touches holds (bookings).
 
 ## Region data
 

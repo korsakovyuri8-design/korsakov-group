@@ -55,9 +55,10 @@ Idempotency-Key: <key>                     (bookings and cancellations)
 
 | Call | Request body | Expected response |
 |---|---|---|
-| `POST /quotes` | `{service_type, details, locale}` | `200 {amount, currency, description, valid_until (ISO 8601), conditions?, reference?}` |
+| `POST /quotes` | `{service_type, details, locale, offering_ref?}` | `200 {amount, currency, description, valid_until (ISO 8601), conditions?, reference?}` |
 | `POST /bookings` | `{service_type, details, quote_reference, amount, currency, customer_reference}` | `200/201/202 {status: received\|accepted\|rejected, reference, message?}` |
 | `POST /bookings/{reference}/cancel` | `{}` | `200 {status: cancelled\|rejected, message?}` |
+| `POST /bookings/{reference}/modify` (only with `supports_modification: true`) | `{service_type, details, amount, currency, offering_ref}` | `200 {status: accepted\|rejected, reference}` |
 | `GET /bookings/{reference}` | n/a | `200 {status, reference}` |
 
 Rules:
@@ -68,6 +69,7 @@ Rules:
   - 5xx, 429, network errors, timeouts and malformed bodies are retried, with exponential backoff (5 s doubling to a 300 s cap) up to `max_attempts`.
   - 400/404/409/422 (invalid request) and 401/403 (auth) are permanent: the booking is marked FAILED, the guest is told honestly, and staff get a handoff.
 - **`received`** means "we got it, not confirmed yet". The guest is told exactly that. A later callback moves it on.
+- **`accepted_conditional`** means accepted subject to a condition (weather...). The guest hears "provisionally accepted, not confirmed yet" until you send `condition_met` (or `condition_failed`).
 
 ## 3. Callbacks (provider → HOTELBOT)
 
@@ -79,7 +81,7 @@ X-Provider-Signature: sha256=<hex HMAC-SHA256(callback secret, "<timestamp>.<raw
 {"event_id": "evt-123", "reference": "<booking reference>", "event": "accepted", "message": "optional"}
 ```
 
-`event` is one of `accepted`, `rejected`, `in_progress`, `completed`, `failed` or `cancelled`.
+`event` is one of `accepted`, `rejected`, `in_progress`, `completed`, `failed` or `cancelled`, and for conditional services `conditional`, `condition_met` or `condition_failed`.
 
 | Response | Meaning |
 |---|---|
@@ -93,11 +95,37 @@ X-Provider-Signature: sha256=<hex HMAC-SHA256(callback secret, "<timestamp>.<raw
 
 Send each event with a unique `event_id`. Retrying the same `event_id` is safe.
 
-## 4. Inventory (optional)
+## 4. Catalogue, policies and commercial terms
+
+Providers can publish offerings (region packs today, a feed later):
+
+```yaml
+providers:
+  - slug: acme-rentals
+    provider_type: rental
+    services: [rental]
+    profile: {categories: [ski, snowboard], service_area: "Durmitor"}
+    policies: {id_required: true, free_cancellation_hours: 12, cancellation_fee: "one day's rental"}
+    commission_type: percent
+    commission_value: 15
+offerings:
+  - slug: acme-skis
+    service_type: rental
+    provider: acme-rentals
+    attributes: {categories: [ski], unit: item, fixed_start: true, requires: [heights],
+                 variants: {by: height, bands: [[120, 165, "160"], [165, 210, "175"]]}}
+    pricing: {model: per_item_day, amount: 25}
+    recurring: [{days: [sat, sun], start: "08:30", end: "16:30", variants: {"160": 4, "175": 6},
+                 from: "2026-12-15", to: "2027-04-10"}]
+```
+
+Policies are shown to the guest as material terms before consent. Commission metadata never changes the price shown.
+
+## 5. Inventory (optional)
 
 If the provider shares availability, model it as `offerings` with `availability` or `recurring` slots in a region pack. Then HOTELBOT never quotes something the data says is full, and it offers the nearest real alternatives instead. Without modelled inventory, the provider's quote/booking response decides.
 
-## 5. Checklist for a real provider
+## 6. Checklist for a real provider
 
 1. Agree the contract above (or write a small adapter class implementing `request_quote / submit / cancel / get_status` and register it in `ProviderRegistry`).
 2. Exchange two secrets: outbound signing and callback signing. Put them in the environment.

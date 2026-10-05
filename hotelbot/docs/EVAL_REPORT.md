@@ -1,8 +1,8 @@
 # HOTELBOT evaluation report
 
-Generated 2026-10-05 21:47 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
+Generated 2026-10-05 22:48 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
 
-**TOTAL 115 · PASS 111 · FAIL 4**
+**TOTAL 144 · PASS 140 · FAIL 4**
 
 | Category | Pass |
 |---|---|
@@ -14,8 +14,9 @@ Generated 2026-10-05 21:47 UTC by `python -m evals`. Deterministic: no LLM unles
 | memory | 5/5 |
 | conversation | 6/6 |
 | languages | 8/8 |
-| transactions | 32/32 |
+| transactions | 33/33 |
 | local | 23/23 |
+| marketplace | 28/28 |
 
 ## Scenarios
 
@@ -93,6 +94,34 @@ Generated 2026-10-05 21:47 UTC by `python -m evals`. Deterministic: no LLM unles
 | ✅ | `local_flagship_ambiguous_yes` | local | yes |
 | ✅ | `local_flagship_ru_book_all` | local | yes |
 | ✅ | `local_targeted_cancel` | local | yes |
+| ✅ | `mkt_taxi_four_with_luggage` | marketplace | yes |
+| ✅ | `mkt_taxi_cheapest_suitable` | marketplace |  |
+| ✅ | `mkt_taxi_child_seat` | marketplace | yes |
+| ✅ | `mkt_taxi_vehicle_unavailable` | marketplace | yes |
+| ✅ | `mkt_taxi_change_pickup_modified_in_place` | marketplace | yes |
+| ✅ | `mkt_taxi_late_cancel_needs_consent` | marketplace | yes |
+| ✅ | `mkt_taxi_late_cancel_confirmed` | marketplace |  |
+| ✅ | `mkt_intercity_transfer` | marketplace |  |
+| ✅ | `mkt_ski_missing_size` | marketplace | yes |
+| ✅ | `mkt_ski_insufficient_inventory` | marketplace | yes |
+| ✅ | `mkt_ski_last_item_competition` | marketplace | yes |
+| ✅ | `mkt_ski_quote_expiry_releases_inventory` | marketplace | yes |
+| ✅ | `mkt_bicycle_rental` | marketplace |  |
+| ✅ | `mkt_ebike_rental_terms` | marketplace | yes |
+| ✅ | `mkt_change_skis_to_snowboards` | marketplace | yes |
+| ✅ | `mkt_unsupported_rental_category` | marketplace | yes |
+| ✅ | `mkt_car_rental_terms` | marketplace | yes |
+| ✅ | `mkt_car_minimum_duration` | marketplace | yes |
+| ✅ | `mkt_guide_russian` | marketplace | yes |
+| ✅ | `mkt_guide_language_unavailable` | marketplace | yes |
+| ✅ | `mkt_guide_group_too_large` | marketplace | yes |
+| ✅ | `mkt_guide_private_vs_group` | marketplace | yes |
+| ✅ | `mkt_guide_weather_dependent` | marketplace | yes |
+| ✅ | `mkt_guide_weather_called_off` | marketplace | yes |
+| ✅ | `mkt_guide_late_cancellation` | marketplace | yes |
+| ✅ | `mkt_hourly_city_tour` | marketplace |  |
+| ✅ | `mkt_multi_transfer_skis_guide` | marketplace | yes |
+| ✅ | `mkt_multi_cancel_one_keeps_others` | marketplace | yes |
 | ✅ | `stated_party_size` | memory | yes |
 | ✅ | `stated_arrival_date` | memory |  |
 | ✅ | `inferred_not_fact` | memory | yes |
@@ -130,6 +159,7 @@ Generated 2026-10-05 21:47 UTC by `python -m evals`. Deterministic: no LLM unles
 | ✅ | `txn_guest_cancels` | transactions | yes |
 | ✅ | `txn_cancel_refused` | transactions |  |
 | ✅ | `txn_change_after_confirmation` | transactions | yes |
+| ✅ | `txn_unclear_change_goes_to_staff` | transactions | yes |
 | ✅ | `txn_unsupported_external_capability` | transactions | yes |
 | ✅ | `txn_llm_claims_booking_before_accepted` | transactions | yes |
 | ✅ | `txn_status_before_acceptance` | transactions | yes |
