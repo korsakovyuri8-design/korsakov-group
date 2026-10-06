@@ -389,3 +389,11 @@ def test_licence_change_is_recorded_and_attribution_is_sticky(s):
     row = s.get(WorldSourceRow, "osm")
     assert row.license == "CC0-1.0" and row.config["terms_history"][0]["license"] == "ODbL-1.0"
     assert s.scalar(select(Place)).resolution["_attribution"] == ["osm"]        # published under ODbL terms
+
+
+def test_stale_dissent_is_kept_not_erased():
+    """A stale weaker source that disagrees steps aside from the decision but
+    stays visible as dissent (found by the ground-truth benchmark)."""
+    r = _r("opening_hours", A("p", "partner_feed", {"x": 1}, NOW - timedelta(days=3)),
+           A("d", "directory", {"x": 2}, NOW - timedelta(days=150)))
+    assert r.value == {"x": 1} and r.state == CONTESTED and [a.source_id for a in r.conflicting] == ["d"]

@@ -368,6 +368,8 @@ def _decide_event(ent: NormalizedEntity, prof: Profile, locality: set[str], sour
 
 # Counters for benchmarking / observability (process-local).
 STATS = {"decisions": 0, "candidates_evaluated": 0, "match": 0, "no_match": 0, "ambiguous": 0}
+# Opt-in: a list to record the candidate-set size of every decision (benchmarks).
+CANDIDATE_SIZES: list[int] | None = None
 
 
 def resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: set[str] = frozenset()) -> Decision:
@@ -379,7 +381,10 @@ def resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: s
 
 def _resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: set[str] = frozenset()) -> Decision:
     matches, ambiguous = [], []
-    for canonical in _candidates(session, ent, source_id):
+    candidates = _candidates(session, ent, source_id)
+    if CANDIDATE_SIZES is not None:
+        CANDIDATE_SIZES.append(len(candidates))
+    for canonical in candidates:
         STATS["candidates_evaluated"] += 1
         prof = _profile(session, canonical)
         decide = _decide_event if ent.entity_type == "EVENT" else _decide_place

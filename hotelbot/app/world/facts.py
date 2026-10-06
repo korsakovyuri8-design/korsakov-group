@@ -205,6 +205,9 @@ def resolve(assertions: list[FactAssertion], policy: FieldPolicy, policies: Poli
                           f"a stronger source ({stale_stronger[0].source_class}) disagrees but is stale; "
                           f"the weaker {winner.members[0].source_class} cannot override it")
     conflicting += stale_stronger
+    # stale WEAKER sources that disagree are dissent too: never silently erased
+    conflicting += [a for a in valid if a not in pool and a not in stale_stronger
+                    and not values_equal(policy, a.value, winner.value)]
     if conflicting and state == RESOLVED:
         state = CONTESTED
         reason += f"; {len({a.source_id for a in conflicting})} weaker source(s) disagree"

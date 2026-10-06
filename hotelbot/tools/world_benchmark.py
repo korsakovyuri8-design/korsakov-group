@@ -20,11 +20,12 @@ businesses), chains (same brand + website in several places).
 from __future__ import annotations
 
 import argparse
+import json
 import random
 import sys
 import time
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -50,6 +51,8 @@ WORDS = ["Stari", "Grad", "Mlin", "Lipa", "Sunce", "More", "Planina", "Jezero", 
 KINDS = [("restaurant", ["Restoran", "Restaurant"]), ("konoba", ["Konoba", "Tavern"]), ("cafe", ["Kafe", "Cafe"]),
          ("bar", ["Bar", "Bar"]), ("pharmacy", ["Apoteka", "Pharmacy"]), ("gallery", ["Galerija", "Gallery"]),
          ("bakery", ["Pekara", "Bakery"]), ("dessert", ["Poslastičarnica", "Desserts"])]
+HOURS = ["Mo-Su 09:00-22:00", "Mo-Sa 08:00-20:00; Su off", "Mo-Su 12:00-23:00", "Tu-Su 10:00-18:00; Mo off",
+         "Mo-Fr 07:00-15:00; Sa-Su off"]
 _LAT2CYR = {"a": "а", "b": "б", "v": "в", "g": "г", "d": "д", "e": "е", "z": "з", "i": "и", "j": "ј", "k": "к",
             "l": "л", "m": "м", "n": "н", "o": "о", "p": "п", "r": "р", "s": "с", "t": "т", "u": "у", "f": "ф",
             "h": "х", "c": "ц"}
@@ -86,26 +89,40 @@ def generate(n: int, seed: int = 11) -> tuple[list[dict], dict[str, list[dict]]]
     def jitter(v: float) -> float:
         return v + rng.uniform(-0.0002, 0.0002)          # <= ~25 m
 
+    def hours(t: dict, p_correct: float) -> str:
+        return t["hours"] if rng.random() < p_correct else rng.choice([h for h in HOURS if h != t["hours"]])
+
+    def updated(min_days: int, max_days: int) -> str:
+        return (NOW - timedelta(days=rng.uniform(min_days, max_days))).isoformat()
+
+    for t in truth:
+        t["hours"] = rng.choice(HOURS)
     sources: dict[str, list[dict]] = defaultdict(list)
     for t in truth:
-        base = {"category": t["kind"], "truth": t["truth"]}
-        if rng.random() < 0.9:                            # directory: local name, sometimes misspelled
+        base = {"category": t["kind"], "truth": t["truth"], "truth_hours": t["hours"]}
+        if rng.random() < 0.9:          # directory: local name, sometimes misspelled; hours often old/wrong
             name = t["local"]
             if rng.random() < 0.1:
                 pos = rng.randrange(1, len(name) - 1)
                 name = name[:pos] + name[pos + 1:]
-            sources["dir"].append({**base, "id": f"d-{t['truth']}", "name": name, "lat": jitter(t["lat"]),
-                                   "lon": jitter(t["lon"]), "phone": t["phone"] if rng.random() < 0.7 else None,
-                                   "opening_hours": "Mo-Su 09:00-22:00" if rng.random() < 0.6 else None})
-        if rng.random() < 0.4:                            # partner: formal phone, website, Cyrillic names
+            rec = {**base, "id": f"d-{t['truth']}", "name": name, "lat": jitter(t["lat"]), "lon": jitter(t["lon"]),
+                   "phone": t["phone"] if rng.random() < 0.7 else None, "updated_at": updated(5, 200)}
+            if rng.random() < 0.7:
+                rec["opening_hours"] = hours(t, 0.85)
+            sources["dir"].append(rec)
+        if rng.random() < 0.4:          # partner feed: formal phone, website, Cyrillic names, fresh hours
             name = cyr(t["local"]) if rng.random() < 0.3 else t["local"]
             sources["partner"].append({**base, "id": f"p-{t['truth']}", "name": name, "lat": jitter(t["lat"]),
                                        "lon": jitter(t["lon"]),
                                        "phone": ("+382 " + t["phone"][1:]) if t["phone"] else None,
-                                       "website": t["site"], "opening_hours": "Mo-Su 09:00-23:00"})
-        if rng.random() < 0.3 and t["en"]:                # tourism feed: English (translated) name + phone
-            sources["tour"].append({**base, "id": f"t-{t['truth']}", "name": t["en"], "lat": jitter(t["lat"]),
-                                    "lon": jitter(t["lon"]), "phone": t["phone"]})
+                                       "website": t["site"], "opening_hours": hours(t, 0.97),
+                                       "updated_at": updated(0, 20)})
+        if rng.random() < 0.3 and t["en"]:   # tourism feed: English name + phone, sometimes hours
+            rec = {**base, "id": f"t-{t['truth']}", "name": t["en"], "lat": jitter(t["lat"]), "lon": jitter(t["lon"]),
+                   "phone": t["phone"], "updated_at": updated(10, 120)}
+            if rng.random() < 0.4:
+                rec["opening_hours"] = hours(t, 0.85)
+            sources["tour"].append(rec)
     return truth, sources
 
 
@@ -144,6 +161,7 @@ def run(entities: int, db: str, *, queries: int = 200) -> dict:
     projection.project = timed
     for k in matching.STATS:
         matching.STATS[k] = 0
+    matching.CANDIDATE_SIZES = []
     page_times: list[float] = []
     with sessionmaker(engine)() as s:
         for code, lat, lon in CITIES:
@@ -179,6 +197,7 @@ def run(entities: int, db: str, *, queries: int = 200) -> dict:
             "source_records": total_records, "seconds": round(total_seconds, 1),
             "records_per_s": round(total_records / total_seconds, 1),
             "canonical_entities": s.scalar(select(func.count()).select_from(CanonicalEntity)),
+            "source_entities": s.scalar(select(func.count()).select_from(SourceEntity)),
             "assertions": s.scalar(select(func.count()).select_from(FactAssertion)),
             "er_decisions": matching.STATS["decisions"],
             "er_candidates_evaluated": matching.STATS["candidates_evaluated"],
@@ -202,6 +221,12 @@ def run(entities: int, db: str, *, queries: int = 200) -> dict:
         true_pairs = sum(pairs(len(v)) for v in by_truth.values())
         false_merge_entities = sum(1 for m in clusters.values() if len(set(m)) > 1)
         reviews = s.scalar(select(func.count()).select_from(MatchReview))
+        sizes = matching.CANDIDATE_SIZES or [0]
+        out["blocking_candidates_per_record"] = {
+            "p50": _pct([x / 1000 for x in sizes], 0.5), "p95": _pct([x / 1000 for x in sizes], 0.95),
+            "p99": _pct([x / 1000 for x in sizes], 0.99), "max": max(sizes),
+            "mean": round(sum(sizes) / len(sizes), 2)}
+        matching.CANDIDATE_SIZES = None
         out["entity_resolution"] = {
             "precision": round(correct / predicted, 4) if predicted else 1.0,
             "recall": round(correct / true_pairs, 4) if true_pairs else 1.0,
@@ -210,6 +235,35 @@ def run(entities: int, db: str, *, queries: int = 200) -> dict:
             "missed_links_pairs": true_pairs - correct,
             "ambiguous_rate": round(reviews / total_records, 4),
             "match_rate": round(matching.STATS["match"] / max(matching.STATS["decisions"], 1), 4)}
+        # ---- fact resolution vs ground truth (opening hours)
+        from app.world.normalize import parse_osm_hours
+
+        raw_by_canonical: dict[str, list[dict]] = defaultdict(list)
+        for se in s.scalars(select(SourceEntity).where(SourceEntity.source_id.like("bench:%"))):
+            raw_by_canonical[active_canonical(s, se.id)].append(se.raw or {})
+        facts = Counter()
+        for place in s.scalars(select(Place).where(Place.canonical_entity_id.is_not(None))):
+            raws = raw_by_canonical.get(place.canonical_entity_id, [])
+            truths = {r.get("truth_hours") for r in raws}
+            if not raws or len(truths) != 1:
+                continue                                   # a merged cluster is scored in identity, not here
+            truth = parse_osm_hours(truths.pop())[0]["weekly"]
+            claims = [parse_osm_hours(r["opening_hours"])[0]["weekly"] for r in raws if r.get("opening_hours")]
+            state = (place.resolution.get("opening_hours") or {}).get("state")
+            shown = (place.hours or {}).get("weekly")
+            disagreement = len({json.dumps(c, sort_keys=True) for c in claims}) > 1
+            if not claims:
+                facts["unknown_correctly" if shown is None else "invented_value"] += 1
+            elif shown is None:
+                facts["withheld_on_real_disagreement" if disagreement else "withheld_without_disagreement"] += 1
+            elif shown == truth:
+                facts["resolved_correctly"] += 1
+            elif truth in claims:
+                facts["incorrect_winner_dissent_visible" if state in ("contested", "conflicted")
+                      else "incorrect_winner_silent"] += 1
+            else:
+                facts["wrong_everywhere_no_true_claim"] += 1   # every source wrong: not detectable
+        out["fact_resolution_opening_hours"] = dict(sorted(facts.items()))
         # ---- spatial: index vs full scan, nearest-N
         idx = GeohashIndex()
         rng = random.Random(3)
