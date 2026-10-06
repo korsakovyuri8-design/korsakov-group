@@ -1001,3 +1001,7 @@ The resolver may pick a winner for a high-dynamic fact (opening hours, kitchen h
 **Metric split.** The fact-resolution metrics now separate `incorrect_winner_uncontested` (no dissent was visible, so the traveller would get a confident wrong claim; target 0) from `incorrect_winner_contested` (allowed, because the gate turns it into a hedged answer). The benchmark also checks the gate itself: for every contested wrong winner, at three sample moments where the winner's claim differs from the truth, the traveller-facing output must hedge (`gate_contested_wrong_claim_stated_definitively`, must be 0).
 
 **Changed expectation.** `world_newer_authoritative_wins` used to expect "open until 00:00" stated plainly. It is now a gate that expects both values and "can't confirm".
+
+## D-074 - The region pack is ingested on the container's clock
+
+The clean full-eval run on the D-073 code found one regression, `disc_fresh_not_flagged`: hours verified 6 days earlier were shown as "last verified 96 days ago". The clock-skew rule from D-072 (a future `observed_at` is clamped to the ingest time) was correct. The defect was that `ingest_region` synced the pack on the **wall clock** instead of the container's clock, so the pack's verification dates were "in the future" and got clamped. `ingest_region(..., now=)` now takes the container's clock (`build_container` passes `clock.now()`). Regression test: `test_region_pack_ingest_uses_the_given_clock_not_the_wall_clock`. No expectation was changed.

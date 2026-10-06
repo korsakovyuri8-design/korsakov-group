@@ -429,3 +429,16 @@ def test_contested_dynamic_fact_is_never_a_definitive_claim():
     q = place(late)
     q.resolution["opening_hours"]["state"] = "resolved"
     assert contested_claims(q, local) == {}
+
+
+def test_region_pack_ingest_uses_the_given_clock_not_the_wall_clock(s):
+    """A pack verified 2027-01-05, ingested at 2027-01-11: the verification
+    date is kept. (Ingesting on the wall clock clamped it as a 'future'
+    observation and made fresh data look 96 days stale.)"""
+    from app.places.pack import ingest_region, load_region_pack
+    from tests.conftest import ROOT
+
+    pack = load_region_pack(str(ROOT / "data" / "regions" / "zabljak_demo.yaml"))
+    ingest_region(s, pack, now=datetime(2027, 1, 11, 9, 0, tzinfo=timezone.utc))
+    rooftop = s.scalar(select(Place).where(Place.slug == "rooftop-demo-lounge"))
+    assert rooftop.verification["hours"] == "2027-01-04T23:00:00+00:00"     # 2027-01-05 local

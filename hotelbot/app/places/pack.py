@@ -205,14 +205,14 @@ def _local(dt: datetime, tz: ZoneInfo) -> datetime:
     return (dt if dt.tzinfo else dt.replace(tzinfo=tz)).astimezone(_UTC)
 
 
-def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
+def ingest_region(session: Session, pack: RegionPack, now: datetime | None = None) -> dict[str, int]:
     """The pack carries two worlds: the LOCAL world (places, events) goes
     through the generic WorldSource sync; the TRANSACTION world (providers,
     offerings, inventory) is loaded here."""
     from app.world.sources import SyntheticRegionSource
     from app.world.store import sync
 
-    world = sync(session, SyntheticRegionSource(pack))
+    world = sync(session, SyntheticRegionSource(pack), now=now)     # the container's clock, not the wall clock
     info = pack.region
     tz = ZoneInfo(info.timezone)
     src, synth = info.source, info.synthetic

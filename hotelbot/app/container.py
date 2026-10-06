@@ -147,7 +147,7 @@ def build_container(
     runtimes = []
     with session_factory() as session:
         for path in settings.region_pack_paths:   # regions first: properties may use their providers
-            ingest_region(session, load_region_pack(_resolve(path, settings)))
+            ingest_region(session, load_region_pack(_resolve(path, settings)), now=clock.now())
         for pack in packs:
             report = ingest_pack(session, pack)
             prop = PropertyRepository(session).get(report.property_id)
