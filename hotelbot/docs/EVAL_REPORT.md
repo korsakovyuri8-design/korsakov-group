@@ -1,8 +1,8 @@
 # HOTELBOT evaluation report
 
-Generated 2026-10-05 22:48 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
+Generated 2026-10-06 08:33 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
 
-**TOTAL 144 · PASS 140 · FAIL 4**
+**TOTAL 154 · PASS 150 · FAIL 4**
 
 | Category | Pass |
 |---|---|
@@ -14,7 +14,7 @@ Generated 2026-10-05 22:48 UTC by `python -m evals`. Deterministic: no LLM unles
 | memory | 5/5 |
 | conversation | 6/6 |
 | languages | 8/8 |
-| transactions | 33/33 |
+| transactions | 43/43 |
 | local | 23/23 |
 | marketplace | 28/28 |
 
@@ -166,6 +166,16 @@ Generated 2026-10-05 22:48 UTC by `python -m evals`. Deterministic: no LLM unles
 | ✅ | `txn_quote_is_not_a_booking_status` | transactions | yes |
 | ✅ | `txn_russian_arrival_transfer` | transactions |  |
 | ✅ | `txn_montenegrin_flow` | transactions |  |
+| ✅ | `txn_superseded_code_cannot_be_accepted` | transactions | yes |
+| ✅ | `txn_quote_expiry_boundary` | transactions | yes |
+| ✅ | `txn_quote_valid_until_last_minute` | transactions |  |
+| ✅ | `txn_whatsapp_redelivery_of_consent` | transactions | yes |
+| ✅ | `txn_lost_response_idempotent_provider` | transactions | yes |
+| ✅ | `txn_lost_response_provider_without_idempotency` | transactions | yes |
+| ✅ | `txn_worker_crash_after_provider_accepted` | transactions | yes |
+| ✅ | `txn_completed_before_accepted` | transactions | yes |
+| ✅ | `txn_callback_for_another_providers_booking` | transactions | yes |
+| ✅ | `txn_unknown_outcome_reconciled_by_lookup` | transactions | yes |
 
 ## Failures
 
@@ -232,3 +242,34 @@ guest: Smijem li povesti psa?
        {'intent': 'HOTEL_INFORMATION', 'language': 'cnr', 'grounded': False, 'handed_off': False}
 ```
 
+
+## Adversarial transaction scenarios - raw first run (before fixes)
+
+Written as desired behaviour, run once before any change: **TOTAL 42 · PASS 38 · GATES 32/36**. Verbatim failures:
+
+```text
+FAIL:
+  transactions/txn_provider_timeout [GATE]
+      - step 2: transaction.status = 'failed', expected 'submission_unknown'
+      - step 2 notifications: expected reply to contain "can't confirm yet whether"
+      - final: transactions ['failed'], expected ['submission_unknown']
+  transactions/txn_superseded_code_cannot_be_accepted [GATE]
+      - step 3: expected reply to contain one of ['replaced', 'no longer valid']
+  transactions/txn_lost_response_provider_without_idempotency [GATE]
+      - step 2: transaction.status = 'accepted', expected 'submission_unknown'
+      - step 2 notifications: expected reply to contain "can't confirm yet whether"
+      - step 2 notifications: FORBIDDEN claim 'has accepted' present
+      - final: expected handoff {'reason': 'provider_failure'}, got []
+      - final: transactions ['accepted'], expected ['submission_unknown']
+      - final: provider holds 2 bookings, expected 1
+      - final: provider received 2 submit calls, at most 1
+  transactions/txn_callback_for_another_providers_booking [GATE]
+      - step 4: transaction.status = 'accepted', expected 'submitted'
+```
+
+Diagnosis:
+
+1. `txn_lost_response_provider_without_idempotency` - **real defect, double booking**: a lost response was retried against a provider that ignores idempotency keys -> 2 external bookings. Fixed by SUBMISSION_UNKNOWN (D-054).
+2. `txn_provider_timeout` - **defect under the new policy** (timeout != failure): reported FAILED although the booking may exist. Fixed (D-054); this scenario's expectation was changed deliberately by that decision.
+3. `txn_superseded_code_cannot_be_accepted` - **UX defect**: nothing was booked (correct), but the guest was not told the named offer had been replaced. Fixed (stale-code reply).
+4. `txn_callback_for_another_providers_booking` - **harness defect**, not product: the callback was correctly refused (404) and final state was right; with a frozen clock two transactions share a timestamp and the step check read the wrong one. Fixed in the harness (prefers the transaction created in the step).

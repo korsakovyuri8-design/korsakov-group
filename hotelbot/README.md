@@ -14,6 +14,24 @@ A WhatsApp-first guest-operations agent for any accommodation (hotels, hostels, 
 6. **A quote is not a booking.** Third-party services go QUOTE → explicit CONSENT (to that offer) → TRANSACTION → provider confirmation. "ok" is not consent; "yes" with several open offers books nothing.
 7. **Places come from data.** Restaurants, pharmacies, events, hours, distances and availability come only from structured region data or a provider - never from a model. Open/closed is computed; expired events never appear.
 
+## Two worlds, four truths
+
+```text
+LOCAL WORLD (discovery)                 TRANSACTION WORLD (execution)
+Place / Venue / Event / Infrastructure  Provider / Offering / Quote / Transaction
+FIND - RECOMMEND - SAVE                 QUOTE - BOOK - ORDER - CHANGE - CANCEL
+            \_________ app/marketplace/bridge.py (the only seam) _________/
+```
+
+A pharmacy is only a Place; a taxi is only a provider offering; a restaurant may be both. `tests/test_architecture.py` keeps the layers from importing each other.
+
+| Truth | Source (never the LLM) |
+|---|---|
+| Knowledge ("breakfast time?") | property pack / place data |
+| Availability ("table at 21:00?") | provider or inventory (capacity minus holds) |
+| Transaction ("is the taxi booked?") | stored action state + signed provider callbacks |
+| World ("open now?") | structured hours + clock + freshness |
+
 ## Domain
 
 ```text
@@ -39,14 +57,14 @@ Guest ──< Stay >── Property ──< KnowledgeDocument
 | Transactions | Quotes, explicit scoped consent, provider adapters (mock, signed webhook), idempotent submission via a PostgreSQL job queue with retries/backoff, signed replay-protected callbacks, honest failure + staff handoff. See [`docs/PROVIDER_INTEGRATION.md`](docs/PROVIDER_INTEGRATION.md). |
 | Marketplace | Transport (taxi / airport / intercity), rentals (skis, snowboards, bikes, e-bikes, cars, gear) and guides/tours on one model: provider discovery by fit + availability + price + property relationships, inventory holds, material terms before consent, weather-conditional bookings, changes as replacement offers, policy-checked cancellation, multi-service requests with per-item consent. See [`docs/MARKETPLACE.md`](docs/MARKETPLACE.md). |
 | Local travel | Region packs of places / events / offerings / inventory; discovery ("open now", "still serving at 22:30", "after midnight", vegan, wheelchair, pets, lively); save / book from results; trip plan with per-item status; multi-part trip requests. See [`docs/LOCAL_TRAVEL.md`](docs/LOCAL_TRAVEL.md). |
-| Evaluation | 144 deterministic product scenarios; invariant scenarios (89) are gates (see below). |
+| Evaluation | 154 deterministic product scenarios; invariant scenarios (98) are gates (see below). |
 
 ## Quick start
 
 ```bash
 cd hotelbot
 pip install -r requirements-dev.txt
-pytest                                      # 562 tests (SQLite)
+pytest                                      # 582 tests (SQLite)
 python -m evals                             # product evaluation summary
 uvicorn app.main:create_app --factory --reload
 ```
@@ -163,13 +181,14 @@ app/
   stays/        service
   knowledge/    schemas (pack format), ingest, service (retriever)
   transactions/ catalog, slots, consent, service, dialogue, callbacks, format, providers/ (mock, webhook)
-  marketplace/  discovery, pricing, terms
+  marketplace/  discovery (provider candidates), inventory (holds), pricing, terms, bridge (the seam to places/events)
+  nlp/          temporal (days, times, counts - shared by both worlds)
   jobs/         queue (outbox, SKIP LOCKED, retries), handlers
   places/       taxonomy, hours, geo, freshness, availability, pack (region ingest)
   discovery/    nlu, engine, render
   trip/         itinerary, concierge (discovery, save/book, plan, multi-part trips)
   llm/  tools/  db/  whatsapp/  api/  schemas/   worker.py, clock.py
-migrations/     Alembic (0001_core_v1 ... 0005_marketplace)
+migrations/     Alembic (0001_core_v1 ... 0006_layers)
 evals/          harness, report, scenarios/
 data/           hotel/example_hotel.yaml, properties/demo_apartment.yaml, regions/zabljak_demo.yaml   (SYNTHETIC)
 docs/           DECISIONS.md, EVAL_REPORT.md, RETRIEVAL_ANALYSIS.md, PROVIDER_INTEGRATION.md, OPERATIONS.md, LOCAL_TRAVEL.md, MARKETPLACE.md

@@ -48,9 +48,9 @@ from app.db.repositories import ConversationRepository
 from app.jobs.queue import PermanentJobError, RetryableJobError, enqueue
 from app.observability import log_event
 from app.marketplace import pricing
-from app.places import availability
+from app.marketplace import inventory as availability
 from app.transactions.format import format_price, format_summary
-from app.transactions.providers.base import ProviderError, QuoteRequest, SubmitRequest
+from app.transactions.providers.base import ProviderError, ProviderTimeout, QuoteRequest, SubmitRequest
 from app.transactions.providers.registry import ProviderRegistry
 from app.whatsapp.base import MessageTransport
 
@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 
 S = ActionStatus
 CANCELLABLE = (S.PROPOSED, S.SUBMITTED, S.PENDING_CONDITION, S.ACCEPTED)
-ACTIVE = (S.PROPOSED, S.SUBMITTED, S.PENDING_CONDITION, S.ACCEPTED, S.IN_PROGRESS)
+ACTIVE = (S.PROPOSED, S.SUBMISSION_UNKNOWN, S.SUBMITTED, S.PENDING_CONDITION, S.ACCEPTED, S.IN_PROGRESS)
 _CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ"   # no I/O: not confusable with digits
 
 _OUTCOME_STATUS = {
@@ -327,8 +327,21 @@ class TransactionService:
         )
         try:
             outcome = adapter.modify(request) if modify else adapter.submit(request)
+        except ProviderTimeout as exc:
+            # timeout != failure: the provider may have created the booking.
+            if not (txn.provider.config or {}).get("idempotent_submit", True):
+                # No idempotency at the provider: a retry could book twice. Stop.
+                self.mark_unknown(txn, f"timeout: {exc}")
+                return
+            raise RetryableJobError(f"timeout: {exc}") from exc   # same key: safe to retry
         except ProviderError as exc:
             raise (RetryableJobError if exc.retryable else PermanentJobError)(f"{exc.kind}: {exc}") from exc
+        self.record_outcome(txn, outcome, modify=bool(modify), old=old)
+
+    def record_outcome(self, txn: ExternalTransaction, outcome: Any, *, modify: bool = False,
+                       old: ExternalTransaction | None = None) -> None:
+        """Apply what the provider said about a submission (submit response
+        or a reconciliation lookup)."""
         actor = f"provider:{txn.provider.slug}"
         if modify and old is not None and outcome.status == "accepted":
             # Modified in place: the old record ends as replaced, no cancellation call.
@@ -336,7 +349,8 @@ class TransactionService:
             self.apply_status(old, S.CANCELLED, actor, "replaced by a modification", template="txn_replaced")
         txn.provider_reference = outcome.reference or txn.provider_reference
         txn.submitted_at = self.clock.now()
-        ActionService(self.s, self.deps.executors).transition(txn.action, S.SUBMITTED, actor)
+        if txn.action.status != S.SUBMITTED:
+            ActionService(self.s, self.deps.executors).transition(txn.action, S.SUBMITTED, actor)
         txn.action.external_ref = txn.provider_reference
         final = _OUTCOME_STATUS.get(outcome.status)
         if final is None:   # "received": stays SUBMITTED until the provider calls back
@@ -352,7 +366,41 @@ class TransactionService:
             return
         txn.last_error = error
         txn.action.error = error
+        if txn.action.status == S.PROPOSED and _ambiguous(error):
+            # The last attempt may have reached the provider: never call it failed.
+            self.mark_unknown(txn, error)
+            return
         self.apply_status(txn, S.FAILED, "system:retries_exhausted", error)
+
+    def mark_unknown(self, txn: ExternalTransaction, error: str) -> None:
+        """SUBMISSION_UNKNOWN: tell the guest the truth (we don't know yet),
+        ask staff to reconcile, and reconcile automatically if the provider
+        can look a booking up by our idempotency key."""
+        txn.last_error = txn.action.error = error
+        ActionService(self.s, self.deps.executors).transition(txn.action, S.SUBMISSION_UNKNOWN,
+                                                               "system:no_response", error)
+        self.queue_notification(txn.action, S.SUBMISSION_UNKNOWN)
+        self._escalate(txn, f"RECONCILE: no answer from the provider ({error}). The booking may exist - check "
+                            f"with {txn.provider.name} (idempotency key {txn.idempotency_key}) before rebooking.")
+        if (txn.provider.config or {}).get("supports_lookup"):
+            enqueue(self.s, "provider_reconcile", {"transaction_id": txn.id}, f"reconcile:{txn.id}",
+                    clock=self.clock, delay=timedelta(minutes=1))
+        log_event("transaction_submission_unknown", transaction_id=txn.id, provider=txn.provider.slug, error=error)
+
+    def run_reconcile(self, transaction_id: str) -> None:
+        txn = self.s.get(ExternalTransaction, transaction_id)
+        if txn is None or txn.action.status != S.SUBMISSION_UNKNOWN:
+            return   # already settled (by staff or a callback)
+        adapter = self.deps.providers.adapter(txn.provider)
+        try:
+            outcome = adapter.lookup(txn.idempotency_key)
+        except ProviderError as exc:
+            raise RetryableJobError(f"{exc.kind}: {exc}") from exc
+        if outcome is None:
+            log_event("reconcile_not_found", transaction_id=txn.id)
+            return   # no booking found: staff decide (a lookup miss is not proof for every provider)
+        self.record_outcome(txn, outcome)
+        log_event("transaction_reconciled", transaction_id=txn.id, outcome=outcome.status)
 
     def run_cancel(self, transaction_id: str, template: str | None = None) -> None:
         txn = self.s.get(ExternalTransaction, transaction_id)
@@ -416,6 +464,12 @@ class TransactionService:
             reference=(txn.provider_reference if txn else None) or "-",
             was_accepted=was_accepted,
         )
+
+
+def _ambiguous(error: str) -> bool:
+    """Errors after which the provider may have acted: timeouts and our own
+    crashes. (5xx / connection refused are treated as 'not processed'.)"""
+    return error.startswith("timeout") or error.split(":")[0] not in ("unavailable", "invalid_request", "auth")
 
 
 @dataclass(frozen=True)

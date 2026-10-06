@@ -36,6 +36,7 @@ class ClaimLevel(str, enum.Enum):
 STATUS_TEMPLATE: dict[ActionStatus, str] = {
     ActionStatus.PROPOSED: "offer_request",
     ActionStatus.SUBMITTED: "action_submitted_named",
+    ActionStatus.SUBMISSION_UNKNOWN: "action_submission_unknown",
     ActionStatus.PENDING_CONDITION: "action_pending_condition",
     ActionStatus.ACCEPTED: "action_accepted",
     ActionStatus.IN_PROGRESS: "action_in_progress",
@@ -62,6 +63,7 @@ def status_message(action: Action, locale: str, property_name: str) -> str:
 TRANSACTION_TEMPLATE: dict[ActionStatus, str] = {
     ActionStatus.PROPOSED: "txn_sending",
     ActionStatus.SUBMITTED: "txn_submitted",
+    ActionStatus.SUBMISSION_UNKNOWN: "txn_submission_unknown",
     ActionStatus.PENDING_CONDITION: "txn_pending_condition",
     ActionStatus.ACCEPTED: "txn_accepted",
     ActionStatus.IN_PROGRESS: "txn_in_progress",

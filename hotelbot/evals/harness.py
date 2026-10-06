@@ -14,6 +14,7 @@ without a stored action in a state that backs it.
 from __future__ import annotations
 
 import json
+import re
 import os
 import tempfile
 import time
@@ -33,6 +34,7 @@ from app.container import Container, build_container
 from app.db.models import (
     Action,
     ActionStatus,
+    ExternalProvider,
     ExternalTransaction,
     ItineraryItem,
     Guest,
@@ -240,14 +242,17 @@ def _check_guest_step(prefix: str, exp: StepExpect, reply, container: Container,
 
 
 def _check_transactions(prefix: str, exp: StepExpect, container: Container, before_quotes: set[str],
-                        notifications: list[str], failures: list[str]) -> None:
+                        notifications: list[str], failures: list[str], before_txns: set[str] | None = None) -> None:
     with container.session_factory() as s:
         quotes = list(s.scalars(select(Quote).order_by(Quote.created_at.desc())))
         # Prefer quotes created in this step, then open ones (frozen clock => equal timestamps).
         quote = next((q for q in quotes if q.id not in before_quotes and q.status.value == "offered"), None) \
             or next((q for q in quotes if q.id not in before_quotes), None) \
             or next((q for q in quotes if q.status.value == "offered"), None) or (quotes[0] if quotes else None)
-        txn = s.scalars(select(ExternalTransaction).order_by(ExternalTransaction.created_at.desc())).first()
+        txns = list(s.scalars(select(ExternalTransaction).order_by(ExternalTransaction.created_at.desc())))
+        # Prefer a transaction created in this step (frozen clock => equal timestamps).
+        txn = next((t for t in txns if before_txns is not None and t.id not in before_txns), None) \
+            or (txns[0] if txns else None)
         if exp.quote is not None:
             if quote is None:
                 failures.append(f"{prefix}: expected a quote, none exists")
@@ -421,8 +426,12 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
                 if step.provider_callback is not None:
                     cb = step.provider_callback
                     with container.session_factory() as s:
-                        txn = s.scalars(select(ExternalTransaction).order_by(ExternalTransaction.created_at.desc())).first()
-                        reference = (txn.provider_reference if txn else None) if cb.reference == "auto" else cb.reference
+                        q = select(ExternalTransaction).order_by(ExternalTransaction.created_at.desc())
+                        if cb.reference.startswith("auto:"):   # latest transaction of ANOTHER provider
+                            q = q.join(ExternalProvider).where(ExternalProvider.slug == cb.reference[5:])
+                        txn = s.scalars(q).first()
+                        reference = (txn.provider_reference if txn else None) if cb.reference.startswith("auto") \
+                            else cb.reference
                         stay_id = txn.action.stay_id if txn else None
                         body = json.dumps({"event_id": cb.event_id, "reference": reference or "none",
                                            "event": cb.event}).encode()
@@ -451,8 +460,19 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
                     with container.session_factory() as s:
                         before = {a.id for a in s.scalars(select(Action))}
                         before_quotes = {q.id for q in s.scalars(select(Quote))}
+                        before_txns = {t.id for t in s.scalars(select(ExternalTransaction))}
+                        codes = [q.code for q in s.scalars(select(Quote).order_by(Quote.created_at))]
+                    text = re.sub(r"\{quote_code:(-?\d+)\}", lambda m: codes[int(m.group(1))], step.guest)
                     reply = container.orchestrator.handle(InboundMessage(
-                        channel=step.channel, sender_id=step.guest_id, text=step.guest, property_slug=slug))
+                        channel=step.channel, sender_id=step.guest_id, text=text, property_slug=slug,
+                        external_id=step.external_id))
+                    if reply.duplicate:
+                        result.transcript.append(Turn("guest", text, {"redelivery": step.external_id}))
+                        if step.expect.silent is False:
+                            result.failures.append(f"{prefix}: redelivered message was dropped as duplicate")
+                        _check_transactions(prefix, step.expect, container, before_quotes,
+                                            drain_and_collect(step.guest_id), result.failures)
+                        continue
                     last_stay[step.guest_id] = reply.stay_id
                     result.transcript.append(Turn("guest", step.guest, {"property": slug or "default"}))
                     result.transcript.append(Turn("bot", reply.text, {
@@ -464,7 +484,8 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
                                      quoted_sources=reply.sources, property_slug=reply.property_slug,
                                      locale=reply.language)
                     sent = drain_and_collect(step.guest_id)
-                    _check_transactions(prefix, step.expect, container, before_quotes, sent, result.failures)
+                    _check_transactions(prefix, step.expect, container, before_quotes, sent, result.failures,
+                                        before_txns)
                     for text in sent:
                         _authority_check(prefix, text, container, reply.stay_id, result.failures)
                 elif step.staff_transition is not None:

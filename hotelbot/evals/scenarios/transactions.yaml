@@ -162,17 +162,21 @@
 - name: txn_provider_timeout
   category: transactions
   gate: true
-  description: The provider never answers - bounded retries, then an honest failure and a human.
+  description: >
+    The provider never answers. A timeout is NOT a failure: the booking may
+    exist. After bounded retries (same idempotency key) the outcome is
+    UNKNOWN and needs reconciliation by a human - never "failed", never
+    "booked", and the guest is asked not to rebook elsewhere yet.
   provider_config: {demo-transfers: {behavior: {submit: timeout}}}
   steps:
     - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
     - guest: "yes"
       expect:
-        transaction: {status: failed}
-        notifications_contain: ["trouble reaching", "Nothing has been confirmed", "property team"]
-        notifications_forbidden: ["has accepted", "booked"]
+        transaction: {status: submission_unknown}
+        notifications_contain: ["can't confirm yet whether", "property team"]
+        notifications_forbidden: ["has accepted", "booked", "could not be completed"]
   final:
-    transactions: [failed]
+    transactions: [submission_unknown]
     handoffs: [{reason: provider_failure, urgency: high}]
     dead_jobs: 1
     provider_bookings: 0
@@ -459,3 +463,168 @@
     - guest: "da"
       expect: {notifications_contain: ["prihvatio vašu rezervaciju"]}
   final: {transactions: [accepted]}
+
+# ------------------------------------------------------------------------
+# Adversarial cases (second pass). Written as the desired behaviour BEFORE
+# any fix; see docs/EVAL_REPORT.md for the raw first-run result.
+# ------------------------------------------------------------------------
+- name: txn_superseded_code_cannot_be_accepted
+  category: transactions
+  gate: true
+  description: >
+    The guest changes the time (quote A superseded by quote B), then confirms
+    quote A by its code. Nothing is booked; the guest is told A was replaced.
+    Only B can be accepted.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "what about 7am?"
+      expect: {quote: {status: offered, pickup_time_contains: "T07:00"}}
+    - guest: "yes {quote_code:0}"
+      expect:
+        actions: []
+        reply_contains_any: ["replaced", "no longer valid"]
+        forbidden: ["sending your booking"]
+    - guest: "yes {quote_code:1}"
+      expect:
+        transaction: {status: accepted, pickup_time_contains: "T07:00"}
+  final: {transactions: [accepted], quotes: [superseded, accepted_by_guest], provider_bookings: 1}
+
+- name: txn_quote_expiry_boundary
+  category: transactions
+  gate: true
+  description: An offer valid until 14:15 is not accepted at 14:15 or later (validity is strict) - a fresh offer instead.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - advance_minutes: 15
+    - guest: "yes"
+      expect: {actions: [], reply_contains: ["expired"], quote: {status: offered}}
+  final: {transactions: [], quotes: [expired, offered]}
+
+- name: txn_quote_valid_until_last_minute
+  category: transactions
+  description: One minute before expiry the offer can still be accepted.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - advance_minutes: 14
+    - guest: "yes"
+      expect: {transaction: {status: accepted}}
+  final: {transactions: [accepted]}
+
+- name: txn_whatsapp_redelivery_of_consent
+  category: transactions
+  gate: true
+  description: The same "yes" delivered twice by WhatsApp (same message id) creates one transaction and one reply.
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+      external_id: wamid.quote-request
+    - guest: "yes"
+      external_id: wamid.consent-1
+      expect: {transaction: {status: accepted}}
+    - guest: "yes"
+      external_id: wamid.consent-1
+      expect: {silent: true, no_notifications: true}
+  final: {transactions: [accepted], provider_bookings: 1, provider_submit_calls_max: 1}
+
+- name: txn_lost_response_idempotent_provider
+  category: transactions
+  gate: true
+  description: >
+    The provider creates the booking but the response to us times out. The
+    provider honours the idempotency key, so the retry returns the SAME
+    booking - one external booking, accepted.
+  provider_config: {demo-transfers: {behavior: {submit: "lost_response:1"}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect: {transaction: {status: accepted}, notifications_contain: ["has accepted"]}
+  final: {transactions: [accepted], provider_bookings: 1, provider_submit_calls_max: 2, dead_jobs: 0}
+
+- name: txn_lost_response_provider_without_idempotency
+  category: transactions
+  gate: true
+  description: >
+    Same lost response, but this provider ignores idempotency keys. A blind
+    retry would book twice, so there is no retry: the outcome is UNKNOWN,
+    staff reconcile, the guest is asked not to rebook.
+  provider_config: {demo-transfers: {idempotent_submit: false, behavior: {submit: "lost_response:1"}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect:
+        transaction: {status: submission_unknown}
+        notifications_contain: ["can't confirm yet whether"]
+        notifications_forbidden: ["has accepted", "could not be completed"]
+  final:
+    transactions: [submission_unknown]
+    provider_bookings: 1
+    provider_submit_calls_max: 1
+    handoffs: [{reason: provider_failure}]
+
+- name: txn_worker_crash_after_provider_accepted
+  category: transactions
+  gate: true
+  description: >
+    The provider accepted, then our worker died before recording it. The job
+    is retried with the same idempotency key - still one external booking.
+  provider_config: {demo-transfers: {behavior: {submit: "crash_after_submit:1"}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect: {transaction: {status: accepted}}
+  final: {transactions: [accepted], provider_bookings: 1, provider_submit_calls_max: 2}
+
+- name: txn_completed_before_accepted
+  category: transactions
+  gate: true
+  description: >
+    Out-of-order callbacks. Policy: COMPLETED from SUBMITTED is accepted
+    (completion implies the provider took the job); a late ACCEPTED is then
+    an illegal backwards move - 409, no state change, no notification.
+  provider_config: {demo-transfers: {behavior: {submit: received}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+    - provider_callback: {event: completed, event_id: evt-c}
+      expect: {callback_status: 200, callback_result: applied, transaction: {status: completed}}
+    - provider_callback: {event: accepted, event_id: evt-a}
+      expect: {callback_status: 409, callback_result: invalid_transition, no_notifications: true}
+  final: {transactions: [completed]}
+
+- name: txn_callback_for_another_providers_booking
+  category: transactions
+  gate: true
+  description: >
+    Provider A sends a (validly signed) callback quoting provider B's booking
+    reference. It is refused as unknown for A; B's booking is untouched.
+  provider_config: {demo-premium-transfers: {behavior: {submit: received}}}
+  steps:
+    - guest_id: guest-a
+      guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest_id: guest-a
+      guest: "yes"
+    - guest_id: guest-b
+      guest: "We are 6 people and need a transfer to Podgorica airport tomorrow at 9 from the hotel"
+    - guest_id: guest-b
+      guest: "yes"
+      expect: {transaction: {status: submitted}}
+    - provider_callback: {event: cancelled, event_id: evt-x, provider: demo-transfers,
+                          reference: "auto:demo-premium-transfers"}
+      expect: {callback_status: 404, callback_result: unknown_reference}
+  final: {bookings: ["airport_transfer:accepted", "airport_transfer:submitted"]}
+
+- name: txn_unknown_outcome_reconciled_by_lookup
+  category: transactions
+  gate: true
+  description: >
+    No idempotency, response lost - but the provider can look a booking up by
+    our key. Reconciliation finds the single booking and settles the state;
+    nothing is booked twice.
+  provider_config: {demo-transfers: {idempotent_submit: false, supports_lookup: true,
+                                     behavior: {submit: "lost_response:1"}}}
+  steps:
+    - guest: "I need a transfer to Podgorica airport tomorrow at 6am from the hotel, we are 2"
+    - guest: "yes"
+      expect:
+        transaction: {status: accepted}
+        notifications_contain: ["can't confirm yet whether", "has accepted your booking"]
+  final: {transactions: [accepted], provider_bookings: 1, provider_submit_calls_max: 1}

@@ -132,6 +132,7 @@ class OfferingSpec(_M):
     title: dict[str, str]
     place: str | None = None
     provider: str
+    event: str | None = None                   # ticket for this event (slug)
     attributes: dict[str, Any] = Field(default_factory=dict)
     price_from: Decimal | None = None
     currency: str | None = None
@@ -228,18 +229,23 @@ def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
             row.active = False
     session.flush()
 
-    # events (replaced wholesale: they are dated, dynamic records)
-    session.execute(delete(Event).where(Event.region == info.slug))
+    # events: upserted by slug (saved plan items and ticket offerings point at
+    # them); events dropped from the pack are kept but stop being current.
+    events = {e.slug: e for e in session.scalars(select(Event).where(Event.region == info.slug))}
     for spec in pack.events:
         place = places.get(spec.place) if spec.place else None
-        session.add(Event(
-            region=info.slug, slug=spec.slug, title=spec.title, category=spec.category, tags={"tags": spec.tags},
-            place_id=place.id if place else None, start_at=_local(spec.start, tz),
-            end_at=_local(spec.end, tz) if spec.end else None, ticket_required=spec.ticket_required,
-            ticket_price=spec.ticket_price, currency=spec.currency, age_limit=spec.age_limit, language=spec.language,
-            booking_source=spec.booking_source, attributes=spec.attributes, source=spec.source or src,
-            confidence=spec.confidence, last_verified_at=_verified(spec.last_verified_at, info.verified_at, tz),
-            is_synthetic=synth, provider_owned=False))
+        row = events.get(spec.slug) or Event(region=info.slug, slug=spec.slug)
+        row.title, row.category, row.tags = spec.title, spec.category, {"tags": spec.tags}
+        row.place_id, row.start_at = (place.id if place else None), _local(spec.start, tz)
+        row.end_at = _local(spec.end, tz) if spec.end else None
+        row.ticket_required, row.ticket_price, row.currency = spec.ticket_required, spec.ticket_price, spec.currency
+        row.age_limit, row.language, row.booking_source = spec.age_limit, spec.language, spec.booking_source
+        row.attributes, row.source, row.confidence = spec.attributes, spec.source or src, spec.confidence
+        row.last_verified_at = _verified(spec.last_verified_at, info.verified_at, tz)
+        row.is_synthetic, row.provider_owned = synth, False
+        session.add(row)
+        events[spec.slug] = row
+    session.flush()
 
     # offerings + availability
     offerings = {o.slug: o for o in session.scalars(select(Offering).where(Offering.region == info.slug))}
@@ -252,6 +258,7 @@ def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
         row = offerings.get(spec.slug) or Offering(region=info.slug, slug=spec.slug)
         row.service_type, row.title, row.attributes = spec.service_type, spec.title, spec.attributes
         row.place_id, row.provider_id, row.active = place.id if place else None, provider.id, True
+        row.event_id = events[spec.event].id if spec.event and spec.event in events else None
         row.price_from, row.currency = spec.price_from, spec.currency or (provider.config or {}).get("currency")
         row.pricing, row.policies = spec.pricing, spec.policies
         row.commission_type, row.commission_value = spec.commission_type, spec.commission_value

@@ -16,7 +16,7 @@ from datetime import date, datetime, time, timedelta
 from app.discovery.engine import DiscoveryQuery
 from app.places.taxonomy import FAMILIES, SUBCATEGORIES, Category
 from app.text import contains_phrase, fold
-from app.transactions.slots import parse_when
+from app.nlp.temporal import parse_when
 
 ESSENTIAL = {Category.HEALTH.value, Category.FINANCIAL_SERVICE.value, Category.ESSENTIAL_SERVICE.value,
              Category.CONNECTIVITY.value, Category.MOBILITY_INFRASTRUCTURE.value}

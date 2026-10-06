@@ -63,7 +63,8 @@ Idempotency-Key: <key>                     (bookings and cancellations)
 
 Rules:
 
-- **Idempotency.** The same `Idempotency-Key` must return the same booking and never create a second one. HOTELBOT retries timeouts with the same key.
+- **Idempotency.** The same `Idempotency-Key` must return the same booking and never create a second one. HOTELBOT retries timeouts with the same key. If you cannot guarantee this, declare `idempotent_submit: false`: HOTELBOT then never retries a submission whose answer was lost. It marks it SUBMISSION_UNKNOWN and asks staff to reconcile.
+- **Lookup (recommended).** `GET /bookings?idempotency_key=K` → `200 {status, reference}` or `404`, with `supports_lookup: true`. It lets HOTELBOT settle an unknown outcome automatically.
 - **`customer_reference`** is an opaque stay id. No guest PII is sent unless the service needs it in `details`.
 - **Error mapping:**
   - 5xx, 429, network errors, timeouts and malformed bodies are retried, with exponential backoff (5 s doubling to a 300 s cap) up to `max_attempts`.

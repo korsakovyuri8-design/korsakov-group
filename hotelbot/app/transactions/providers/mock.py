@@ -13,7 +13,9 @@ config:
   conditions: "Free cancellation up to 2 hours before pickup."
   behavior:
     quote:  ok | timeout | unavailable
-    submit: accepted | received | rejected | timeout | unavailable | invalid | auth | flaky:N
+  idempotent_submit: true   # false = the provider ignores Idempotency-Key (every submit books again)
+    submit: accepted | received | rejected | timeout | unavailable | invalid | auth | flaky:N |
+            lost_response:N (booking created, then a timeout) | crash_after_submit:N
             (flaky:N = N timeouts, then accepted; weather-dependent offerings are
             accepted_conditional instead of accepted)
     cancel: cancelled | refused | timeout
@@ -93,9 +95,25 @@ class MockExternalProvider:
     def submit(self, request: SubmitRequest) -> ProviderOutcome:
         self.submit_calls += 1
         existing = self.bookings.get(request.idempotency_key)
-        if existing is not None:   # provider-side idempotency
+        if existing is not None and self.config.get("idempotent_submit", True):   # provider-side idempotency
             return ProviderOutcome(status=existing["status"], reference=existing["reference"], message="duplicate")
         mode = self.behavior.get("submit", "accepted")
+        for failure in ("lost_response", "crash_after_submit"):
+            # The booking IS created at the provider, but we never learn it:
+            # the response times out / our process dies right after the call.
+            if mode.startswith(failure + ":"):
+                if self._flaky_failures < int(mode.split(":")[1]):
+                    self._flaky_failures += 1
+                    seed = request.idempotency_key if self.config.get("idempotent_submit", True) else \
+                        f"{request.idempotency_key}#{self.submit_calls}"
+                    reference = "MOCK-" + hashlib.sha1(seed.encode()).hexdigest()[:8].upper()
+                    self.bookings[f"{request.idempotency_key}#{self.submit_calls}" if not
+                                  self.config.get("idempotent_submit", True) else request.idempotency_key] = {
+                        "reference": reference, "status": "accepted", "details": request.details}
+                    if failure == "lost_response":
+                        raise ProviderTimeout("mock: booking created, response lost")
+                    raise RuntimeError("mock: worker crashed after the provider accepted")
+                mode = "accepted"
         if mode.startswith("flaky:"):
             if self._flaky_failures < int(mode.split(":")[1]):
                 self._flaky_failures += 1
@@ -109,13 +127,16 @@ class MockExternalProvider:
             raise ProviderInvalidRequest("mock provider rejected the request format")
         if mode == "auth":
             raise ProviderAuthError("mock provider credentials rejected")
-        reference = "MOCK-" + hashlib.sha1(request.idempotency_key.encode()).hexdigest()[:8].upper()
+        seed = request.idempotency_key if self.config.get("idempotent_submit", True) else \
+            f"{request.idempotency_key}#{self.submit_calls}"   # a non-idempotent provider books anew each time
+        reference = "MOCK-" + hashlib.sha1(seed.encode()).hexdigest()[:8].upper()
         status = {"accepted": "accepted", "received": "received", "rejected": "rejected"}[mode]
         if status == "accepted" and request.details.get("weather_dependent"):
             status = "accepted_conditional"     # outdoor service: confirmed only once the weather allows
         if status != "rejected":
-            self.bookings[request.idempotency_key] = {"reference": reference, "status": status,
-                                                      "details": request.details}
+            key = request.idempotency_key if self.config.get("idempotent_submit", True) else \
+                f"{request.idempotency_key}#{self.submit_calls}"
+            self.bookings[key] = {"reference": reference, "status": status, "details": request.details}
         return ProviderOutcome(status=status, reference=reference,  # type: ignore[arg-type]
                                message="no vehicles available" if status == "rejected" else None)
 
@@ -148,6 +169,14 @@ class MockExternalProvider:
                 booking["details"] = request.details
                 self.bookings[request.idempotency_key] = booking   # same booking, new key -> idempotent retries
         return ProviderOutcome(status="accepted", reference=request.modifies_reference, message="modified")
+
+    def lookup(self, idempotency_key: str) -> ProviderOutcome | None:
+        """Find a booking by OUR idempotency key (reconciliation after a lost
+        response); only for providers with supports_lookup."""
+        for key, booking in self.bookings.items():
+            if key == idempotency_key or key.startswith(idempotency_key + "#"):
+                return ProviderOutcome(status=booking["status"], reference=booking["reference"], message="found")
+        return None
 
     def get_status(self, reference: str) -> ProviderOutcome:
         for booking in self.bookings.values():

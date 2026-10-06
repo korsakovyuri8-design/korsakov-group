@@ -23,12 +23,12 @@ from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
 
 from app.agent import messages as msg
 from app.agent.intents import Intent
 from app.clock import Clock, as_utc
-from app.db.models import Event, ExternalProvider, ItemStatus, Offering, Place
+from app.db.models import Event, ExternalProvider, ItemStatus, Place
+from app.marketplace import bridge
 from app.discovery.engine import Candidate, EventCandidate, discover_events, discover_places
 from app.discovery.nlu import DiscoveryRequest, parse_discovery
 from app.discovery.render import L, candidate_line, event_line
@@ -275,11 +275,10 @@ class Concierge:
         place, event = self._entry_target(turn, entry)
         if place is None:
             return False
-        offering = turn.session.scalar(select(Offering).where(
-            Offering.place_id == place.id, Offering.active,
-            Offering.service_type.in_(list(VENUE_CATEGORIES))))
-        if event is None and offering is not None and offering.provider_id and self.txn is not None \
-                and turn.runtime.capabilities.service(offering.service_type) is not None:
+        options = [o for o in bridge.options_for(turn.session, place=place, capabilities=turn.runtime.capabilities)
+                   if o.service_type in VENUE_CATEGORIES]
+        offering = options[0].offering if options else None
+        if event is None and offering is not None and self.txn is not None:
             preset: dict[str, Any] = {}
             if entry.get("at"):
                 preset["reservation_time"] = datetime.fromisoformat(entry["at"]).replace(
@@ -318,7 +317,7 @@ class Concierge:
             return False
         now_local = self._now_local(turn)
         req = parse_discovery(turn.text, now_local)
-        if req is None:
+        if req is None or not self._allowed(turn, req):
             return False
         if not _hits(turn.text, EXTERNAL) and self._property_answers(turn, req):
             return False   # property knowledge first ("Where is the parking?")
@@ -345,6 +344,21 @@ class Concierge:
         log_event("discovery", conversation_id=turn.conv.id, hits=req.hits, events=req.events,
                   results=[c.place.slug for c in section.results], essential=req.essential)
         return True
+
+    @staticmethod
+    def _allowed(turn: _Turn, req: DiscoveryRequest) -> bool:
+        """Discovery capabilities: drop categories this property does not
+        expose; nothing left = not a discovery turn here."""
+        caps = turn.runtime.capabilities
+        if not caps.can_discover():
+            return False
+        q = req.query
+        q.categories = {c for c in q.categories if caps.can_discover(c)}
+        q.subcategories = {s for s in q.subcategories
+                           if s in SUBCATEGORIES and caps.can_discover(SUBCATEGORIES[s].category.value)}
+        if req.events and not caps.can_discover_events():
+            req.events = False
+        return bool(q.categories or q.subcategories or req.events)
 
     @staticmethod
     def _property_answers(turn: _Turn, req: DiscoveryRequest) -> bool:
@@ -434,10 +448,8 @@ class Concierge:
         return L("footer", turn.language, book=L("footer_book", turn.language) if bookable else "")
 
     def _bookable(self, turn: _Turn, place: Place) -> bool:
-        offering = turn.session.scalar(select(Offering).where(
-            Offering.place_id == place.id, Offering.active, Offering.service_type.in_(list(VENUE_CATEGORIES))))
-        return offering is not None and offering.provider_id is not None and \
-            turn.runtime.capabilities.service(offering.service_type) is not None
+        return any(o.service_type in VENUE_CATEGORIES
+                   for o in bridge.options_for(turn.session, place=place, capabilities=turn.runtime.capabilities))
 
     # ======================================================= trip planner
     def handle_plan(self, turn: _Turn) -> bool:

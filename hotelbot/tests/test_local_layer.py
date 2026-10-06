@@ -12,7 +12,7 @@ from app.clock import FrozenClock, as_utc
 from app.db.models import AvailabilitySlot, Event, ItemStatus, Place
 from app.discovery.engine import DiscoveryQuery, discover_events, discover_places
 from app.discovery.nlu import parse_discovery
-from app.places.availability import find_slot
+from app.marketplace.inventory import find_slot
 from app.places.geo import Point, distance_km, walking_minutes
 from app.places.hours import OpenState, open_during, status_at
 from app.places.taxonomy import SUBCATEGORIES, Category, category_of, label

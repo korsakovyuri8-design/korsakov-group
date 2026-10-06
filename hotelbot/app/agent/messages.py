@@ -419,6 +419,26 @@ CATALOG: dict[str, dict[str, str]] = {
     "change_policy_fee": {"en": " (note: replacing it may cost {fee} under the provider's policy)",
                           "cnr": " (napomena: zamjena može koštati {fee} po pravilima partnera)",
                           "ru": " (внимание: замена может стоить {fee} по условиям партнёра)"},
+    "quote_replaced": {
+        "en": "Offer {code} was replaced by a newer one, so it can no longer be booked - nothing has been booked.",
+        "cnr": "Ponuda {code} je zamijenjena novijom i više se ne može rezervisati - ništa nije rezervisano.",
+        "ru": "Предложение {code} заменено более новым, его больше нельзя забронировать - ничего не забронировано.",
+    },
+    "quote_no_longer_valid": {
+        "en": "Offer {code} is no longer valid, so it can't be booked - nothing has been booked.",
+        "cnr": "Ponuda {code} više ne važi i ne može se rezervisati - ništa nije rezervisano.",
+        "ru": "Предложение {code} больше не действует, его нельзя забронировать - ничего не забронировано.",
+    },
+    "txn_submission_unknown": {
+        "en": "I sent your booking request ({service}) to {provider}, but their system did not answer, so I can't confirm yet whether the booking was made. Please don't book it elsewhere yet - the property team is checking with them, and I'll tell you as soon as we know.",
+        "cnr": "Vaš zahtjev ({service}) je poslat partneru {provider}, ali njihov sistem nije odgovorio, pa još ne mogu potvrditi da li je rezervacija napravljena. Molim vas da još ne rezervišete drugdje - osoblje provjerava i javiću vam čim saznamo.",
+        "ru": "Запрос ({service}) отправлен партнёру {provider}, но их система не ответила, поэтому я пока не могу подтвердить, создана ли бронь. Пожалуйста, пока не бронируйте в другом месте - сотрудники уточняют, и я сообщу, как только узнаем.",
+    },
+    "action_submission_unknown": {
+        "en": "Your request ({action}) was sent, but the answer did not arrive, so I can't confirm yet whether it went through. {property} is checking.",
+        "cnr": "Vaš zahtjev ({action}) je poslat, ali odgovor nije stigao, pa još ne mogu potvrditi da li je prošao. Provjerava: {property}.",
+        "ru": "Ваш запрос ({action}) отправлен, но ответ не пришёл, поэтому я пока не могу подтвердить, прошёл ли он. Проверяет: {property}.",
+    },
     "txn_pending_condition": {
         "en": "{provider} has provisionally accepted your booking ({service}: {summary}), subject to the weather. It is not confirmed yet - they will confirm or call it off, and I'll tell you. Reference: {reference}.",
         "cnr": "{provider} je uslovno prihvatio vašu rezervaciju ({service}: {summary}), u zavisnosti od vremena. Još nije potvrđena - potvrdiće ili otkazati, i javiću vam. Broj: {reference}.",
@@ -552,6 +572,8 @@ STATUS_LABELS: dict[str, dict[str, str]] = {
     "unavailable": {"en": "not available", "cnr": "nije dostupno", "ru": "недоступно"},
     "proposed_action": {"en": "sending", "cnr": "šalje se", "ru": "отправляется"},
     "submitted": {"en": "requested - not confirmed", "cnr": "zatraženo - nije potvrđeno", "ru": "запрошено - не подтверждено"},
+    "submission_unknown": {"en": "outcome unknown - being checked", "cnr": "ishod nepoznat - provjerava se",
+                           "ru": "результат неизвестен - уточняется"},
     "pending_condition": {"en": "provisional - subject to weather, not confirmed", "cnr": "uslovno - zavisi od vremena, nije potvrđeno",
                           "ru": "предварительно - зависит от погоды, не подтверждено"},
     "accepted": {"en": "CONFIRMED by provider", "cnr": "POTVRĐENO", "ru": "ПОДТВЕРЖДЕНО"},

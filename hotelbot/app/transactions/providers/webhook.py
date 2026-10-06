@@ -8,6 +8,7 @@ Contract (documented in docs/PROVIDER_INTEGRATION.md):
     POST {base_url}/bookings/{ref}/cancel   -> 200 {status: cancelled|rejected, message?}
     POST {base_url}/bookings/{ref}/modify   -> 200 {status: accepted|rejected, reference}   (if supported)
     GET  {base_url}/bookings/{ref}          -> 200 {status, reference}
+    GET  {base_url}/bookings?idempotency_key=K -> 200 {status, reference} | 404   (if supports_lookup)
 
 Every request carries X-HotelBot-Timestamp and
 X-HotelBot-Signature: sha256=HMAC(secret, "<timestamp>.<body>") when
@@ -155,6 +156,13 @@ class WebhookExternalProvider:
 
     def cancel(self, reference: str, idempotency_key: str) -> ProviderOutcome:
         return self._outcome(self._call("POST", f"/bookings/{reference}/cancel", {}, idempotency_key=idempotency_key))
+
+    def lookup(self, idempotency_key: str) -> ProviderOutcome | None:
+        """GET /bookings?idempotency_key=... -> 200 {status, reference} | 404 (only with supports_lookup)."""
+        try:
+            return self._outcome(self._call("GET", f"/bookings?idempotency_key={idempotency_key}"))
+        except ProviderInvalidRequest:
+            return None   # 404: no booking under that key
 
     def get_status(self, reference: str) -> ProviderOutcome:
         return self._outcome(self._call("GET", f"/bookings/{reference}"))

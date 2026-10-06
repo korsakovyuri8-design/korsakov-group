@@ -33,7 +33,10 @@ from app.observability import log_event
 
 S = ActionStatus
 ALLOWED_TRANSITIONS: dict[ActionStatus, frozenset[ActionStatus]] = {
-    S.PROPOSED: frozenset({S.SUBMITTED, S.FAILED, S.CANCELLED}),
+    S.PROPOSED: frozenset({S.SUBMITTED, S.SUBMISSION_UNKNOWN, S.FAILED, S.CANCELLED}),
+    # Reconciliation (provider lookup or staff) settles what really happened.
+    S.SUBMISSION_UNKNOWN: frozenset({S.SUBMITTED, S.PENDING_CONDITION, S.ACCEPTED, S.REJECTED, S.FAILED,
+                                     S.CANCELLED}),
     S.SUBMITTED: frozenset({S.ACCEPTED, S.PENDING_CONDITION, S.REJECTED, S.IN_PROGRESS, S.COMPLETED, S.FAILED,
                             S.CANCELLED}),
     # Accepted subject to a condition (weather...): the provider still decides.

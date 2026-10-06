@@ -87,4 +87,9 @@ def register_handlers(worker: JobWorker, container: Container) -> None:
     worker.register("send_message", send_message)
     worker.register("provider_submit", provider_submit, on_dead=provider_submit_dead)
     worker.register("provider_cancel", provider_cancel, on_dead=provider_cancel_dead)
+
+    def provider_reconcile(s: Session, job: Job) -> None:
+        TransactionService(s, deps).run_reconcile(job.payload["transaction_id"])
+
+    worker.register("provider_reconcile", provider_reconcile)
     worker.register("notify_guest", notify_guest)

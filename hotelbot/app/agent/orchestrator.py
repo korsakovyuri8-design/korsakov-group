@@ -35,6 +35,7 @@ from app.agent.dialogue import is_follow_up, split_clauses
 from app.agent.handoff import create_handoff
 from app.agent.intents import Intent, IntentClassifier, IntentResult
 from app.agent.language import detect_language, resolve_reply_language
+from app.agent.operations import classify_operations, layer
 from app.agent.memory import extract_facts
 from app.agent.policies import (
     AFFIRMATIVE,
@@ -188,9 +189,10 @@ class Orchestrator:
                      facts=facts, guest_message_id=guest_msg.id)
         turn.intent = self.classifier.classify(text, language)
         guest_msg.intent = turn.intent.intent.value
+        ops = classify_operations(text)
         log_event("intent_detected", conversation_id=conv.id, intent=turn.intent.intent.value,
                   confidence=turn.intent.confidence, request_type=getattr(turn.intent.request_type, "value", None),
-                  source=turn.intent.source)
+                  source=turn.intent.source, operations=sorted(o.value for o in ops), layer=layer(ops))
 
         if conv.status == ConversationStatus.HANDED_OFF:
             self._while_handed_off(turn)

@@ -37,6 +37,7 @@ from app.transactions.dialogue import TransactionDialogue
 from app.transactions.providers.registry import ProviderRegistry
 from app.transactions.service import TxnDeps
 from app.trip.concierge import Concierge
+from app.trip.itinerary import StayPlanHooks
 from app.whatsapp.base import MessageTransport
 from app.whatsapp.meta import MetaWhatsAppTransport
 from app.whatsapp.mock import MockWhatsAppTransport
@@ -180,6 +181,7 @@ def build_container(
         txn_deps,
         submit_staff=lambda turn, action_type, message, summary: orchestrator_ref[0]._submit(
             turn, action_type, guest_message=message, summary=summary),
+        plan=StayPlanHooks(),
     )
     orchestrator = Orchestrator(
         session_factory=session_factory,

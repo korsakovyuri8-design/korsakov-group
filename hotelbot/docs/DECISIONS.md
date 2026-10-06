@@ -669,3 +669,82 @@ The terms are rendered ("Important terms: ...") with the price, and the consent 
 ## D-051 - Commercial metadata without commercial influence
 
 **Decision.** Providers and offerings carry `commission_type` / `commission_value`; offerings also carry `partner_price` / `guest_price`. Each quote stores a `commercial` snapshot: guest price, commission, partner price. The price shown and consented to is the quote amount, and commission never changes it or the ranking of unsuitable candidates. Enough for commission-per-booking, markup or revenue-share accounting later. No accounting is built.
+
+---
+
+# Architecture correction: two worlds, four truths
+
+## D-052 - LOCAL WORLD and TRANSACTION WORLD are separate layers
+
+**Decision.** The product has two orthogonal layers.
+
+**LOCAL WORLD (discovery)** — FIND / RECOMMEND / SAVE:
+- `Place` (restaurant, bar, museum, pharmacy, ATM, supermarket, viewpoint, coworking, parking, hospital, venue) and `Event`;
+- modules `app/discovery`, `app/places`.
+
+**TRANSACTION WORLD (execution)** — QUOTE / BOOK / ORDER / CHANGE / CANCEL:
+- `ExternalProvider`, `Offering`, `Quote`, `ExternalTransaction`, inventory;
+- modules `app/transactions`, `app/marketplace`.
+
+A real business may live in both. A restaurant is a Place, and *if* it takes reservations, it also has a reservation Offering (`offerings.place_id`). An event is an Event with an optional ticket Offering (`offerings.event_id`, migration 0006). A pharmacy, an ATM or a viewpoint is only a Place — never a provider "for consistency". A taxi is a provider and offering with no Place.
+
+The only code that connects the worlds is `app/marketplace/bridge.py` (`options_for(place | event)`), used by the orchestration layer (`app/trip`, `app/agent`). `tests/test_architecture.py` fails the build if the discovery world imports transaction code, or the reverse.
+
+That test immediately found two real couplings, both fixed:
+- discovery NLU imported time parsing from `app.transactions.slots` (moved to the neutral `app/nlp/temporal.py`);
+- the transaction dialogue wrote stay-plan items itself (now `PlanHooks`, implemented by `app/trip/itinerary.StayPlanHooks`).
+
+Inventory moved from `app/places/availability.py` to `app/marketplace/inventory.py`: it is the inventory of offerings, i.e. the transaction world.
+
+Capabilities are split the same way:
+- `capabilities.discovery`: enabled, categories, events;
+- `capabilities.actions` / `capabilities.services` (transactions).
+
+`describe()` reports `discovery_capabilities` and `transaction_capabilities`. A guest message is also classified into operations (`app/agent/operations.py`): FIND / RECOMMEND / SAVE vs QUOTE / BOOK / ORDER / CHANGE / CANCEL. The result is logged on every turn as the layer it touches.
+
+**Alternatives considered.**
+- Everything as ExternalProvider/Offering: a "service catalogue" that slowly becomes a dump of everything a tourist meets. Hours, freshness and geo would end up on providers; ATMs would get fake transaction semantics.
+- Everything as Place with booking flags: transactions without places (taxi) don't fit, and there is no quote/consent/inventory model.
+
+**Consequences.** New verticals choose their side explicitly. A large recommendation engine is deliberately not built yet; the discovery interfaces stay minimal.
+
+---
+
+## D-053 - Four kinds of truth; the LLM is the interface to them, never the source
+
+| Truth | Example | Source |
+|---|---|---|
+| Knowledge | "What time is breakfast?" | property pack / place data |
+| Availability | "Is a table free at 21:00?" | provider or modelled inventory (slots minus holds) |
+| Transaction | "Has the taxi been booked?" | stored Action / ExternalTransaction state, provider callbacks |
+| World (time-sensitive) | "Is this restaurant open now?" | structured place/event data + clock + freshness |
+
+Every guest-facing statement of each kind is produced from its source: templates for transaction state, computed hours, inventory checks, retrieved items. Model prose that asserts one of them unbacked is discarded (authority guard).
+
+---
+
+## D-054 - timeout ≠ failure: SUBMISSION_UNKNOWN and reconciliation
+
+**Decision.** When the provider's answer never arrives (timeout, or our worker crashed after the call), the booking may exist.
+
+- **Providers that honour our `Idempotency-Key`** (`idempotent_submit: true`, the default): retry with the same key. That is safe: the provider returns the same booking. If retries run out after a timeout or crash, the status is **SUBMISSION_UNKNOWN**, never FAILED.
+- **Providers without idempotency** (`idempotent_submit: false`): **no retry** (it could book twice). Immediately SUBMISSION_UNKNOWN.
+
+In both cases:
+- the guest hears "I can't confirm yet whether the booking was made, please don't book elsewhere";
+- staff get a high-urgency RECONCILE handoff carrying the idempotency key.
+
+If the provider supports `lookup(idempotency_key)` (`supports_lookup: true`), a `provider_reconcile` job settles the state automatically. A miss is not treated as proof: staff decide. Explicit 5xx and connection errors are still FAILED after retries.
+
+SUBMISSION_UNKNOWN backs no claim, neither booked nor failed (authority tests). It is live (shown in the plan as "outcome unknown - being checked") and resolvable to SUBMITTED / ACCEPTED / PENDING_CONDITION / REJECTED / FAILED / CANCELLED.
+
+**Evidence.** The first run of the new scenarios: the "provider without idempotency" case booked twice (2 external bookings). That was the most serious defect found this cycle.
+
+---
+
+## D-055 - Out-of-order and cross-provider callbacks
+
+**Decision.**
+- **COMPLETED from SUBMITTED is allowed:** completion implies the provider took the job. A later ACCEPTED is a backwards move: 409, no state change, no notification.
+- **Callbacks are matched by (provider, reference).** A validly signed callback from provider A quoting provider B's reference is `unknown_reference` (404), and B's booking is untouched.
+- **A duplicate event id is `duplicate`;** the same state with a new event id is `already_in_state`. Either way there is no second notification.

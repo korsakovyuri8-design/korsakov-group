@@ -19,6 +19,7 @@ A DEAD `provider_submit` has already marked the booking FAILED, told the guest a
 | `0002_stay_engine` | Property / Stay / Action generalisation, data migration | **forward-only** |
 | `0003_transactions` | providers, quotes, external transactions, provider events, jobs | additive |
 | `0004_local_travel` | places, events, offerings, availability, itinerary; provider region | additive |
+| `0006_layers` | `offerings.event_id` (event tickets); status SUBMISSION_UNKNOWN (no DDL) | additive (reversible) |
 | `0005_marketplace` | inventory holds, property-provider relationships, offering pricing/policies, commercial metadata, quote terms | additive (reversible) |
 
 The app migrates on startup when `HOTELBOT_AUTO_MIGRATE=true`:
@@ -64,6 +65,10 @@ Docker Compose:
 docker compose exec db pg_dump -Fc -U hotelbot hotelbot > hotelbot.dump
 docker compose exec -T db pg_restore -U hotelbot -d hotelbot --clean --no-owner < hotelbot.dump
 ```
+
+## Unknown submission outcomes (reconciliation)
+
+`SUBMISSION_UNKNOWN` means we sent a booking and never got the answer, so it may exist. Each one opens a high-urgency handoff that names the provider and our idempotency key. To settle it, ask the provider, then move the action with the staff API (`POST /api/staff/actions/{id}/transition`) to `accepted` (with their reference in the note) or `failed`/`cancelled`. Providers with `supports_lookup: true` are reconciled automatically by the `provider_reconcile` job. Never rebook before it is settled.
 
 ## Inventory holds
 

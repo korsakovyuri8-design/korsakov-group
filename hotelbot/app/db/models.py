@@ -105,6 +105,10 @@ class ActionStatus(str, enum.Enum):
     only system/tool state moves an action between these (never model prose)."""
 
     PROPOSED = "proposed"
+    # We sent it, the provider's answer never arrived (timeout, crash): the
+    # booking may or may not exist. Never reported as failed or booked;
+    # resolved by reconciliation (provider lookup or staff).
+    SUBMISSION_UNKNOWN = "submission_unknown"
     SUBMITTED = "submitted"
     # Provider accepted SUBJECT TO a condition (weather, minimum group...):
     # not a confirmed booking until the provider confirms unconditionally.
@@ -630,6 +634,9 @@ class Offering(_Provenance, Base):
     service_type: Mapped[str] = mapped_column(String(64), index=True)
     title: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     place_id: Mapped[str | None] = mapped_column(ForeignKey("places.id"))
+    # An event's ticket: the event exists on its own (discovery); this optional
+    # link is how it becomes transactable.
+    event_id: Mapped[str | None] = mapped_column(ForeignKey("events.id"))
     provider_id: Mapped[str | None] = mapped_column(ForeignKey("external_providers.id"))
     attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     price_from: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))

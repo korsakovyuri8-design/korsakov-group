@@ -87,3 +87,14 @@ def plan(session: Session, stay_id: str, *, include_dismissed: bool = False) -> 
         out.append(PlanEntry(item, status, as_utc(item.starts_at) if item.starts_at else None))
     out.sort(key=lambda e: (e.starts_at is None, e.starts_at or datetime.max, e.item.created_at))
     return out
+
+
+class StayPlanHooks:
+    """The transaction dialogue's PlanHooks: offers and bookings appear in
+    the stay plan with their status read from the source."""
+
+    def offered(self, turn, quote: Quote, *, kind: str, title: str, starts_at: datetime | None) -> None:  # noqa: ANN001
+        link_quote(turn.session, stay_id=turn.stay.id, kind=kind, title=title, quote=quote, starts_at=starts_at)
+
+    def booked(self, turn, quote: Quote, action_id: str) -> None:  # noqa: ANN001
+        link_action(turn.session, quote.id, action_id)

@@ -32,8 +32,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ExternalProvider, Offering, PropertyProvider, ProviderRelation
 from app.marketplace import pricing, terms
-from app.places import availability
-from app.places.availability import NoAvailability, SlotMatch, most_specific
+from app.marketplace import inventory as availability
+from app.marketplace.inventory import NoAvailability, SlotMatch, most_specific
 
 
 @dataclass

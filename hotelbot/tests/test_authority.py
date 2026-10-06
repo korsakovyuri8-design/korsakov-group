@@ -23,7 +23,8 @@ S = ActionStatus
 ALLOWED_CLAIMS = {
     S.PROPOSED: set(),
     S.SUBMITTED: set(),
-    S.PENDING_CONDITION: set(),   # provisional: may never read as confirmed
+    S.PENDING_CONDITION: set(),
+    S.SUBMISSION_UNKNOWN: set(),  # outcome unknown: may never read as booked or failed   # provisional: may never read as confirmed
     S.REJECTED: set(),
     S.FAILED: set(),
     S.CANCELLED: set(),

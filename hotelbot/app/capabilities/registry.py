@@ -52,11 +52,27 @@ class ServiceCapability(BaseModel):
     provider: str | None = None
 
 
+class DiscoveryCapability(BaseModel):
+    """What the agent may FIND / RECOMMEND / SAVE around the property (the
+    local world). Independent of transactions: a pharmacy is discoverable,
+    never bookable."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    categories: list[str] | None = None     # top-level taxonomy; None = all
+    events: bool = True
+
+
 class CapabilitySpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # TRANSACTION capabilities: actions (staff / webhook) and services
+    # (QUOTE / BOOK / ORDER / CHANGE / CANCEL through providers).
     actions: dict[str, ActionCapability] = Field(default_factory=dict)
     services: dict[str, ServiceCapability] = Field(default_factory=dict)
+    # DISCOVERY capabilities (FIND / RECOMMEND / SAVE).
+    discovery: DiscoveryCapability = Field(default_factory=DiscoveryCapability)
     integrations: list[str] = Field(default_factory=list)
     # Informational: external service categories available around the property
     # (e.g. "transport", "activities"), surfaced to staff and future planners.
@@ -123,8 +139,24 @@ class CapabilityRegistry:
     def has_integration(self, name: str) -> bool:
         return name in self.spec.integrations
 
+    def can_discover(self, category: str | None = None) -> bool:
+        d = self.spec.discovery
+        if not d.enabled:
+            return False
+        return category is None or d.categories is None or category in d.categories
+
+    def can_discover_events(self) -> bool:
+        return self.spec.discovery.enabled and self.spec.discovery.events
+
     def describe(self) -> dict[str, Any]:
+        d = self.spec.discovery
         return {
+            "discovery_capabilities": {"enabled": d.enabled, "categories": d.categories or "all",
+                                       "events": d.events},
+            "transaction_capabilities": {
+                "services": {k: (v.provider or "auto") for k, v in sorted(self.spec.services.items())},
+                "actions": {k: a.executor for k, a in sorted(self.spec.actions.items())},
+            },
             "knowledge": sorted(self.knowledge_topics),
             "actions": {k: a.executor for k, a in sorted(self.spec.actions.items())},
             "unavailable_actions": sorted(set(ACTION_CATALOG) - set(self.spec.actions)),

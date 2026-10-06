@@ -30,7 +30,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -44,7 +44,7 @@ from app.clock import as_utc
 from app.db.models import Action, ExternalProvider, ExternalTransaction, Place, Quote, QuoteStatus, RequestType
 from app.marketplace import discovery, terms
 from app.observability import log_event
-from app.places.availability import NoAvailability
+from app.marketplace.inventory import NoAvailability
 from app.schemas.messages import ActionTaken
 from app.text import contains_phrase, fold
 from app.transactions.catalog import (
@@ -70,7 +70,6 @@ from app.transactions.slots import (
     parse_when,
     resolve_datetime,
 )
-from app.trip import itinerary
 
 if TYPE_CHECKING:
     from app.agent.orchestrator import _Turn
@@ -148,11 +147,30 @@ def new_draft(service_type: str, values: dict[str, Any] | None = None) -> dict[s
             "asked": None, "replaces": None}
 
 
+class PlanHooks(Protocol):
+    """Implemented by the orchestration layer (the stay plan). The
+    transaction world announces offers and bookings; it does not know the plan."""
+
+    def offered(self, turn: _Turn, quote: Quote, *, kind: str, title: str, starts_at: datetime | None) -> None: ...
+
+    def booked(self, turn: _Turn, quote: Quote, action_id: str) -> None: ...
+
+
+class _NoPlan:
+    def offered(self, turn: _Turn, quote: Quote, *, kind: str, title: str, starts_at: datetime | None) -> None:
+        pass
+
+    def booked(self, turn: _Turn, quote: Quote, action_id: str) -> None:
+        pass
+
+
 class TransactionDialogue:
     def __init__(self, deps: TxnDeps,
-                 submit_staff: Callable[[_Turn, str, str, str], Action | None]) -> None:
+                 submit_staff: Callable[[_Turn, str, str, str], Action | None],
+                 plan: PlanHooks | None = None) -> None:
         self.deps = deps
         self.submit_staff = submit_staff   # orchestrator: create a staff-queue action
+        self.plan = plan or _NoPlan()
 
     # ================================================================= entry
     def handle(self, turn: _Turn) -> bool:
@@ -163,6 +181,8 @@ class TransactionDialogue:
         if turn.state.get("pending_cancel") and self._pending_cancel_turn(turn, svc):
             return True
         quotes = svc.open_quotes(turn.conv.id)
+        if self._stale_code_turn(turn, quotes):
+            return True
         draft = turn.state.get("txn_draft")
         if draft and quotes and self._absorb(turn, copy.deepcopy(draft)):
             # A trip plan can hold open offers AND a draft that is waiting for
@@ -469,8 +489,8 @@ class TransactionDialogue:
         spec = SERVICE_CATALOG[quote.service_type]
         wk = when_key(quote.service_type)
         starts = datetime.fromisoformat(quote.request[wk]) if wk and quote.request.get(wk) else None
-        itinerary.link_quote(turn.session, stay_id=turn.stay.id, kind=DOMAIN_CATEGORY.get(spec.domain, "OTHER"),
-                             title=self._summary(turn, quote), quote=quote, starts_at=starts)
+        self.plan.offered(turn, quote, kind=DOMAIN_CATEGORY.get(spec.domain, "OTHER"),
+                          title=self._summary(turn, quote), starts_at=starts)
         turn.offered_quote_ids.append(quote.id)
         turn.actions.append(ActionTaken(kind="quote", id=quote.id, detail={
             "service_type": quote.service_type, "status": quote.status.value, "amount": str(quote.amount),
@@ -610,6 +630,27 @@ class TransactionDialogue:
             return True
         return False
 
+    def _stale_code_turn(self, turn: _Turn, open_quotes: list[Quote]) -> bool:
+        """The guest names a code that is no longer open (replaced, expired,
+        declined): say so explicitly - it can never be booked - and show the
+        current offer for that service, if any."""
+        code = mentioned_code(turn.text)
+        if not code or any(q.code == code for q in open_quotes):
+            return False
+        stale = turn.session.scalar(select(Quote).where(Quote.conversation_id == turn.conv.id, Quote.code == code)
+                                    .order_by(Quote.created_at.desc()).limit(1))
+        if stale is None or stale.status in (QuoteStatus.OFFERED, QuoteStatus.ACCEPTED_BY_GUEST):
+            return False
+        key = "quote_replaced" if stale.status == QuoteStatus.SUPERSEDED else "quote_no_longer_valid"
+        reply = msg.t(key, turn.language, code=code)
+        current = next((q for q in open_quotes if q.service_type == stale.service_type), None)
+        if current is not None:
+            reply += " " + self._quote_text(turn, current)
+            turn.offered_quote_ids.append(current.id)
+        turn.reply, turn.succeeded = reply, True
+        log_event("stale_quote_referenced", quote_id=stale.id, status=stale.status.value)
+        return True
+
     def _per_sentence(self, turn: _Turn, svc: TransactionService, quotes: list[Quote], refs_of: dict[str, list[str]],
                       refs: list[str], sentences: list[str]) -> bool:
         """"Book the transfer and the guide. I'll decide about the skis
@@ -678,7 +719,7 @@ class TransactionDialogue:
                 continue
             except QuoteNotOpen:
                 continue
-            itinerary.link_action(turn.session, quote.id, txn.action_id)
+            self.plan.booked(turn, quote, txn.action_id)
             lines.append(self._report_line(turn, svc, txn))
         if not lines:
             return False

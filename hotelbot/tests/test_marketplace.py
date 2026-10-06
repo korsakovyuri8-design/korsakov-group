@@ -23,8 +23,8 @@ from app.db.models import (
     ProviderRelation,
 )
 from app.marketplace import discovery, pricing, terms
-from app.places import availability
-from app.places.availability import NoAvailability
+from app.marketplace import inventory as availability
+from app.marketplace.inventory import NoAvailability
 from app.transactions.providers.base import SubmitRequest
 from app.transactions.providers.mock import MockExternalProvider
 from app.trip.concierge import split_requests

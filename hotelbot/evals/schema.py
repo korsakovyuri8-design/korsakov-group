@@ -92,6 +92,8 @@ class ProviderCallback(_Strict):
 class Step(_Strict):
     guest: str | None = None
     guest_id: str = "eval-guest"
+    # Channel message id (e.g. a WhatsApp wamid): the same id twice = a redelivery.
+    external_id: str | None = None
     property: str | None = None                # pack alias or slug; default = first property
     channel: str = "demo"
     staff_transition: StaffTransition | None = None
