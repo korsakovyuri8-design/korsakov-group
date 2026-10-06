@@ -148,6 +148,15 @@ def food_state(place, at_local: datetime) -> HoursStatus:  # noqa: ANN001
     return HoursStatus(OpenState.UNKNOWN)
 
 
+def always_open(hours: dict[str, Any] | None) -> bool:
+    """Every day 00:00-00:00, no seasonal / special / closure overrides."""
+    h = hours or {}
+    weekly = h.get("weekly") or {}
+    days = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+    return all(weekly.get(d) == [["00:00", "00:00"]] for d in days) and not (
+        h.get("seasonal") or h.get("special") or h.get("closed"))
+
+
 def open_throughout(place, start_local: datetime, end_local: datetime) -> bool | None:  # noqa: ANN001
     """Open for the whole window (a two-hour gap before dinner)? None = no data."""
     st = status_at(place.hours, start_local)

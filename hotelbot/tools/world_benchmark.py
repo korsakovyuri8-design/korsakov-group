@@ -241,6 +241,12 @@ def run(entities: int, db: str, *, queries: int = 200) -> dict:
         raw_by_canonical: dict[str, list[dict]] = defaultdict(list)
         for se in s.scalars(select(SourceEntity).where(SourceEntity.source_id.like("bench:%"))):
             raw_by_canonical[active_canonical(s, se.id)].append(se.raw or {})
+        from app.discovery.engine import claim, contested_claims
+        from app.places.hours import status_at
+
+        # traveller-facing moments the gate is checked at (place-local): a weekday
+        # afternoon, a late Friday evening, a Sunday morning
+        moments = [datetime(2026, 10, 5, 14, 0), datetime(2026, 10, 9, 22, 30), datetime(2026, 10, 11, 9, 0)]
         facts = Counter()
         for place in s.scalars(select(Place).where(Place.canonical_entity_id.is_not(None))):
             raws = raw_by_canonical.get(place.canonical_entity_id, [])
@@ -253,16 +259,28 @@ def run(entities: int, db: str, *, queries: int = 200) -> dict:
             shown = (place.hours or {}).get("weekly")
             disagreement = len({json.dumps(c, sort_keys=True) for c in claims}) > 1
             if not claims:
-                facts["unknown_correctly" if shown is None else "invented_value"] += 1
+                facts["correctly_unknown" if shown is None else "invented_value"] += 1
             elif shown is None:
-                facts["withheld_on_real_disagreement" if disagreement else "withheld_without_disagreement"] += 1
+                facts["correctly_conflicted" if disagreement else "withheld_without_disagreement"] += 1
             elif shown == truth:
                 facts["resolved_correctly"] += 1
             elif truth in claims:
-                facts["incorrect_winner_dissent_visible" if state in ("contested", "conflicted")
-                      else "incorrect_winner_silent"] += 1
+                if state == "contested":
+                    facts["incorrect_winner_contested"] += 1
+                    # GATE: a contested wrong winner must never reach the traveller as a definitive claim
+                    for at in moments:
+                        wrong_now = claim(status_at({"weekly": truth}, at)) != claim(status_at(place.hours, at),
+                                                                                      place.hours)
+                        if wrong_now:
+                            facts["gate_wrong_claims_checked"] += 1
+                            if "hours" not in contested_claims(place, at):
+                                facts["gate_contested_wrong_claim_stated_definitively"] += 1
+                else:
+                    facts["incorrect_winner_uncontested"] += 1
             else:
                 facts["wrong_everywhere_no_true_claim"] += 1   # every source wrong: not detectable
+        facts.setdefault("incorrect_winner_uncontested", 0)
+        facts.setdefault("gate_contested_wrong_claim_stated_definitively", 0)
         out["fact_resolution_opening_hours"] = dict(sorted(facts.items()))
         # ---- spatial: index vs full scan, nearest-N
         idx = GeohashIndex()

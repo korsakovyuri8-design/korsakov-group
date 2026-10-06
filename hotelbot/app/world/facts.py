@@ -124,6 +124,8 @@ class Resolution:
                "confidence": round(self.confidence, 3),
                "supporting": sorted({a.source_id for a in self.supporting}),
                "conflicting": [{"source": a.source_id, "value": a.value} for a in self.conflicting]}
+        if self.state in (CONTESTED, CONFLICTED):
+            out["value"] = self.value     # a disputed winner travels WITH its dissent (winner != certainty)
         if self.winner is not None:
             out["source"] = self.winner.source_id
             out["source_class"] = self.winner.source_class

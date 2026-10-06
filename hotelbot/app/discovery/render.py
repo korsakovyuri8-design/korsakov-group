@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.discovery.engine import Candidate, EventCandidate, walking
-from app.places.hours import OpenState
+from app.places.hours import OpenState, always_open
 from app.places.taxonomy import label
 from app.agent.messages import to_cyrillic_template
 
@@ -45,6 +45,18 @@ _L = {
                               "cnr": "izvor ga više ne navodi - moguće da je zatvoreno",
                               "ru": "источник его больше не показывает — возможно, закрылось"},
     "fact_start": {"en": "start time", "cnr": "vrijeme početka", "ru": "время начала"},
+    "fact_availability": {"en": "ticket availability", "cnr": "dostupnost karata", "ru": "наличие билетов"},
+    "contested": {"en": "I have conflicting information about the {fact}: one source says {a}, another says {b} - "
+                        "I can't confirm which is current",
+                  "cnr": "imam oprečne podatke ({fact}): jedan izvor kaže {a}, drugi {b} - ne mogu potvrditi "
+                         "šta je tačno",
+                  "ru": "у меня противоречивые данные ({fact}): один источник — {a}, другой — {b}; "
+                        "не могу подтвердить, что актуально"},
+    "or": {"en": " or ", "cnr": " ili ", "ru": " или "},
+    "kitchen_no_hours": {"en": "no kitchen hours", "cnr": "bez radnog vremena kuhinje", "ru": "нет часов кухни"},
+    "avail_sold_out": {"en": "sold out", "cnr": "rasprodato", "ru": "билетов нет"},
+    "avail_available": {"en": "tickets available", "cnr": "karte dostupne", "ru": "билеты есть"},
+    "avail_limited": {"en": "few tickets left", "cnr": "malo karata", "ru": "осталось мало билетов"},
     "none_because": {"en": "I couldn't find anything that fits{ctx} in my local data: {why}. I won't guess - would you like me to ask the staff?",
                      "cnr": "U mojim lokalnim podacima nema ničega što odgovara{ctx}: {why}. Ne nagađam - da pitam osoblje?",
                      "ru": "В моих местных данных ничего подходящего не нашлось{ctx}: {why}. Гадать не буду — спросить у сотрудников?"},
@@ -116,25 +128,62 @@ def L(key: str, locale: str, **kw: object) -> str:
     return text.format(**kw) if kw else text
 
 
-def always_open(hours: dict | None) -> bool:
-    """Every day 00:00-00:00, no seasonal / special / closure overrides."""
-    h = hours or {}
-    weekly = h.get("weekly") or {}
-    days = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
-    return all(weekly.get(d) == [["00:00", "00:00"]] for d in days) and not (
-        h.get("seasonal") or h.get("special") or h.get("closed"))
-
-
 def _hhmm(dt: datetime | None) -> str:
     return dt.strftime("%H:%M") if dt else "?"
 
 
+def _contested(caveats: list[str]) -> dict[str, list[str]]:
+    out = {}
+    for cv in caveats:
+        kind, _, rest = cv.partition(":")
+        if kind == "contested":
+            fact, _, claims = rest.partition(":")
+            out[fact] = claims.split("|") if claims else []
+    return out
+
+
+def _claim_text(code: str, locale: str, *, kitchen: bool = False, now: bool = False) -> str:
+    """engine.claim() code -> words. Never more certain than the code."""
+    kind, _, t = code.partition("@")
+    if kind == "open24":
+        return L("open_24_7", locale)
+    if kind == "open":
+        return L("kitchen_until" if kitchen else "open_until", locale, t=t or "?")
+    if kind == "opens":
+        return L("kitchen_opens" if kitchen else "opens_at", locale, t=t or "?")
+    if kind == "closed":
+        return L("kitchen_closed_now" if kitchen else ("closed_now" if now else "closed"), locale)
+    return L("kitchen_no_hours" if kitchen else "hours_unknown", locale)
+
+
+def hedge(fact: str, alternatives: list[str], locale: str) -> str:
+    """winner != certainty: both claims, and that we can't confirm either."""
+    return L("contested", locale, fact=L(f"fact_{fact}", locale), a=alternatives[0],
+             b=L("or", locale).join(alternatives[1:]))
+
+
 def status_text(c: Candidate, locale: str, *, now: bool = False) -> str:
-    """`now`: the state is the CURRENT one (no time was asked)."""
+    """`now`: the state is the CURRENT one (no time was asked). A CONTESTED
+    high-dynamic fact is never stated as fact: both claims are given."""
     st = c.status
+    contested = _contested(c.caveats)
+    kitchen_hedge = None
+    if contested.get("kitchen"):
+        kitchen_hedge = hedge("kitchen", [_claim_text(x, locale, kitchen=True, now=now)
+                                          for x in contested["kitchen"]], locale)
+    venue_fact = "hours" if contested.get("hours") else ("closure" if contested.get("closure") else None)
+    if venue_fact is not None:
+        out = hedge(venue_fact, [_claim_text(x, locale, now=now) for x in contested[venue_fact]], locale)
+        if kitchen_hedge:
+            return out + "; " + kitchen_hedge
+        if c.kitchen is not None and c.kitchen.state == OpenState.OPEN:
+            out += ", " + L("kitchen_until", locale, t=_hhmm(c.kitchen.closes_at))
+        return out
     if st.state == OpenState.OPEN and c.kitchen is not None and c.kitchen.state != OpenState.OPEN \
             and c.place.category in ("FOOD", "NIGHTLIFE"):
         out = L("open_until", locale, t=_hhmm(st.closes_at))
+        if kitchen_hedge:
+            return out + "; " + kitchen_hedge
         if c.kitchen.state == OpenState.OPEN_LATER:
             return out + ", " + L("kitchen_opens", locale, t=_hhmm(c.kitchen.opens_at))
         if c.kitchen.state == OpenState.CLOSED:
@@ -153,7 +202,9 @@ def status_text(c: Candidate, locale: str, *, now: bool = False) -> str:
         out = L("hours_disputed", locale)
     else:
         out = L("hours_unknown", locale)
-    if c.kitchen is not None and c.kitchen.state == OpenState.OPEN:
+    if kitchen_hedge:
+        out += "; " + kitchen_hedge
+    elif c.kitchen is not None and c.kitchen.state == OpenState.OPEN:
         out += ", " + L("kitchen_until", locale, t=_hhmm(c.kitchen.closes_at))
     return out
 
@@ -186,6 +237,8 @@ def _caveat_labels(c: Candidate, locale: str) -> list[str]:
         elif kind == "conflict":
             name = L(f"fact_{v}", locale) if f"fact_{v}" in _L else v
             out.append(L("conflict", locale, fact=name))
+        elif kind == "contested":
+            continue                    # said in the status text, with both claims
         elif kind == "dress":
             out.append(L("dress", locale, v=v))
         elif kind == "age":
@@ -220,8 +273,25 @@ def event_line(i: int, e: EventCandidate, locale: str, tz_fmt) -> str:
         price = L("free" if free else "no_ticket", locale)
     else:
         price = ""
+    res = e.event.resolution or {}
+    when = tz_fmt(e.event.start_at)
     cav = []
+    if "contested:start" in e.caveats:
+        others = [tz_fmt(datetime.fromisoformat(x["value"])) for x in (res.get("start_at") or {}).get("conflicting", [])
+                  if x.get("value")]
+        alts = [when] + [o for o in dict.fromkeys(others) if o != when]
+        if len(alts) > 1:
+            when = hedge("start", alts, locale)
+    if "contested:availability" in e.caveats:
+        r = res.get("event_availability") or {}
+        vals = [r.get("value")] + [x.get("value") for x in r.get("conflicting", [])]
+        words = [L(f"avail_{v}", locale) if f"avail_{v}" in _L else str(v) for v in vals if v is not None]
+        words = list(dict.fromkeys(words))
+        if len(words) > 1:
+            cav.append(hedge("availability", words, locale))
     for c in e.caveats:
+        if c.startswith("contested:"):
+            continue
         if c.startswith("fresh:"):
             _, fact, state, days = c.split(":")
             cav.append(L("fresh_stale", locale, fact=L("fact_event", locale), d=days) if state == "stale"
@@ -233,7 +303,7 @@ def event_line(i: int, e: EventCandidate, locale: str, tz_fmt) -> str:
     if e.event.age_limit:
         cav.append(L("age", locale, v=e.event.age_limit))
     extra = "; ".join(x for x in [price] + cav if x)
-    return f"{i}. {title}{where} - {tz_fmt(e.event.start_at)}" + (f"; {extra}" if extra else "")
+    return f"{i}. {title}{where} - {when}" + (f"; {extra}" if extra else "")
 
 
 def rejection_summary(rejected, locale: str) -> str:  # noqa: ANN001  (collections.Counter)

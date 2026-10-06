@@ -21,6 +21,13 @@ it may build a query but never candidates.)
                 distance and data reliability only.
 * EXPLAIN       machine-readable reasons, caveats and score components; the
                 renderer turns them into words. Nothing is invented.
+
+WINNER != CERTAINTY. A high-dynamic fact (opening hours, kitchen hours,
+temporary closure, event start, event availability) whose resolved winner is
+CONTESTED - some source disagrees - never becomes a definitive claim: when
+the dissenting value would say something different at the asked time, the
+candidate carries `contested:<fact>:<claim>|<claim>...` (winner first) and
+the renderer says both, and that it cannot confirm which is current.
 """
 
 from __future__ import annotations
@@ -28,6 +35,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -39,7 +47,8 @@ from app.clock import as_utc
 from app.db.models import Event, Place
 from app.places.freshness import RANK as FRESH_RANK
 from app.places.freshness import FactFreshness, Freshness, classify, place_facts
-from app.places.hours import HoursStatus, OpenState, food_state, local_at, open_throughout, status_at
+from app.places.hours import (HoursStatus, OpenState, always_open, food_state, local_at, open_throughout,
+                              status_at)
 from app.shared.geo import Point, StraightLineEstimator, TravelEstimator, distance_km, walking_minutes
 
 _AVAIL = {OpenState.OPEN: 0, OpenState.OPEN_LATER: 1, OpenState.UNKNOWN: 2, OpenState.CLOSED: 3}
@@ -133,6 +142,55 @@ class Facts:
     distance: float | None
     walk: int | None
     fresh: dict[str, FactFreshness]
+    contested: dict[str, list[str]] = field(default_factory=dict)   # fact -> [winner claim, other claims]
+
+
+# high-dynamic place facts: resolution field -> (fact name, how a value enters place.hours)
+_DYNAMIC = (("opening_hours", "hours"), ("temporary_closure", "closure"), ("kitchen_hours", "kitchen"))
+
+
+def claim(st: HoursStatus, hours: dict[str, Any] | None = None) -> str:
+    """The traveller-facing claim a status makes, as a stable code."""
+    if st.state == OpenState.OPEN:
+        if always_open(hours):
+            return "open24"
+        return f"open@{st.closes_at:%H:%M}" if st.closes_at else "open"
+    if st.state == OpenState.OPEN_LATER:
+        return f"opens@{st.opens_at:%H:%M}" if st.opens_at else "opens"
+    return "closed" if st.state == OpenState.CLOSED else "unknown"
+
+
+def contested_claims(place: Place, local: datetime) -> dict[str, list[str]]:
+    """For each high-dynamic fact whose winner is CONTESTED: the claim the
+    winner makes at `local`, then every different claim a dissenting value
+    would make. A dissent that says the same thing at this moment (another
+    day's hours) is not a contest of this claim and is left out."""
+    resolution = place.resolution or {}
+    hours = dict(place.hours or {})
+    out: dict[str, list[str]] = {}
+    for fld, fact in _DYNAMIC:
+        r = resolution.get(fld) or {}
+        if r.get("state") != "contested":
+            continue
+        claims: list[str] = []
+        for value in [None] + [c.get("value") for c in r.get("conflicting") or []]:
+            alt = hours
+            if value is not None or claims:
+                if fact == "hours":
+                    alt = {**(value or {}), **{k: hours[k] for k in ("kitchen", "closed") if k in hours}}
+                elif fact == "closure":
+                    alt = {k: v for k, v in hours.items() if k != "closed"} | ({"closed": value} if value else {})
+                else:
+                    alt = {**hours, "kitchen": value} if value else {k: v for k, v in hours.items() if k != "kitchen"}
+            if fact == "kitchen":
+                c = claim(food_state(SimpleNamespace(attributes=place.attributes, hours=alt), local))
+            else:
+                c = claim(status_at(alt, local), alt)
+            if c not in claims:
+                claims.append(c)
+        if len(claims) > 1:
+            out[fact] = claims
+    return out
 
 
 def normalize(place: Place, q: DiscoveryQuery, now_utc: datetime, tz: str,
@@ -149,7 +207,8 @@ def normalize(place: Place, q: DiscoveryQuery, now_utc: datetime, tz: str,
     facts_needed = ["hours"] + (["kitchen"] if (place.hours or {}).get("kitchen") else [])
     if (place.hours or {}).get("closed"):
         facts_needed.append("closure")
-    return Facts(local, venue, food, until, window_ok, dist, walk, place_facts(place, now_utc, tuple(facts_needed)))
+    return Facts(local, venue, food, until, window_ok, dist, walk, place_facts(place, now_utc, tuple(facts_needed)),
+                 contested_claims(place, local))
 
 
 # ============================================================== HARD FILTER
@@ -225,8 +284,8 @@ def rank(place: Place, f: Facts, q: DiscoveryQuery, signals: Signals | None) -> 
     resolution = place.resolution or {}
     if any((resolution.get(n) or {}).get("state") in ("needs_verification", "conflicted")
            for n in ("opening_hours", "kitchen_hours", "temporary_closure")) \
-            or (resolution.get("_existence") or {}).get("state") == "unconfirmed":
-        reliability = max(reliability, 3)       # disputed or unconfirmed data ranks like stale data
+            or (resolution.get("_existence") or {}).get("state") == "unconfirmed" or f.contested:
+        reliability = max(reliability, 3)       # disputed, contested or unconfirmed data ranks like stale data
     rating = -int(float(attrs.get("rating", 0)) * 2)
     value = 0
     if q.price_pref == "low" and place.price_range is not None:
@@ -270,6 +329,8 @@ def explain(place: Place, f: Facts, q: DiscoveryQuery) -> tuple[list[str], list[
         state = (resolution.get(fld) or {}).get("state")
         if state in ("needs_verification", "conflicted"):
             caveats.append(f"conflict:{fact}")
+    for fact, claims in f.contested.items():
+        caveats.append(f"contested:{fact}:{'|'.join(claims)}")
     if (resolution.get("_existence") or {}).get("state") == "unconfirmed":
         caveats.append("existence:unconfirmed")
     if attrs.get("reservation_required"):
@@ -343,7 +404,14 @@ def discover_events(session: Session, region: str, now_utc: datetime, start: dat
         fresh = classify("event", ev.last_verified_at, now_utc, ev.confidence)
         if fresh.state in (Freshness.STALE, Freshness.UNKNOWN):
             caveats.append(f"fresh:event:{fresh.state.value}:{fresh.age_days if fresh.age_days is not None else '-'}")
-        if (ev.attributes or {}).get("availability") == "sold_out":
+        res = ev.resolution or {}
+        for fld, fact in (("start_at", "start"), ("event_availability", "availability")):
+            r = res.get(fld) or {}
+            if r.get("state") == "contested":
+                others = [c.get("value") for c in r.get("conflicting") or [] if c.get("value") is not None]
+                if others:
+                    caveats.append(f"contested:{fact}")
+        if (ev.attributes or {}).get("availability") == "sold_out" and "contested:availability" not in caveats:
             caveats.append("sold_out")
         dist = None
         if near is not None and ev.latitude is not None and ev.longitude is not None:

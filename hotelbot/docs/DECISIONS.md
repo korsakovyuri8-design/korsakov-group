@@ -986,3 +986,18 @@ After the fixes, the shared-phone check exposed one more defect: kind words ("ga
 **One existing expectation was tightened.** `world_translated_name_corroborated` had merged a translated name on a single shared phone. It now needs phone and website, and a new `world_translated_name_one_phone` scenario expects AMBIGUOUS. The shared-phone class showed the old expectation was unsafe.
 
 **Metrics.** False merges stay the primary metric. Precision, recall, missed links and the ambiguous rate are reported together (tools/world_benchmark.py).
+
+## D-073 - Winner != certainty: a contested dynamic fact is never stated as fact
+
+The resolver may pick a winner for a high-dynamic fact (opening hours, kitchen hours, temporary closure, event start, event availability) while another source still disagrees (state `contested`). Earlier, discovery rendered that winner as a plain fact ("open until 00:00"). When the winner was wrong, the traveller got a confident wrong claim, even though the dissent was in the data.
+
+**Rule.** For these facts, contested means that no definitive claim reaches the traveller:
+
+- discovery computes the claim of the winner and of every dissenting value at the asked moment;
+- if any differ, it gives both and says it cannot confirm which is current;
+- the place ranks like stale data;
+- dissent that makes the same claim at that moment is not hedged, so a disagreement about Sunday does not hedge Monday.
+
+**Metric split.** The fact-resolution metrics now separate `incorrect_winner_uncontested` (no dissent was visible, so the traveller would get a confident wrong claim; target 0) from `incorrect_winner_contested` (allowed, because the gate turns it into a hedged answer). The benchmark also checks the gate itself: for every contested wrong winner, at three sample moments where the winner's claim differs from the truth, the traveller-facing output must hedge (`gate_contested_wrong_claim_stated_definitively`, must be 0).
+
+**Changed expectation.** `world_newer_authoritative_wins` used to expect "open until 00:00" stated plainly. It is now a gate that expects both values and "can't confirm".

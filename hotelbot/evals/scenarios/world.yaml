@@ -224,7 +224,8 @@
 
 - name: world_newer_authoritative_wins
   category: world
-  description: The business's own feed (provider-owned) outranks a directory for opening hours; discovery shows the resolved value.
+  gate: true
+  description: The business's own feed (provider-owned) outranks a directory for opening hours - but the directory still disagrees, so the winner is CONTESTED and the traveller gets both claims, never a definitive one (winner != certainty).
   world_sources:
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "own:polar", source_class: provider_owned}
@@ -237,8 +238,66 @@
           resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, source: "own:polar", state: contested, conflicting: 1}]
     - guest: "Where can I get ice cream?"
       expect:
-        reply_contains: ["Sladoled Polar", "open until 00:00"]
-        forbidden: ["open until 23:00", "sources disagree"]
+        reply_contains: ["Sladoled Polar", "conflicting information about the opening hours", "open until 00:00", "open until 23:00", "can't confirm which is current"]
+        forbidden: ["- open until 00:00", "- open until 23:00", "sources disagree"]
+
+- name: world_contested_majority_hours_not_definitive
+  category: world
+  gate: true
+  description: Two directories (closing 23:00) outvote a third (00:00) - the majority winner is still CONTESTED, so no definitive closing time reaches the traveller.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+    - {source_id: "dir:d", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, phone: "+38220111222", opening_hours: "Mo-Su 10:00-23:00", updated_at: "2026-10-03T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Sladoled Polar", lat: 43.14701, lon: 19.14701, category: dessert, phone: "+38220111222", opening_hours: "Mo-Su 10:00-23:00", updated_at: "2026-10-03T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:d", records: [{id: "3", name: "Sladoled Polar", lat: 43.14699, lon: 19.14699, category: dessert, phone: "+38220111222", opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, state: contested, conflicting: 1}]
+    - guest: "Where can I get ice cream?"
+      expect:
+        reply_contains: ["Sladoled Polar", "conflicting information about the opening hours", "open until 23:00", "open until 00:00", "can't confirm"]
+        forbidden: ["- open until 23:00", "- open until 00:00"]
+
+- name: world_contested_elsewhere_not_hedged
+  category: world
+  description: The dissent is only about Sunday; today (Monday) every source makes the same claim - so the claim is stated plainly. Hedging is for contested claims, not for any disagreement.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "own:polar", source_class: provider_owned}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Sa 10:00-00:00; Su off", updated_at: "2026-10-03T10:00:00+02:00"}]}}
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
+      expect:
+        world:
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, source: "own:polar", state: contested, conflicting: 1}]
+    - guest: "Where can I get ice cream?"
+      expect:
+        reply_contains: ["Sladoled Polar", "- open until 00:00"]
+        forbidden: ["conflicting information"]
+
+- name: world_contested_event_start_not_definitive
+  category: world
+  gate: true
+  description: The organizer moved the concert to 21:00; the tourism feed still says 20:00. The organizer wins, but the start time is CONTESTED - the traveller hears both times, not one.
+  clock_start: "2027-01-18T09:00:00+00:00"
+  world_sources:
+    - {source_id: "tour:me", source_class: tourism_feed}
+    - {source_id: "org:kc", source_class: organizer}
+  steps:
+    - world: {sync: {source: "tour:me", records: [{id: "e1", type: event, title: "Winter Strings", category: concert, start: "2027-01-23T20:00:00", lat: 43.1555, lon: 19.1222}]}}
+    - world: {sync: {source: "org:kc", records: [{id: "ws", type: event, title: "Winter Strings", category: concert, start: "2027-01-23T20:00:00", lat: 43.1555, lon: 19.1222}]}}
+    - world: {sync: {source: "org:kc", records: [{id: "ws", type: event, title: "Winter Strings", category: concert, start: "2027-01-23T21:00:00", lat: 43.1555, lon: 19.1222}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "org:kc", id: "ws"}, field: start_at, source: "org:kc", state: contested, conflicting: 1}]
+    - guest: "Is there a concert on Saturday?"
+      expect:
+        reply_contains: ["Winter Strings", "conflicting information about the start time", "21:00", "20:00", "can't confirm"]
 
 - name: world_old_authority_vs_new_weak
   category: world

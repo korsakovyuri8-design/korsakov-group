@@ -397,3 +397,35 @@ def test_stale_dissent_is_kept_not_erased():
     r = _r("opening_hours", A("p", "partner_feed", {"x": 1}, NOW - timedelta(days=3)),
            A("d", "directory", {"x": 2}, NOW - timedelta(days=150)))
     assert r.value == {"x": 1} and r.state == CONTESTED and [a.source_id for a in r.conflicting] == ["d"]
+
+
+def test_contested_dynamic_fact_is_never_a_definitive_claim():
+    """winner != certainty: a CONTESTED high-dynamic fact is hedged only when
+    the dissent says something different at the asked moment."""
+    from app.discovery.engine import Candidate, contested_claims
+    from app.discovery.render import status_text
+    from app.places.hours import status_at
+
+    own, _ = parse_osm_hours("Mo-Su 10:00-00:00")
+    late, _ = parse_osm_hours("Mo-Su 10:00-23:00")
+    sunday_off, _ = parse_osm_hours("Mo-Sa 10:00-00:00; Su off")
+    local = datetime(2026, 10, 5, 14, 0)            # place-local, a Monday
+
+    def place(dissent: Any) -> Place:
+        return Place(name="Polar", category="FOOD", subcategory="dessert", hours=dict(own), attributes={},
+                     resolution={"opening_hours": {"state": "contested", "value": own,
+                                                   "conflicting": [{"source": "dir:a", "value": dissent}]}})
+
+    p = place(late)
+    claims = contested_claims(p, local)
+    assert claims == {"hours": ["open@00:00", "open@23:00"]}
+    caveats = [f"contested:hours:{'|'.join(claims['hours'])}"]
+    text = status_text(Candidate(p, None, status_at(p.hours, local), None, [], caveats), "en")
+    assert "conflicting information" in text and "00:00" in text and "23:00" in text
+    assert not text.startswith("open until")
+    # the dissent is about Sunday only: today's claim is not contested
+    assert contested_claims(place(sunday_off), local) == {}
+    # resolved (uncontested) facts are never hedged
+    q = place(late)
+    q.resolution["opening_hours"]["state"] = "resolved"
+    assert contested_claims(q, local) == {}
