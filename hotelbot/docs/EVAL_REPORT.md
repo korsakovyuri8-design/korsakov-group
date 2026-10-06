@@ -80,7 +80,7 @@ No entity-resolution threshold was changed after the benchmark.
 **Clean runs.**
 
 - On dd6e0f1 the clean run found one regression, `disc_fresh_not_flagged`: the region pack was ingested on the wall clock, so its verification dates were clamped as "future" (D-074, fixed in 7fdaba8, regression test added).
-- This report is the clean run on **7fdaba8**: 250/254, gates 162/162, world 56/56 (37 world + 15 adversarial + 4 contested-claim). The only failures are the 4 frozen grounding paraphrase cases.
+- This report is the clean run on **7fdaba8**: 250/254, gates 162/162, world 56/56 (41 world scenarios, 3 of them new for the contested-claim gate, + 15 adversarial). The only failures are the 4 frozen grounding paraphrase cases.
 
 ## Scenarios
 
