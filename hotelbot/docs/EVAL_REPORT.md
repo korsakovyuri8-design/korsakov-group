@@ -1,8 +1,8 @@
 # HOTELBOT evaluation report
 
-Generated 2026-10-06 11:09 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
+Generated 2026-10-06 13:14 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
 
-**TOTAL 198 · PASS 194 · FAIL 4**
+**TOTAL 254 · PASS 250 · FAIL 4**
 
 | Category | Pass |
 |---|---|
@@ -18,6 +18,7 @@ Generated 2026-10-06 11:09 UTC by `python -m evals`. Deterministic: no LLM unles
 | local | 23/23 |
 | marketplace | 28/28 |
 | discovery | 44/44 |
+| world | 56/56 |
 
 ## Iteration 4 - raw first run of the discovery scenarios
 
@@ -47,6 +48,39 @@ Further defects found in the second run and by reading the PASSING transcripts. 
 One regression in a frozen Iteration 3 scenario was caught (`txn_russian_arrival_transfer`: arrival context alone routed a one-transfer message into the planner, losing "tomorrow"). It was fixed in the planner trigger.
 
 Final: discovery 44/44 (one scenario added: `disc_dinner_implies_evening`), all gates 125/125. The 4 known grounding paraphrase failures are unchanged, as instructed.
+
+## Iteration 5 - raw first runs of the world scenarios
+
+**World scenarios, raw: 35/37.** They were run once, before any fix, as first written.
+
+| # | Failure in the raw run | Root cause | Kind |
+|---|---|---|---|
+| 1 | A record that later gains an explicit identifier shared with another canonical stayed a duplicate | entity resolution ran only on first sight | product defect: re-match on update, only for a **new explicit shared identifier** |
+| 2 | The durable-job scenario failed on the first injected failure | the scenario did not ask the step to retry | scenario error (`retry: true`), marked |
+
+The same run also exposed duplicate "no opening-hours data" wording. It was fixed, and "opening hours disputed" was added for needs_verification hours.
+
+**Adversarial identity addendum, raw: 9/15.** Fifteen cases were written as desired behaviour before running. The six failures were six real defect classes: relocation, shared phone, recycled phone, identifier collision, clock skew and licence change. Each was fixed by a rule for its class, not by a fixture threshold (D-072). The fixes exposed two more defects, both fixed by class:
+
+- kind words such as "galerija" counted as name content;
+- a frozen-clock `>` vs `>=` comparison in sticky attribution.
+
+**One expectation was tightened, not loosened.** `world_translated_name_corroborated` now needs a phone and a website. The new `world_translated_name_one_phone` expects AMBIGUOUS.
+
+**Defect found by the benchmark (not a fixture).** Stale *weaker* dissent was silently erased from `conflicting`, which made an incorrect winner look uncontested. Fixed in `facts.resolve`; the benchmark's uncontested incorrect winners went to 0.
+
+**Winner ≠ certainty (D-073).** A contested high-dynamic fact is no longer stated as fact. `world_newer_authoritative_wins` became a gate expecting both values. Three scenarios were added for the requested gate:
+
+- `world_contested_majority_hours_not_definitive` [GATE];
+- `world_contested_event_start_not_definitive` [GATE];
+- `world_contested_elsewhere_not_hedged`: no over-hedging.
+
+No entity-resolution threshold was changed after the benchmark.
+
+**Clean runs.**
+
+- On dd6e0f1 the clean run found one regression, `disc_fresh_not_flagged`: the region pack was ingested on the wall clock, so its verification dates were clamped as "future" (D-074, fixed in 7fdaba8, regression test added).
+- This report is the clean run on **7fdaba8**: 250/254, gates 162/162, world 56/56 (37 world + 15 adversarial + 4 contested-claim). The only failures are the 4 frozen grounding paraphrase cases.
 
 ## Scenarios
 
@@ -250,6 +284,62 @@ Final: discovery 44/44 (one scenario added: `disc_dinner_implies_evening`), all 
 | ✅ | `txn_completed_before_accepted` | transactions | yes |
 | ✅ | `txn_callback_for_another_providers_booking` | transactions | yes |
 | ✅ | `txn_unknown_outcome_reconciled_by_lookup` | transactions | yes |
+| ✅ | `world_identical_two_sources` | world | yes |
+| ✅ | `world_translated_type_word` | world |  |
+| ✅ | `world_transliterated_name` | world |  |
+| ✅ | `world_multilingual_aliases` | world |  |
+| ✅ | `world_similar_names_distinct` | world | yes |
+| ✅ | `world_type_conflict_distinct` | world | yes |
+| ✅ | `world_chain_locations` | world | yes |
+| ✅ | `world_same_spot_different_phone` | world |  |
+| ✅ | `world_translated_name_corroborated` | world |  |
+| ✅ | `world_translated_name_one_phone` | world |  |
+| ✅ | `world_translated_name_uncorroborated` | world | yes |
+| ✅ | `world_duplicate_source_record` | world | yes |
+| ✅ | `world_coordinates_conflict` | world |  |
+| ✅ | `world_hours_conflict_equal_authority` | world | yes |
+| ✅ | `world_newer_authoritative_wins` | world | yes |
+| ✅ | `world_contested_majority_hours_not_definitive` | world | yes |
+| ✅ | `world_contested_elsewhere_not_hedged` | world |  |
+| ✅ | `world_contested_event_start_not_definitive` | world | yes |
+| ✅ | `world_old_authority_vs_new_weak` | world | yes |
+| ✅ | `world_majority_at_equal_authority` | world |  |
+| ✅ | `world_temporary_closure_conflict` | world | yes |
+| ✅ | `world_source_disappears_one_sync` | world | yes |
+| ✅ | `world_existence_grace_expiry` | world |  |
+| ✅ | `world_canonical_survives_source_deactivation` | world | yes |
+| ✅ | `world_permanent_closure_needs_authority` | world | yes |
+| ✅ | `world_provider_correction` | world |  |
+| ✅ | `world_manual_correction` | world |  |
+| ✅ | `world_event_duplicated_across_feeds` | world | yes |
+| ✅ | `world_same_title_different_dates` | world | yes |
+| ✅ | `world_translated_event_title` | world |  |
+| ✅ | `world_broken_source_sync` | world | yes |
+| ✅ | `world_sync_job_retries_then_recovers` | world |  |
+| ✅ | `world_incremental_sync_replay` | world | yes |
+| ✅ | `world_stale_source` | world |  |
+| ✅ | `world_unmerge_split` | world | yes |
+| ✅ | `world_no_transaction_mutation` | world | yes |
+| ✅ | `world_license_metadata_preserved` | world | yes |
+| ✅ | `world_raw_payload_respects_license` | world |  |
+| ✅ | `world_traveler_data_boundary` | world | yes |
+| ✅ | `world_snapshot_reproducible` | world | yes |
+| ✅ | `world_discovery_uses_resolved_value` | world |  |
+| ✅ | `adv_business_relocation` | world |  |
+| ✅ | `adv_business_replaced_same_location` | world | yes |
+| ✅ | `adv_chain_same_town` | world | yes |
+| ✅ | `adv_shared_phone` | world | yes |
+| ✅ | `adv_recycled_phone` | world | yes |
+| ✅ | `adv_popup_seasonal` | world | yes |
+| ✅ | `adv_transliteration_collision` | world | yes |
+| ✅ | `adv_event_series_vs_duplicate` | world | yes |
+| ✅ | `adv_event_time_change` | world | yes |
+| ✅ | `adv_stale_authority_vs_fresh_weak_90d` | world |  |
+| ✅ | `adv_temporary_closure_precedence` | world | yes |
+| ✅ | `adv_wrong_merge_then_split` | world | yes |
+| ✅ | `adv_source_license_change` | world | yes |
+| ✅ | `adv_source_clock_skew` | world | yes |
+| ✅ | `adv_identifier_collision` | world | yes |
 
 ## Failures
 
