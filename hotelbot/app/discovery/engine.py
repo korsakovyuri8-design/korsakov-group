@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.clock import as_utc
@@ -116,14 +116,10 @@ Signals = Callable[[Place], tuple[int, float]]   # (relationship rank: 0 preferr
 
 # ================================================================= RETRIEVE
 def retrieve(session: Session, q: DiscoveryQuery) -> list[Place]:
-    stmt = select(Place).where(Place.region == q.region, Place.active)
-    if q.subcategories and q.categories:
-        stmt = stmt.where(or_(Place.subcategory.in_(q.subcategories), Place.category.in_(q.categories)))
-    elif q.subcategories:
-        stmt = stmt.where(Place.subcategory.in_(q.subcategories))
-    elif q.categories:
-        stmt = stmt.where(Place.category.in_(q.categories))
-    return list(session.scalars(stmt.order_by(Place.slug)))
+    """Active places of the resolved world (app/discovery/repository.py)."""
+    from app.discovery.repository import DEFAULT
+
+    return DEFAULT.candidates(session, q)
 
 
 # ================================================================ NORMALIZE
@@ -226,6 +222,11 @@ def rank(place: Place, f: Facts, q: DiscoveryQuery, signals: Signals | None) -> 
         + sum(1 for k, v in q.traveller.items() if _attr_ok(attrs, k, v))
     dist_bucket = round(f.distance / (0.1 if q.essential else 0.5)) if f.distance is not None else 999
     reliability = max((FRESH_RANK[x.state] for x in f.fresh.values()), default=2)
+    resolution = place.resolution or {}
+    if any((resolution.get(n) or {}).get("state") in ("needs_verification", "conflicted")
+           for n in ("opening_hours", "kitchen_hours", "temporary_closure")) \
+            or (resolution.get("_existence") or {}).get("state") == "unconfirmed":
+        reliability = max(reliability, 3)       # disputed or unconfirmed data ranks like stale data
     rating = -int(float(attrs.get("rating", 0)) * 2)
     value = 0
     if q.price_pref == "low" and place.price_range is not None:
@@ -235,7 +236,8 @@ def rank(place: Place, f: Facts, q: DiscoveryQuery, signals: Signals | None) -> 
     relationship, commission = signals(place) if signals else (1, 0.0)
     comps = {"availability": availability, "relevance": relevance, "preferences": prefs,
              "distance_bucket": dist_bucket, "reliability": reliability, "rating": rating, "value": value,
-             "relationship": relationship, "commission": commission}
+             "relationship": relationship, "commission": commission,
+             "quality": (place.quality or {}).get("tier")}
     if q.essential:
         key = (availability, dist_bucket, reliability, place.name)
     else:
@@ -254,8 +256,8 @@ def explain(place: Place, f: Facts, q: DiscoveryQuery) -> tuple[list[str], list[
     reasons += [f"pref:{k}" for k, v in q.preferred.items() if _attr_ok(attrs, k, v)]
     reasons += [f"tag:{t}" for t in sorted(tags & (q.tags_preferred | q.relevance_tags))]
     caveats: list[str] = []
-    if f.venue.state == OpenState.UNKNOWN:
-        caveats.append("hours_unknown")
+    # (an unknown venue state is already said by the status text; disputed
+    #  hours get their own caveat below)
     if q.serving_at and f.food is not None and f.food.state == OpenState.UNKNOWN \
             and place.category in ("FOOD", "NIGHTLIFE"):
         caveats.append("kitchen_unknown")
@@ -263,6 +265,13 @@ def explain(place: Place, f: Facts, q: DiscoveryQuery) -> tuple[list[str], list[
         if fact.state in (Freshness.STALE, Freshness.UNKNOWN) and not (
                 fact.fact == "hours" and f.venue.state == OpenState.UNKNOWN):
             caveats.append(f"fresh:{fact.fact}:{fact.state.value}:{fact.age_days if fact.age_days is not None else '-'}")
+    resolution = place.resolution or {}
+    for fld, fact in (("opening_hours", "hours"), ("kitchen_hours", "kitchen"), ("temporary_closure", "closure")):
+        state = (resolution.get(fld) or {}).get("state")
+        if state in ("needs_verification", "conflicted"):
+            caveats.append(f"conflict:{fact}")
+    if (resolution.get("_existence") or {}).get("state") == "unconfirmed":
+        caveats.append("existence:unconfirmed")
     if attrs.get("reservation_required"):
         caveats.append("reservation_required")
     if attrs.get("age_restriction"):

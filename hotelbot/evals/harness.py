@@ -412,6 +412,9 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
         with tempfile.TemporaryDirectory() as tmp:
             container, slugs = _build(scenario, Path(tmp))
             clock = container.clock
+            from evals.world_steps import WorldState, check_world, run_world_step
+
+            world = WorldState(scenario)
             last_stay: dict[str, str | None] = {}
 
             def drain_and_collect(guest_id: str) -> list[str]:
@@ -427,6 +430,12 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
                 if step.advance_minutes is not None:
                     clock.advance(minutes=step.advance_minutes)  # type: ignore[attr-defined]
                     result.transcript.append(Turn("clock", f"+{step.advance_minutes} min"))
+                    continue
+                if step.world is not None:
+                    note = run_world_step(step.world, world, container, result.failures, prefix)
+                    result.transcript.append(Turn("world", note))
+                    if step.expect.world is not None:
+                        check_world(step.expect.world, world, container, result.failures, prefix)
                     continue
                 if step.provider_callback is not None:
                     cb = step.provider_callback
@@ -485,6 +494,8 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
                         "sources": reply.sources, "handed_off": reply.handed_off, "outcomes": reply.outcomes,
                         "actions": [a.detail for a in reply.actions]}))
                     _check_guest_step(prefix, step.expect, reply, container, before, result.failures)
+                    if step.expect.world is not None:
+                        check_world(step.expect.world, world, container, result.failures, prefix)
                     _authority_check(prefix, reply.text, container, reply.stay_id, result.failures,
                                      quoted_sources=reply.sources, property_slug=reply.property_slug,
                                      locale=reply.language)

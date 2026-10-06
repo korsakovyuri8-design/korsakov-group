@@ -231,9 +231,34 @@ def test_local_world_upgrade_keeps_places_and_events(engine):
         assert place["slug"] == "cafe" and place["source_id"] is None and place["price_range"] is None
         assert event["slug"] == "gig" and event["latitude"] is None
         assert "traveler_preferences" in sa.inspect(conn).get_table_names()
+    _upgrade(engine, "head")
     assert _diff(engine) == []
     with engine.begin() as conn:
         command.downgrade(alembic_config(conn), "0006_layers")
     with engine.connect() as conn:
         assert "traveler_preferences" not in sa.inspect(conn).get_table_names()
+        assert _rows(conn, "select slug from places")[0]["slug"] == "cafe"
+
+
+def test_world_fabric_upgrade_keeps_places_and_downgrades(engine):
+    """0007 -> 0008: places keep their data, gain canonical/geo/resolution
+    columns; the fabric tables appear; downgrade removes them cleanly."""
+    _upgrade(engine, "0007_local_world")
+    with engine.begin() as conn:
+        conn.execute(sa.text(
+            "insert into places (id, region, slug, name, category, subcategory, description, tags, attributes, hours,"
+            " active, source, confidence, provider_owned, is_synthetic, updated_at, verification) values ('pl1', 'r1',"
+            " 'cafe', 'Cafe', 'FOOD', 'cafe', :j, :j, :j, :j, :t, 'test', 1.0, :f, :t, :now, :j)"),
+            {"j": "{}", "t": True, "f": False, "now": NOW})
+    _upgrade(engine, "0008_world_fabric")
+    with engine.connect() as conn:
+        [place] = _rows(conn, "select slug, canonical_entity_id, geohash from places")
+        assert place["slug"] == "cafe" and place["canonical_entity_id"] is None and place["geohash"] is None
+        assert {"canonical_entities", "source_entities", "fact_assertions", "entity_links",
+                "world_sources"} <= set(sa.inspect(conn).get_table_names())
+    assert _diff(engine) == []
+    with engine.begin() as conn:
+        command.downgrade(alembic_config(conn), "0007_local_world")
+    with engine.connect() as conn:
+        assert "fact_assertions" not in sa.inspect(conn).get_table_names()
         assert _rows(conn, "select slug from places")[0]["slug"] == "cafe"

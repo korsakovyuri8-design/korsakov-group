@@ -20,7 +20,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.capabilities.registry import CapabilityRegistry
-from app.db.models import Event, ExternalProvider, Offering, Place
+from app.db.models import CanonicalEntity, Event, ExternalProvider, MarketplaceLink, Offering, Place
 
 
 @dataclass(frozen=True)
@@ -43,10 +43,29 @@ def options_for(session: Session, *, place: Place | None = None, event: Event | 
         conds.append(Offering.event_id == event.id)
     if not conds:
         return []
+    # Explicit identity (entity_marketplace_links, set at ingest or by partner
+    # mapping) - including entities later merged into this one. Never by name.
+    canonicals = _identity_closure(session, [t.canonical_entity_id for t in (place, event)
+                                             if t is not None and t.canonical_entity_id])
+    if canonicals:
+        linked = select(MarketplaceLink.offering_id).where(
+            MarketplaceLink.canonical_entity_id.in_(canonicals), MarketplaceLink.active,
+            MarketplaceLink.offering_id.is_not(None))
+        conds.append(Offering.id.in_(linked))
     rows = session.scalars(select(Offering).where(or_(*conds), Offering.active, Offering.provider_id.is_not(None))
                            .order_by(Offering.slug))
     return [ExecutionOption(o, o.service_type) for o in rows
             if capabilities is None or capabilities.service(o.service_type) is not None]
+
+
+def _identity_closure(session: Session, canonical_ids: list[str]) -> set[str]:
+    """These entities plus every entity merged into them (transitively)."""
+    out, frontier = set(canonical_ids), list(canonical_ids)
+    while frontier:
+        merged = set(session.scalars(select(CanonicalEntity.id).where(CanonicalEntity.merged_into_id.in_(frontier))))
+        frontier = list(merged - out)
+        out |= merged
+    return out
 
 
 def ranking_signals(session: Session, *, property_id: str | None,

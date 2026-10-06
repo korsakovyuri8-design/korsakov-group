@@ -28,7 +28,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CATEGORIES = ("grounding", "actions", "authority", "handoff", "safety", "memory", "conversation", "languages",
-              "transactions", "local", "marketplace", "discovery")
+              "transactions", "local", "marketplace", "discovery", "world")
 
 
 class _Strict(BaseModel):
@@ -40,6 +40,50 @@ class ActionExpect(_Strict):
     status: str | None = None
     executor: str | None = None
     urgency: str | None = None
+
+
+class WorldRef(_Strict):
+    source: str
+    id: str
+
+
+class WorldResolutionExpect(_Strict):
+    entity: WorldRef
+    field: str
+    value: Any = None
+    has_value: bool | None = None            # False = no value (NEEDS_VERIFICATION / unknown)
+    state: str | None = None
+    source: str | None = None                # winning source
+    conflicting: int | None = None           # number of disagreeing assertions kept
+
+
+class WorldPlaceExpect(_Strict):
+    entity: WorldRef
+    active: bool | None = None
+    name: str | None = None
+    existence: str | None = None             # listed | unconfirmed
+    quality_tier: str | None = None
+    attribution: list[str] | None = None
+
+
+class WorldExpect(_Strict):
+    entities: int | None = None              # distinct ACTIVE canonical entities behind the scenario's sources
+    same: list[list[WorldRef]] = Field(default_factory=list)
+    distinct: list[list[WorldRef]] = Field(default_factory=list)
+    resolution: list[WorldResolutionExpect] = Field(default_factory=list)
+    places: list[WorldPlaceExpect] = Field(default_factory=list)
+    source_entities: int | None = None       # source records kept (never lost)
+    links_ended: int | None = None
+    reviews_open: int | None = None
+    source_health: dict[str, str] = Field(default_factory=dict)
+    changes: list[str] = Field(default_factory=list)          # change types that must have been recorded
+    transactions_unchanged: bool | None = None
+    license_preserved: bool | None = None
+    no_traveler_data: list[str] = Field(default_factory=list)  # strings that must not appear in world tables
+    raw_present: list[WorldRef] = Field(default_factory=list)
+    raw_absent: list[WorldRef] = Field(default_factory=list)
+    sync_status: str | None = None           # ok | failed (the step's sync report)
+    snapshot_reproducible: bool | None = None
 
 
 class StepExpect(_Strict):
@@ -70,6 +114,7 @@ class StepExpect(_Strict):
     no_notifications: bool | None = None
     callback_status: int | None = None
     callback_result: str | None = None
+    world: WorldExpect | None = None
 
 
 class StaffTransition(_Strict):
@@ -92,6 +137,35 @@ class ProviderCallback(_Strict):
     provider: str = "demo-transfers"
 
 
+class WorldStep(_Strict):
+    """One world-data operation (exactly one key)."""
+    sync: dict[str, Any] | None = None          # {source, records?, changes?, mode, fail_after?, page_size?, via_job?}
+    correction: dict[str, Any] | None = None    # {entity, field, value, actor, actor_ref?, valid_until?}
+    split: dict[str, Any] | None = None         # {entity}
+    merge: dict[str, Any] | None = None         # {keep, other}
+    revert_merge: dict[str, Any] | None = None  # {other}
+    resolve_review: dict[str, Any] | None = None   # {entity, same_as?}
+    link_provider: dict[str, Any] | None = None    # {entity, provider}
+    reconcile: dict[str, Any] | None = None     # {}
+    snapshot: dict[str, Any] | None = None      # {} create, restore into a fresh database, compare
+    check: dict[str, Any] | None = None         # {} expectations only
+
+
+class WorldSourceSpec(_Strict):
+    source_id: str
+    source_class: str
+    source_type: str = "fixture"
+    name: str | None = None
+    license: str = "test fixture licence (evaluation only)"
+    attribution_required: bool = False
+    attribution_text: str | None = None
+    redistribution: str = "allowed"
+    retention_days: int | None = None
+    cache_raw: bool = True
+    default_confidence: float = 0.8
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
 class Step(_Strict):
     guest: str | None = None
     guest_id: str = "eval-guest"
@@ -103,15 +177,16 @@ class Step(_Strict):
     stay_update: StayUpdate | None = None
     provider_callback: ProviderCallback | None = None
     advance_minutes: float | None = None
+    world: WorldStep | None = None
     expect: StepExpect = Field(default_factory=StepExpect)
 
     @model_validator(mode="after")
     def _one_kind(self) -> Step:
         kinds = [self.guest is not None, self.staff_transition is not None, self.stay_update is not None,
-                 self.provider_callback is not None, self.advance_minutes is not None]
+                 self.provider_callback is not None, self.advance_minutes is not None, self.world is not None]
         if sum(kinds) != 1:
             raise ValueError("a step is exactly one of: guest, staff_transition, stay_update, provider_callback, "
-                             "advance_minutes")
+                             "advance_minutes, world")
         return self
 
 
@@ -166,5 +241,6 @@ class Scenario(_Strict):
     provider_config: dict[str, dict[str, Any]] | None = None
     # Frozen clock start (ISO, UTC); default is the harness CLOCK_START.
     clock_start: str | None = None
+    world_sources: list[WorldSourceSpec] = Field(default_factory=list)
     steps: list[Step]
     final: FinalExpect = Field(default_factory=FinalExpect)

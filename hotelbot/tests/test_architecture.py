@@ -50,7 +50,8 @@ def test_discovery_world_does_not_import_transactions():
 
 
 def test_transaction_world_does_not_import_discovery():
-    assert _violations(TRANSACTION, ("app.discovery", "app.places.hours", "app.shared.geo", "app.trip")) == []
+    assert _violations(TRANSACTION, ("app.discovery", "app.places.hours", "app.shared.geo", "app.trip",
+                                     "app.world")) == []
 
 
 def test_neutral_modules_belong_to_neither_world():
@@ -80,7 +81,24 @@ def test_trip_reaches_the_marketplace_only_through_the_bridge():
 
 
 def test_world_sources_do_not_know_the_transaction_world():
-    assert _violations([APP / "world"], ("app.transactions", "app.marketplace", "app.trip", "app.agent")) == []
+    assert _violations([APP / "world"], ("app.transactions", "app.marketplace", "app.trip", "app.agent",
+                                         "app.llm")) == []
+
+
+def test_world_fabric_resolves_truth_without_a_model():
+    """No LLM anywhere in the fabric: entity resolution and field resolution
+    are deterministic code + policy config."""
+    assert _violations([APP / "world"], ("app.llm", "app.agent.responder", "openai", "anthropic")) == []
+
+
+def test_discovery_reads_the_world_only_through_its_repository():
+    bad = []
+    for f in (APP / "discovery").rglob("*.py"):
+        if f.name == "repository.py":
+            continue
+        bad += [f"{f.relative_to(APP)} imports {m}" for m in _imports(f)
+                if m.startswith("app.world") and m not in ("app.world.records",)]
+    assert bad == []
 
 
 def test_place_only_entities_have_no_transaction_side(container):

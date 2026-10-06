@@ -7,7 +7,7 @@ instead of patching globals.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 from sqlalchemy import Engine
@@ -61,6 +61,8 @@ class Container:
     providers_registry: ProviderRegistry
     txn_deps: TxnDeps
     worker: JobWorker
+    # World data fabric: source_id -> SourceAdapter (connectors register here).
+    world_adapters: dict = field(default_factory=dict)
 
     def kick(self, rounds: int = 3) -> None:
         """Run due jobs now (fast path after a request); the background

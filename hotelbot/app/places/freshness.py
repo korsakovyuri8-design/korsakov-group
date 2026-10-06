@@ -32,15 +32,15 @@ class Freshness(str, enum.Enum):
     UNVERIFIED = "unknown"      # Iteration 3 name (alias)
 
 
-# fact class -> (fresh up to, aging up to)
-FACT_CLASSES: dict[str, tuple[timedelta, timedelta]] = {
-    "hours": (timedelta(days=30), timedelta(days=90)),
-    "kitchen": (timedelta(days=30), timedelta(days=90)),
-    "closure": (timedelta(days=14), timedelta(days=30)),
-    "prices": (timedelta(days=60), timedelta(days=180)),
-    "event": (timedelta(days=14), timedelta(days=45)),
-    "static": (timedelta(days=365), timedelta(days=730)),
-}
+# fact class -> (fresh up to, aging up to). The SLAs are configuration
+# (data/world/policies.yaml, `freshness`), one per class of fact.
+def _classes() -> dict[str, tuple[timedelta, timedelta]]:
+    from app.world.policies import load
+
+    return load().freshness
+
+
+FACT_CLASSES: dict[str, tuple[timedelta, timedelta]] = _classes()
 RANK = {Freshness.FRESH: 0, Freshness.AGING: 1, Freshness.UNKNOWN: 2, Freshness.STALE: 3}
 
 

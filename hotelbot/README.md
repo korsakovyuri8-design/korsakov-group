@@ -1,4 +1,4 @@
-# HOTELBOT: AI guest operations layer (prototype, iteration 4)
+# HOTELBOT: AI guest operations layer (prototype, iteration 5)
 
 A WhatsApp-first guest-operations agent for any accommodation (hotels, hostels, resorts, vacation rentals, apartments, glamping). Hotel Aleksandar (Žabljak, Montenegro) will be the first real property; in the core it is just one `Property` with `property_type: hotel`.
 
@@ -58,7 +58,8 @@ Guest ──< Stay >── Property ──< KnowledgeDocument
 | Marketplace | Transport (taxi / airport / intercity), rentals (skis, snowboards, bikes, e-bikes, cars, gear) and guides/tours on one model: provider discovery by fit + availability + price + property relationships, inventory holds, material terms before consent, weather-conditional bookings, changes as replacement offers, policy-checked cancellation, multi-service requests with per-item consent. See [`docs/MARKETPLACE.md`](docs/MARKETPLACE.md). |
 | Local travel | Region packs of places / events / offerings / inventory; discovery ("open now", "still serving at 22:30", "after midnight", vegan, wheelchair, pets, lively); save / book from results; trip plan with per-item status; multi-part trip requests. See [`docs/LOCAL_TRAVEL.md`](docs/LOCAL_TRAVEL.md). |
 | Discovery engine | Local World behind a `WorldSource` adapter (synthetic pack / fixtures; provenance on every record). Pipeline UNDERSTAND → RETRIEVE → NORMALIZE → HARD FILTER → RANK → EXPLAIN with explicit hard vs soft constraints, kitchen state separate from venue hours, per-fact freshness disclosed, computed distance with anchors (hotel, another place, the day's activity), explained no-results, compound requests, save / shortlist / plan commands per clause, free-time windows from the plan, explicit traveller preferences (soft), restaurant and ticket bridges, outcome kinds on every reply. See [`docs/DISCOVERY.md`](docs/DISCOVERY.md). |
-| Evaluation | 198 deterministic product scenarios; invariant scenarios (125) are gates (see below). |
+| World data fabric | Many sources → one canonical world: source entities (raw + normalized, licence-aware), conservative deterministic entity resolution (MATCH / NO_MATCH / AMBIGUOUS with review; split / merge / revert), field-level fact assertions resolved by per-field authority policies (config), visible conflicts (NEEDS_VERIFICATION for high-risk facts), freshness SLAs per fact class, corrections as sourced assertions, tombstones vs evidence-based deactivation, geohash spatial index, coverage areas, durable checkpointed sync jobs with source health, snapshots for reproducible evals. See [`docs/WORLD_FABRIC.md`](docs/WORLD_FABRIC.md). |
+| Evaluation | Deterministic product scenarios incl. discovery and world-data suites; invariant scenarios are gates (see below and the eval report). |
 
 ## Quick start
 
@@ -158,11 +159,11 @@ python -m evals --category authority
 python -m evals --markdown docs/EVAL_REPORT.md --json eval.json
 ```
 
-Scenarios live in `evals/scenarios/*.yaml` (grounding, actions, authority, handoff, safety, memory, conversation, languages, transactions, local, marketplace, discovery). Each one runs through a fresh real container: real packs plus scenario edits, an optional scripted LLM, and an optional mocked partner endpoint. Every bot message is also checked against the authority invariant. `gate: true` scenarios are product invariants: they run in pytest, and the CLI exits 1 if one fails. Latest report: [`docs/EVAL_REPORT.md`](docs/EVAL_REPORT.md). Retrieval findings: [`docs/RETRIEVAL_ANALYSIS.md`](docs/RETRIEVAL_ANALYSIS.md).
+Scenarios live in `evals/scenarios/*.yaml` (grounding, actions, authority, handoff, safety, memory, conversation, languages, transactions, local, marketplace, discovery, world). Each one runs through a fresh real container: real packs plus scenario edits, an optional scripted LLM, and an optional mocked partner endpoint. Every bot message is also checked against the authority invariant. `gate: true` scenarios are product invariants: they run in pytest, and the CLI exits 1 if one fails. Latest report: [`docs/EVAL_REPORT.md`](docs/EVAL_REPORT.md). Retrieval findings: [`docs/RETRIEVAL_ANALYSIS.md`](docs/RETRIEVAL_ANALYSIS.md).
 
 ## Migrations
 
-New databases are created from the models and stamped. Existing databases are upgraded with Alembic on startup (`HOTELBOT_AUTO_MIGRATE=true`); Core v1 databases (no version table) are detected and upgraded. Manual alternative: `HOTELBOT_AUTO_MIGRATE=false alembic upgrade head`. `0002_stay_engine` is forward-only; `0003_transactions` through `0007_local_world` are additive (`0007` is reversible). **Back up first** - see [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for backup, restore and worker operations.
+New databases are created from the models and stamped. Existing databases are upgraded with Alembic on startup (`HOTELBOT_AUTO_MIGRATE=true`); Core v1 databases (no version table) are detected and upgraded. Manual alternative: `HOTELBOT_AUTO_MIGRATE=false alembic upgrade head`. `0002_stay_engine` is forward-only; `0003_transactions` through `0008_world_fabric` are additive (`0007`, `0008` are reversible). **Back up first** - see [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for backup, restore and worker operations.
 
 ## Testing
 
@@ -186,16 +187,20 @@ app/
                 confirmation), bridge (the seam to places/events; ranking signals)
   nlp/          temporal (days, times, counts - shared by both worlds)
   shared/       geo (distance, travel-time estimator interface - shared by both worlds)
-  world/        records, sources (WorldSource, SyntheticRegionSource, FixtureSource), store (sync)
+  world/        data fabric: adapters (v2 contract), normalize, matching (entity resolution), facts (assertions +
+                resolver), policies (data/world/policies.yaml), projection, ingest (sync pipeline), identity
+                (split/merge), corrections, coverage, spatial (geohash index), snapshots, attribution, jobs;
+                v1: records, sources, store
   jobs/         queue (outbox, SKIP LOCKED, retries), handlers
   places/       taxonomy, hours (venue + food state), freshness (per fact), pack (region ingest)
   discovery/    nlu (UNDERSTAND), engine (RETRIEVE..EXPLAIN), render
-  trip/         itinerary, concierge (discovery, commands, plan, multi-part trips), selection (references),
+  trip/         itinerary, concierge (= commands + discovery_dialogue + planner, texts in compose), selection,
                 schedule (day views, free windows), preferences (explicit traveller preferences)
   llm/  tools/  db/  whatsapp/  api/  schemas/   worker.py, clock.py
-migrations/     Alembic (0001_core_v1 ... 0007_local_world)
+migrations/     Alembic (0001_core_v1 ... 0008_world_fabric)
 evals/          harness, report, scenarios/
 data/           hotel/example_hotel.yaml, properties/demo_apartment.yaml, regions/zabljak_demo.yaml   (SYNTHETIC)
 docs/           DECISIONS.md, EVAL_REPORT.md, RETRIEVAL_ANALYSIS.md, PROVIDER_INTEGRATION.md, OPERATIONS.md, LOCAL_TRAVEL.md,
-                MARKETPLACE.md, DISCOVERY.md
+                MARKETPLACE.md, DISCOVERY.md, WORLD_FABRIC.md
+tools/          world_benchmark.py (large synthetic world: ingest, entity-resolution quality, spatial latency)
 ```

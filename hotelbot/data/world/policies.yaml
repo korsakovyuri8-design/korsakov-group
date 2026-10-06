@@ -1,0 +1,124 @@
+# =============================================================================
+#  WORLD DATA FABRIC - field resolution policies (data, not code)
+# =============================================================================
+#  source_class: the authority vocabulary. A source declares ONE class; a
+#  correction's class comes from who made it (staff -> staff_verified ...).
+#  Authority is FIELD-SPECIFIC: there is no global source priority.
+#
+#  per field:
+#    fact_class   freshness SLA (see `freshness`)
+#    risk         high = a dynamic fact a traveller acts on (hours, closures,
+#                 event time). An unresolved conflict on a high-risk field
+#                 resolves to NEEDS_VERIFICATION (no value), never to a guess.
+#    authority    strongest first; unlisted classes rank after the list
+#    equal_within_m / equality: when two values count as "the same"
+# =============================================================================
+
+source_classes: [provider_owned, organizer, staff_verified, operator_verified, official, ticketing_partner,
+                 geo_verified, partner_feed, tourism_feed, directory, synthetic, traveler_reported]
+
+correction_classes:
+  provider: provider_owned
+  staff: staff_verified
+  operator: operator_verified
+  traveler: traveler_reported
+
+# freshness SLA per fact class: fresh up to N days, aging up to M days, then stale
+freshness:
+  coordinates:  {fresh_days: 1825, aging_days: 3650}
+  identity:     {fresh_days: 730,  aging_days: 1460}    # name, category
+  contact:      {fresh_days: 180,  aging_days: 365}     # phone, website
+  static:       {fresh_days: 365,  aging_days: 730}     # cuisine, amenities, description
+  prices:       {fresh_days: 60,   aging_days: 180}
+  hours:        {fresh_days: 30,   aging_days: 90}
+  kitchen:      {fresh_days: 30,   aging_days: 90}
+  closure:      {fresh_days: 14,   aging_days: 30}
+  event:        {fresh_days: 14,   aging_days: 45}      # event details
+  event_time:   {fresh_days: 7,    aging_days: 30}
+  event_availability: {fresh_days: 1, aging_days: 3}
+  inventory:    {fresh_minutes: 5, aging_minutes: 15}   # transaction world; listed for completeness
+
+resolution:
+  # Same authority rank, different values, both fresh: the newer one wins only
+  # if it is at least this much newer; otherwise the field is CONFLICTED.
+  same_rank_recency_gap_days: 7
+  # Same authority rank: a value supported by strictly more independent
+  # sources wins (majority), recorded as contested.
+  majority_wins: true
+
+existence:
+  # A canonical entity is deactivated only by evidence: an authoritative
+  # "permanently_closed" assertion, or every linked source tombstoned for
+  # this long. One source missing one sync never deactivates anything.
+  grace_days: 30
+  closed_authority: [provider_owned, staff_verified, operator_verified, official]
+
+defaults:
+  fact_class: static
+  risk: low
+  authority: [provider_owned, staff_verified, operator_verified, official, partner_feed, organizer,
+              ticketing_partner, tourism_feed, geo_verified, directory, synthetic, traveler_reported]
+
+fields:
+  name:              {fact_class: identity}
+  subcategory:       {fact_class: identity}
+  coordinates:
+    fact_class: coordinates
+    authority: [geo_verified, provider_owned, staff_verified, operator_verified, official, partner_feed,
+                tourism_feed, directory, synthetic, traveler_reported]
+    equal_within_m: 30
+  address:
+    fact_class: coordinates
+    authority: [geo_verified, provider_owned, staff_verified, official, partner_feed, tourism_feed, directory,
+                synthetic, traveler_reported]
+  phone:             {fact_class: contact}
+  website:           {fact_class: contact}
+  timezone:          {fact_class: coordinates}
+  price_range:       {fact_class: prices}
+  opening_hours:
+    fact_class: hours
+    risk: high
+    authority: [provider_owned, staff_verified, operator_verified, partner_feed, official, tourism_feed,
+                directory, synthetic, traveler_reported]
+  kitchen_hours:
+    fact_class: kitchen
+    risk: high
+    authority: [provider_owned, staff_verified, operator_verified, partner_feed, official, tourism_feed,
+                directory, synthetic, traveler_reported]
+  temporary_closure:
+    fact_class: closure
+    risk: high
+    authority: [provider_owned, staff_verified, operator_verified, official, partner_feed, tourism_feed,
+                directory, synthetic, traveler_reported]
+  permanently_closed:
+    fact_class: closure
+    risk: high
+    authority: [provider_owned, staff_verified, operator_verified, official, partner_feed, tourism_feed,
+                directory, synthetic, traveler_reported]
+  # events
+  title:             {fact_class: event}
+  event_category:    {fact_class: event}
+  start_at:
+    fact_class: event_time
+    risk: high
+    authority: [organizer, ticketing_partner, official, staff_verified, operator_verified, tourism_feed,
+                partner_feed, directory, synthetic, traveler_reported]
+  end_at:
+    fact_class: event_time
+    authority: [organizer, ticketing_partner, official, staff_verified, operator_verified, tourism_feed,
+                partner_feed, directory, synthetic, traveler_reported]
+  ticket_price:
+    fact_class: prices
+    authority: [ticketing_partner, organizer, official, staff_verified, operator_verified, tourism_feed,
+                partner_feed, directory, synthetic, traveler_reported]
+  ticket_required:
+    fact_class: event
+    authority: [organizer, ticketing_partner, official, staff_verified, operator_verified, tourism_feed,
+                partner_feed, directory, synthetic, traveler_reported]
+  event_availability:
+    fact_class: event_availability
+    risk: high
+    authority: [ticketing_partner, organizer, official, partner_feed, tourism_feed, directory, synthetic]
+  venue:             {fact_class: event}
+  # attributes.<key> fields fall back to these prefixes
+  "attributes.*":    {fact_class: static}

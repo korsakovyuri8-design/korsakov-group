@@ -256,6 +256,7 @@ def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
         row.last_verified_at = _verified(spec.last_verified_at, info.verified_at, tz)
         session.add(row)
         session.flush()
+        _link_identity(session, row, place, events.get(spec.event) if spec.event else None)
         # Slots are capacity only; bookings live in inventory_holds (by window,
         # not by slot id), so re-ingesting slots never loses a booking.
         session.execute(delete(AvailabilitySlot).where(AvailabilitySlot.offering_id == row.id))
@@ -272,6 +273,23 @@ def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
     report = {"providers": len(pack.providers), **world, "offerings": len(pack.offerings), "slots": slots}
     log_event("region_ingested", region=info.slug, **report)
     return report
+
+
+def _link_identity(session: Session, offering: Offering, place: Place | None, event: Event | None) -> None:
+    """Explicit identity between the worlds, established at ingest (the pack
+    SAYS this offering is a table at that place): canonical entity <->
+    offering. Never inferred from names at transaction time."""
+    from app.db.models import MarketplaceLink
+
+    for target in (place, event):
+        if target is None or target.canonical_entity_id is None:
+            continue
+        exists = session.scalar(select(MarketplaceLink.id).where(
+            MarketplaceLink.canonical_entity_id == target.canonical_entity_id,
+            MarketplaceLink.offering_id == offering.id))
+        if exists is None:
+            session.add(MarketplaceLink(canonical_entity_id=target.canonical_entity_id, offering_id=offering.id,
+                                        established_by="ingest", active=True))
 
 
 def _expand(spec: OfferingSpec, tz: ZoneInfo):

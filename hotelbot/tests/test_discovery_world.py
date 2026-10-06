@@ -64,16 +64,23 @@ def test_synthetic_source_normalises_with_provenance(s):
         ("synthetic:zabljak-demo", "synthetic", "bistro-demo-savin")
     assert place.price_range == 2 and place.verification.get("hours") is not None
     concert = s.scalar(select(Event).where(Event.slug == "sunday-concert-jan"))
-    assert concert.source_record_id == "sunday-concert-jan" and concert.ticket_required
+    assert concert.source_record_id == "event:sunday-concert-jan" and concert.ticket_required   # namespaced per kind
 
 
-def test_fixture_source_sync_deactivates_never_deletes(s):
-    report = sync(s, _fixture([_place("a"), _place("b")]))
+def test_fixture_source_missing_record_is_tombstoned_not_deactivated(s):
+    """Iteration 5 semantics (D-067): missing from one sync = tombstoned AT
+    THE SOURCE; the place stays active, flagged, until the existence policy
+    (grace period) deactivates it. Never deleted."""
+    t0 = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    report = sync(s, _fixture([_place("a"), _place("b")]), now=t0)
     assert report["places"] == 2
-    sync(s, _fixture([_place("a")]))
+    sync(s, _fixture([_place("a")]), now=t0 + timedelta(days=1))
     rows = {p.slug: p for p in s.scalars(select(Place).where(Place.region == "test-region"))}
-    assert set(rows) == {"a", "b"} and rows["a"].active and not rows["b"].active
+    assert set(rows) == {"a", "b"} and rows["a"].active and rows["b"].active
+    assert rows["b"].resolution["_existence"]["state"] == "unconfirmed"
     assert rows["a"].source_id == "fixture:test" and rows["a"].category == "FOOD"
+    sync(s, _fixture([_place("a")]), now=t0 + timedelta(days=40))       # past the 30-day grace period
+    assert not s.scalar(select(Place).where(Place.region == "test-region", Place.slug == "b")).active
 
 
 def test_unknown_event_category_becomes_other(s):
@@ -188,7 +195,7 @@ def test_unknown_state_does_not_pad_known_open_results(s):
     assert res.rejected["state_unknown"] == 1                              # Grill Demo Bobotov
     late = run(s, _q(subcategories={"konoba"}, at=datetime(2026, 10, 5, 23, 30), serving_at=True), MON_UTC, TZ)
     assert [c.place.slug for c in late.candidates] == ["grill-demo-bobotov"]
-    assert "hours_unknown" in late.candidates[0].caveats and "kitchen_unknown" in late.candidates[0].caveats
+    assert late.candidates[0].status.state == OpenState.UNKNOWN and "kitchen_unknown" in late.candidates[0].caveats
 
 
 def test_commerce_is_only_a_tie_breaker(s):

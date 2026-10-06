@@ -891,3 +891,77 @@ Stored preferences re-rank only. A request's own explicit constraint on the same
 **Decision (unchanged mechanics).** A quote is shown for the best fit. For guides, one quote is also shown for the best of each other format (private vs group), which is a substantive difference. A pricier option with no advantage is never shown.
 
 **Deferred.** Other substantive alternatives (minivan for luggage, child seats, free cancellation, a different guide language) are deferred. Today every shown alternative is a real quote with an inventory hold, and "book all" books every open offer, so a minivan alternative next to a sedan would book both transfers. Doing this correctly needs unheld or grouped alternatives: a transaction-mechanics change, out of scope for Iteration 4.
+
+---
+
+## D-064 - Source record ≠ real-world entity
+
+**Decision.** Sources deliver `source_entities` (raw + normalized, one per source record). Entity resolution *links* them to `canonical_entities`. The traveller-facing `places` / `events` rows are a **projection** of canonical entities and resolved facts, and nothing writes them directly. The region pack is now just one source (via `V1Adapter`), so Iteration 4 behaviour is preserved by projection: same rows, same ids (pre-fabric rows are adopted). See docs/WORLD_FABRIC.md.
+
+**Why.** Without this distinction, adding a second source either duplicates the world or lets one source silently own it. The product would then be an interface over someone else's database.
+
+---
+
+## D-065 - Field-level facts, policy-resolved, conflicts kept
+
+**Decision.** Every field of every source record is a `FactAssertion`, with an observation date, validity window, confidence and verification type. `facts.resolve` picks a value by **field-specific** authority (data/world/policies.yaml), then majority, then recency at equal authority.
+
+- An unresolved conflict on a **high-risk** field (hours, kitchen, closures, event time) is NEEDS_VERIFICATION with no value. It is projected as unknown and disclosed ("sources disagree").
+- A stale stronger source that disagrees with a fresh weaker one also makes a high-risk field NEEDS_VERIFICATION.
+- Every disagreement is kept (`conflicting`).
+- No LLM is involved (architecture test).
+
+---
+
+## D-066 - Conservative entity resolution; ambiguity stays separate
+
+**Decision.** The resolver is deterministic and rule-based (WORLD_FABRIC.md lists the rules). It prefers a duplicate to a false merge.
+
+- AMBIGUOUS records stay separate and open a review.
+- After the fact, only an *explicit shared identifier* may merge, automatically and through the revertible merge.
+- Records of the same source are never matched to each other.
+
+Split, merge and revert-merge end and create links; they never delete records or assertions.
+
+**Evidence.** Raw world run: a record that later gained an organizer id shared with another feed stayed split. Fixed by `_rematch_on_new_identifier` (explicit ids only). Benchmark against ground truth: 0 false merges.
+
+---
+
+## D-067 - Tombstones at the source; existence by evidence
+
+**Decision.** A record missing from a *completed* full sync is tombstoned at its source, and that is all. The canonical entity stays active, flagged "existence unconfirmed" and shown with that caveat. It is deactivated only by an authoritative permanent-closure assertion, or when every non-correction source has stopped listing it for the grace period (30 days). A failed or partial sync tombstones nothing.
+
+**Behaviour change.** Iteration 4 deactivated a record missing from its source's next sync. The test was rewritten to the new semantics.
+
+**Evidence.** A new test found that grace-period expiry never happened for entities untouched by later syncs. Existence is now re-checked at the end of every sync for all tombstoned links of the source, and by the `world_existence` job.
+
+---
+
+## D-068 - Source adapter v2, normalization separate, licence mandatory
+
+**Decision.**
+- **Contract.** `descriptor`, `discover_scope`, `sync_full` / `sync_incremental` (paged, cursor per page), `fetch_record` and `health`. Adapters transport source-native records; normalization is chosen by `format`.
+- **Licence first.** A source cannot be registered without a declared licence. It carries attribution, redistribution, retention and cache terms.
+- **Raw payloads** are not stored when caching is forbidden, and are dropped after retention.
+- **Attribution.** Results built on attributed sources say so.
+- **Connectors.** No live connectors this iteration, by design.
+
+---
+
+## D-069 - Spatial index behind a repository; deterministic fallback
+
+**Decision.** A geohash column (precision 8, B-tree) plus covering-cell range scans and an exact haversine filter is the portable spatial index (`SpatialIndex`: radius, bbox, nearest-N). Its results are identical to a full scan (tested). Discovery reads candidates through `WorldRepository` and uses the index whenever a radius is given. PostGIS is an optional implementation of the same interface; it is not a test dependency.
+
+---
+
+## D-070 - Identity between the worlds is explicit
+
+**Decision.** Canonical entity ↔ provider or offering links are created at ingest (the pack says an offering is a table at a place) or by partner mapping. They are never inferred from names at transaction time. The bridge follows these links, including through merges, so a merge never rewrites an offering or a transaction. World sync never touches transaction rows (gate `world_no_transaction_mutation`).
+
+---
+
+## D-071 - Iteration 5 housekeeping
+
+- **Concierge split.** The 1238-line concierge is now `compose.py`, `commands.py`, `discovery_dialogue.py` and `planner.py`, with `Concierge` composed from them. There is no behaviour change; all evals are unchanged.
+- **24/7.** A place open 00:00-00:00 every day renders "open 24/7" (was "open until 00:00").
+- **Recorded, not fixed (second-order UX).** "Somewhere nice?" gets a generic fallback instead of a clarifying question.

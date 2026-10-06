@@ -1,0 +1,628 @@
+# WORLD - Iteration 5: Global World Data Fabric.
+#
+# Several sources describe the same (or almost the same) world. Invariants
+# (gates): no silent destructive merge; no source record loss; no LLM truth
+# resolution; no false canonical deactivation from one missing source; no
+# silent conflict erasure; no transaction mutation from world sync; no
+# licensing metadata loss; no traveller data in world records.
+#
+# Records use the generic directory-like format (app/world/normalize.py).
+# Test businesses sit around 43.140,19.140 (south-east of the demo town,
+# inside the zabljak-demo coverage area, away from the synthetic pack).
+# Default clock: Mon 2026-10-05 12:00Z (14:00 local).
+
+# ------------------------------------------------------------- identity
+- name: world_identical_two_sources
+  category: world
+  gate: true
+  description: The same restaurant from a directory and a partner feed is ONE entity with BOTH source records kept.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "partner:b", source_class: partner_feed}
+  steps:
+    - world:
+        sync: {source: "dir:a", records: [{id: "r1", name: "Konoba Stari Grad", lat: 43.14000, lon: 19.14000,
+               phone: "069 111 222", category: restaurant, updated_at: "2026-10-03T10:00:00+02:00"}]}
+    - world:
+        sync: {source: "partner:b", records: [{id: "p-77", name: "Konoba Stari Grad", lat: 43.14001, lon: 19.14002,
+               phone: "+382 69 111 222", category: restaurant, updated_at: "2026-10-04T10:00:00+02:00"}]}
+      expect:
+        world:
+          entities: 1
+          same: [[{source: "dir:a", id: "r1"}, {source: "partner:b", id: "p-77"}]]
+          source_entities: 2
+          changes: [linked]
+
+- name: world_translated_type_word
+  category: world
+  description: '"Konoba Stari Grad", "Stari Grad Restaurant" and "Konoba Stari Grad Žabljak" at one spot are one place.'
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+    - {source_id: "partner:b", source_class: partner_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Stari Grad", lat: 43.1400, lon: 19.1400, category: restaurant}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "x9", name: "Stari Grad Restaurant", lat: 43.14004, lon: 19.14003, category: restaurant}]}}
+    - world: {sync: {source: "partner:b", records: [{id: "k", name: "Konoba Stari Grad Žabljak", lat: 43.13998, lon: 19.14001, category: restaurant}]}}
+      expect:
+        world:
+          entities: 1
+          same: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "x9"}, {source: "partner:b", id: "k"}]]
+
+- name: world_transliterated_name
+  category: world
+  description: A Cyrillic and a Latin listing of the same konoba at the same spot are one entity.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "tour:me", source_class: tourism_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Đurđevića Tara", lat: 43.1405, lon: 19.1405, category: konoba}]}}
+    - world: {sync: {source: "tour:me", records: [{id: "t-5", name: "Коноба Ђурђевића Тара", lat: 43.14052, lon: 19.14049, category: konoba}]}}
+      expect:
+        world: {entities: 1, same: [[{source: "dir:a", id: "1"}, {source: "tour:me", id: "t-5"}]]}
+
+- name: world_multilingual_aliases
+  category: world
+  description: Žabljak / Zabljak / Жабљак spellings of one business across three sources -> one entity with aliases.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+    - {source_id: "tour:me", source_class: tourism_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Žabljak Sjever", lat: 43.1410, lon: 19.1410, category: gallery}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Galerija Zabljak Sjever", lat: 43.14102, lon: 19.14099, category: gallery}]}}
+    - world: {sync: {source: "tour:me", records: [{id: "3", name: "Галерија Жабљак Сјевер", lat: 43.14099, lon: 19.14101, category: gallery}]}}
+      expect:
+        world: {entities: 1, same: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}, {source: "tour:me", id: "3"}]]}
+
+- name: world_similar_names_distinct
+  category: world
+  gate: true
+  description: Two different konobas with similar names 80 m apart stay separate.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Stari Grad", lat: 43.1400, lon: 19.1400, phone: "069 111 222", category: konoba}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Konoba Stari Mlin", lat: 43.14070, lon: 19.14010, phone: "069 333 444", category: konoba}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]}
+
+- name: world_type_conflict_distinct
+  category: world
+  gate: true
+  description: '"Pizzeria Roma" and "Restoran Roma" 40 m apart are different businesses.'
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Pizzeria Roma", lat: 43.1420, lon: 19.1420, category: restaurant}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Restoran Roma", lat: 43.14230, lon: 19.14215, category: restaurant}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]}
+
+- name: world_chain_locations
+  category: world
+  gate: true
+  description: Same brand, same website, two locations 2 km apart -> two entities (a chain is not one place).
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Pizzeria Napoli", lat: 43.1400, lon: 19.1400, website: "www.napoli-pizza.me/zabljak", category: restaurant}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Pizzeria Napoli", lat: 43.1580, lon: 19.1400, website: "https://napoli-pizza.me", category: restaurant}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]}
+
+- name: world_same_spot_different_phone
+  category: world
+  description: Same name at the same coordinates, different phones -> same restaurant; the phone disagreement is kept.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Restoran Vidikovac Sunce", lat: 43.1430, lon: 19.1430, phone: "069 555 000", category: restaurant, updated_at: "2026-10-01T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Restoran Vidikovac Sunce", lat: 43.14301, lon: 19.14301, phone: "067 999 888", category: restaurant, updated_at: "2026-10-02T10:00:00+02:00"}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: phone, conflicting: 1}]
+
+- name: world_translated_name_corroborated
+  category: world
+  description: '"Black Lake Café" and "Kafe Crno Jezero" with the same phone at the same spot -> one entity.'
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "tour:me", source_class: tourism_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Black Lake Café", lat: 43.1440, lon: 19.1440, phone: "+382 69 700 700", category: cafe}]}}
+    - world: {sync: {source: "tour:me", records: [{id: "2", name: "Kafe Crno Jezero", lat: 43.14401, lon: 19.14402, phone: "069 700 700", category: cafe}]}}
+      expect:
+        world: {entities: 1, same: [[{source: "dir:a", id: "1"}, {source: "tour:me", id: "2"}]]}
+
+- name: world_translated_name_uncorroborated
+  category: world
+  gate: true
+  description: A translated name alone (no shared phone/site/id) is AMBIGUOUS - kept separate, opened for review.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "tour:me", source_class: tourism_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Black Lake Café", lat: 43.1440, lon: 19.1440, category: cafe}]}}
+    - world: {sync: {source: "tour:me", records: [{id: "2", name: "Kafe Crno Jezero", lat: 43.14401, lon: 19.14402, category: cafe}]}}
+      expect:
+        world:
+          entities: 2
+          distinct: [[{source: "dir:a", id: "1"}, {source: "tour:me", id: "2"}]]
+          reviews_open: 1
+          changes: [ambiguous_match_kept_separate]
+    - world: {resolve_review: {entity: {source: "tour:me", id: "2"}, same_as: {source: "dir:a", id: "1"}}}
+      expect:
+        world: {entities: 1, reviews_open: 0, source_entities: 2}
+
+- name: world_duplicate_source_record
+  category: world
+  gate: true
+  description: The same record delivered twice in one sync, then the whole sync replayed -> one source entity, nothing duplicated.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Dessert Bar Snijeg", lat: 43.1450, lon: 19.1450, category: dessert},
+                                                {id: "1", name: "Dessert Bar Snijeg", lat: 43.1450, lon: 19.1450, category: dessert}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Dessert Bar Snijeg", lat: 43.1450, lon: 19.1450, category: dessert}]}}
+      expect:
+        world: {entities: 1, source_entities: 1}
+
+# ------------------------------------------------------------- conflicts
+- name: world_coordinates_conflict
+  category: world
+  description: Explicitly the same place (shared id) but coordinates 400 m apart - the verified geo source wins; the other is kept as a conflict.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "geo:v", source_class: geo_verified}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Kamen", lat: 43.1460, lon: 19.1460, category: gallery}]}}
+    - world: {sync: {source: "geo:v", records: [{id: "g1", name: "Galerija Kamen", lat: 43.1496, lon: 19.1460, category: gallery, same_as: [{source: "dir:a", id: "1"}]}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: coordinates, value: {lat: 43.1496, lon: 19.146}, source: "geo:v", state: contested, conflicting: 1}]
+
+- name: world_hours_conflict_equal_authority
+  category: world
+  gate: true
+  description: Two equally authoritative directories disagree on closing time - no guess; NEEDS_VERIFICATION, both kept, disclosed to the guest.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00", updated_at: "2026-10-03T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T09:00:00+02:00"}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, state: needs_verification, has_value: false, conflicting: 2}]
+    - guest: "Where can I get ice cream?"
+      expect:
+        reply_contains: ["Sladoled Polar", "sources disagree about the opening hours"]
+        forbidden: ["open until 23:00", "open until 00:00"]
+
+- name: world_newer_authoritative_wins
+  category: world
+  description: The business's own feed (provider-owned) outranks a directory for opening hours; discovery shows the resolved value.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "own:polar", source_class: provider_owned}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00", updated_at: "2026-10-03T10:00:00+02:00"}]}}
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, source: "own:polar", state: contested, conflicting: 1}]
+    - guest: "Where can I get ice cream?"
+      expect:
+        reply_contains: ["Sladoled Polar", "open until 00:00"]
+        forbidden: ["open until 23:00", "sources disagree"]
+
+- name: world_old_authority_vs_new_weak
+  category: world
+  gate: true
+  description: A stale owner feed and a fresh directory disagree on hours - the weak source cannot override the authority, the authority cannot be confirmed -> NEEDS_VERIFICATION.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "own:polar", source_class: provider_owned}
+  steps:
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-05-01T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-22:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, state: needs_verification, has_value: false}]
+
+- name: world_majority_at_equal_authority
+  category: world
+  description: Two directories agree, one disagrees - the value supported by more independent sources wins, the dissent is kept.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+    - {source_id: "dir:d", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Luna", lat: 43.1480, lon: 19.1480, category: gallery, website: "luna-gallery.me"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Galerija Luna", lat: 43.14801, lon: 19.14801, category: gallery, website: "luna-gallery.me"}]}}
+    - world: {sync: {source: "dir:d", records: [{id: "3", name: "Galerija Luna", lat: 43.14799, lon: 19.14799, category: gallery, website: "galerijaluna.com"}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: website, value: "https://luna-gallery.me", state: contested, conflicting: 1}]
+
+- name: world_temporary_closure_conflict
+  category: world
+  gate: true
+  description: A tourism feed says closed for renovation; the business itself says it is open (no closure) - the owner wins for closures, the dissent is kept.
+  world_sources:
+    - {source_id: "tour:me", source_class: tourism_feed}
+    - {source_id: "own:kamen", source_class: provider_owned}
+  steps:
+    - world: {sync: {source: "tour:me", records: [{id: "t1", name: "Galerija Kamen", lat: 43.1460, lon: 19.1460, category: gallery, opening_hours: "Mo-Su 09:00-19:00", temporary_closure: {from: "2026-10-01", to: "2026-10-30", reason: "renovation"}}]}}
+    - world: {sync: {source: "own:kamen", records: [{id: "k", name: "Galerija Kamen", lat: 43.14601, lon: 19.14601, category: gallery, opening_hours: "Mo-Su 09:00-19:00", temporary_closure: []}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "tour:me", id: "t1"}, field: temporary_closure, value: [], source: "own:kamen", conflicting: 1}]
+    - guest: "Is there a gallery open now?"
+      expect:
+        reply_contains: ["Galerija Kamen", "open until 19:00"]
+        forbidden: ["renovation"]
+
+# ------------------------------------------------- existence / tombstones
+- name: world_source_disappears_one_sync
+  category: world
+  gate: true
+  description: A record missing from one full sync is tombstoned AT THE SOURCE; the entity stays active (existence unconfirmed), nothing is deleted.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery},
+                                                {id: "2", name: "Galerija Vjetar", lat: 43.1395, lon: 19.1395, category: gallery}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery}]}}
+      expect:
+        world:
+          entities: 2
+          source_entities: 2
+          places: [{entity: {source: "dir:a", id: "2"}, active: true, existence: unconfirmed}]
+          changes: [tombstoned_at_source]
+    - guest: "Find a gallery"
+      expect: {reply_contains: ["Galerija Vjetar", "no longer listed by its source"]}
+
+- name: world_existence_grace_expiry
+  category: world
+  description: Only after every source has stopped listing it for the grace period is the entity deactivated - and it comes back if a source lists it again.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery},
+                                                {id: "2", name: "Galerija Vjetar", lat: 43.1395, lon: 19.1395, category: gallery}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery}]}}
+    - advance_minutes: 44640       # 31 days
+    - world: {reconcile: {}}
+      expect:
+        world:
+          places: [{entity: {source: "dir:a", id: "2"}, active: false}]
+          source_entities: 2
+          changes: [entity_deactivated]
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery},
+                                                {id: "2", name: "Galerija Vjetar", lat: 43.1395, lon: 19.1395, category: gallery}]}}
+      expect:
+        world:
+          places: [{entity: {source: "dir:a", id: "2"}, active: true, existence: listed}]
+          changes: [reappeared_at_source, entity_reactivated]
+
+- name: world_canonical_survives_source_deactivation
+  category: world
+  gate: true
+  description: One of two sources stops listing a place - it is still listed by the other, fully active.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "partner:b", source_class: partner_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Stari Grad", lat: 43.1400, lon: 19.1400, phone: "069 111 222", category: konoba}]}}
+    - world: {sync: {source: "partner:b", records: [{id: "p", name: "Konoba Stari Grad", lat: 43.14001, lon: 19.14001, phone: "069 111 222", category: konoba}]}}
+    - world: {sync: {source: "dir:a", records: []}}
+      expect:
+        world:
+          entities: 1
+          source_entities: 2
+          places: [{entity: {source: "partner:b", id: "p"}, active: true, existence: listed}]
+
+- name: world_permanent_closure_needs_authority
+  category: world
+  gate: true
+  description: A directory saying "permanently closed" does not deactivate a place; the official register does.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "gov:reg", source_class: official}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery, permanently_closed: true}]}}
+      expect:
+        world: {places: [{entity: {source: "dir:a", id: "1"}, active: true}]}
+    - world: {sync: {source: "gov:reg", records: [{id: "R-1", name: "Galerija Sjena", lat: 43.14901, lon: 19.14901, category: gallery, permanently_closed: true}]}}
+      expect:
+        world:
+          places: [{entity: {source: "dir:a", id: "1"}, active: false}]
+          source_entities: 2
+          changes: [entity_deactivated]
+
+# -------------------------------------------------------- corrections
+- name: world_provider_correction
+  category: world
+  description: A provider may correct ITS own entity (explicit link) - provider-owned data outranks a directory; an unlinked provider is refused.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery, opening_hours: "Mo-Fr 10:00-18:00"}]}}
+    - world: {correction: {entity: {source: "dir:a", id: "1"}, field: opening_hours, value: {weekly: {mon: [["10:00", "20:00"]], tue: [["10:00", "20:00"]], wed: [["10:00", "20:00"]], thu: [["10:00", "20:00"]], fri: [["10:00", "20:00"]], sat: [], sun: []}}, actor: provider, actor_ref: "demo-culture-walks", expect_refused: true}}
+      expect:
+        world: {resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, source: "dir:a"}]}
+    - world: {link_provider: {entity: {source: "dir:a", id: "1"}, provider: "demo-culture-walks"}}
+    - world: {correction: {entity: {source: "dir:a", id: "1"}, field: opening_hours, value: {weekly: {mon: [["10:00", "20:00"]], tue: [["10:00", "20:00"]], wed: [["10:00", "20:00"]], thu: [["10:00", "20:00"]], fri: [["10:00", "20:00"]], sat: [], sun: []}}, actor: provider, actor_ref: "demo-culture-walks"}}
+      expect:
+        world:
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, source: "correction:provider", state: contested, conflicting: 1}]
+          source_entities: 1
+
+- name: world_manual_correction
+  category: world
+  description: Staff report a temporary closure - a sourced assertion that wins for closures; the source's own data is untouched.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery, opening_hours: "Mo-Su 09:00-19:00"}]}}
+    - world: {correction: {entity: {source: "dir:a", id: "1"}, field: temporary_closure, value: [{from: "2026-10-01", to: "2026-10-12", reason: "flood damage"}], actor: staff, actor_ref: "example-hotel:reception"}}
+      expect:
+        world:
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: temporary_closure, source: "correction:staff", state: resolved}]
+          changes: [field_added]
+    - guest: "Is there a gallery open now?"
+      expect:
+        forbidden: ["Galerija Sjena (gallery) - open until"]
+
+# ------------------------------------------------------------- events
+- name: world_event_duplicated_across_feeds
+  category: world
+  gate: true
+  description: The same concert syndicated by a tourism feed and a ticketing partner is ONE event; both sources stay linked (attribution).
+  clock_start: "2027-01-11T09:00:00+00:00"
+  world_sources:
+    - {source_id: "tour:me", source_class: tourism_feed, attribution_required: true, attribution_text: "Event data: Demo Tourism Board"}
+    - {source_id: "tix:demo", source_class: ticketing_partner}
+  steps:
+    - world: {sync: {source: "tour:me", records: [{id: "e1", type: event, title: "Winter Strings", category: concert, start: "2027-01-23T20:00:00", lat: 43.1555, lon: 19.1222}]}}
+    - world: {sync: {source: "tix:demo", records: [{id: "TX-9", type: event, title: "Winter Strings", category: concert, start: "2027-01-23T20:00:00+01:00", lat: 43.15552, lon: 19.12221, price: 15, currency: EUR}]}}
+      expect:
+        world:
+          entities: 1
+          same: [[{source: "tour:me", id: "e1"}, {source: "tix:demo", id: "TX-9"}]]
+          source_entities: 2
+          places: [{entity: {source: "tour:me", id: "e1"}, attribution: ["tour:me"]}]
+
+- name: world_same_title_different_dates
+  category: world
+  gate: true
+  description: Same artist, same venue, different dates -> different events, never merged.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  world_sources:
+    - {source_id: "tour:me", source_class: tourism_feed}
+    - {source_id: "tix:demo", source_class: ticketing_partner}
+  steps:
+    - world: {sync: {source: "tour:me", records: [{id: "e1", type: event, title: "Jazz Night", category: concert, start: "2027-01-15T21:00:00", lat: 43.1552, lon: 19.1214}]}}
+    - world: {sync: {source: "tix:demo", records: [{id: "TX-1", type: event, title: "Jazz Night", category: concert, start: "2027-01-22T21:00:00", lat: 43.1552, lon: 19.1214}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "tour:me", id: "e1"}, {source: "tix:demo", id: "TX-1"}]]}
+
+- name: world_translated_event_title
+  category: world
+  description: '"Winter Concert" / "Zimski koncert" at the same venue and time is ambiguous (kept apart, reviewed); a shared organizer id resolves it.'
+  clock_start: "2027-01-11T09:00:00+00:00"
+  world_sources:
+    - {source_id: "tour:me", source_class: tourism_feed}
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "tix:demo", source_class: ticketing_partner}
+  steps:
+    - world: {sync: {source: "tour:me", records: [{id: "e1", type: event, title: "Winter Concert", category: concert, start: "2027-01-24T19:00:00", lat: 43.1555, lon: 19.1222}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "d1", type: event, title: "Zimski koncert", category: concert, start: "2027-01-24T19:00:00", lat: 43.1555, lon: 19.1222}]}}
+      expect:
+        world: {entities: 2, reviews_open: 1}
+    - world: {sync: {source: "tix:demo", records: [{id: "T5", type: event, title: "Zimski koncert / Winter Concert", category: concert, start: "2027-01-24T19:00:00", lat: 43.1555, lon: 19.1222, ids: {organizer: "KC-2027-01"}}]}}
+    - world: {sync: {source: "tour:me", records: [{id: "e1", type: event, title: "Winter Concert", category: concert, start: "2027-01-24T19:00:00", lat: 43.1555, lon: 19.1222, ids: {organizer: "KC-2027-01"}}]}}
+      expect:
+        world: {same: [[{source: "tix:demo", id: "T5"}, {source: "tour:me", id: "e1"}]]}
+
+# ------------------------------------------------------ sync robustness
+- name: world_broken_source_sync
+  category: world
+  gate: true
+  description: A sync that breaks halfway marks the source FAILING and removes nothing already known.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery},
+                                                {id: "2", name: "Galerija Vjetar", lat: 43.1395, lon: 19.1395, category: gallery},
+                                                {id: "3", name: "Galerija Luna", lat: 43.1480, lon: 19.1480, category: gallery}]}}
+    - world: {sync: {source: "dir:a", page_size: 1, fail_after: 1, records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery},
+                                                {id: "2", name: "Galerija Vjetar", lat: 43.1395, lon: 19.1395, category: gallery},
+                                                {id: "3", name: "Galerija Luna", lat: 43.1480, lon: 19.1480, category: gallery}]}}
+      expect:
+        world:
+          sync_status: failed
+          source_health: {"dir:a": failing}
+          entities: 3
+          source_entities: 3
+          places: [{entity: {source: "dir:a", id: "2"}, active: true, existence: listed},
+                   {entity: {source: "dir:a", id: "3"}, active: true, existence: listed}]
+          changes: [sync_failed]
+
+- name: world_sync_job_retries_then_recovers
+  category: world
+  description: The durable world_sync job retries a failing source with backoff and recovers when the feed works again.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", via_job: true, fail_after: 0, records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery}]}}
+      expect:
+        world: {source_health: {"dir:a": failing}, source_entities: 0}
+    # the feed works again; the SAME pending job (idempotency key) is retried once its backoff is due
+    - world: {sync: {source: "dir:a", via_job: true, retry: true, records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery}]}}
+      expect:
+        world: {source_health: {"dir:a": healthy}, source_entities: 1, entities: 1}
+
+- name: world_incremental_sync_replay
+  category: world
+  gate: true
+  description: An incremental change is applied once; replaying the feed (same cursor) and re-running the full sync change nothing more.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery, opening_hours: "Mo-Fr 10:00-18:00"}]}}
+    - world: {sync: {source: "dir:a", mode: incremental, changes: [{version: 1, record: {id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery, opening_hours: "Mo-Sa 10:00-18:00"}}]}}
+      expect:
+        world:
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, value: {weekly: {mon: [["10:00", "18:00"]], tue: [["10:00", "18:00"]], wed: [["10:00", "18:00"]], thu: [["10:00", "18:00"]], fri: [["10:00", "18:00"]], sat: [["10:00", "18:00"]], sun: []}}}]
+          changes: [field_changed]
+    - world: {sync: {source: "dir:a", mode: incremental}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery, opening_hours: "Mo-Sa 10:00-18:00"}]}}
+      expect:
+        world: {entities: 1, source_entities: 1}
+
+- name: world_stale_source
+  category: world
+  description: A source that has not synced within its expected interval is reported STALE, not healthy.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory, config: {max_age_hours: 24}}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery}]}}
+      expect: {world: {source_health: {"dir:a": healthy}}}
+    - advance_minutes: 4320
+    - world: {check: {}}
+      expect: {world: {source_health: {"dir:a": stale}}}
+
+# ---------------------------------------------------------- merge safety
+- name: world_unmerge_split
+  category: world
+  gate: true
+  description: A wrong merge is split without losing anything; a manual merge can be reverted; links are history, not overwritten.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Stari Grad", lat: 43.1400, lon: 19.1400, phone: "069 111 222", category: konoba, opening_hours: "Mo-Su 12:00-23:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Konoba Stari Grad", lat: 43.14001, lon: 19.14001, phone: "069 111 222", category: konoba, opening_hours: "Mo-Su 12:00-22:00"}]}}
+      expect: {world: {entities: 1}}
+    - world: {split: {entity: {source: "dir:c", id: "2"}}}
+      expect:
+        world:
+          entities: 2
+          source_entities: 2
+          links_ended: 1
+          resolution: [{entity: {source: "dir:c", id: "2"}, field: opening_hours, conflicting: 0, state: resolved},
+                       {entity: {source: "dir:a", id: "1"}, field: opening_hours, conflicting: 0, state: resolved}]
+          changes: [split]
+    - world: {merge: {keep: {source: "dir:a", id: "1"}, other: {source: "dir:c", id: "2"}}}
+      expect: {world: {entities: 1, source_entities: 2}}
+    - world: {revert_merge: {other: {source: "dir:c", id: "2"}}}
+      expect:
+        world:
+          entities: 2
+          source_entities: 2
+          changes: [merged, unmerged]
+
+# --------------------------------------------------- boundaries / gates
+- name: world_no_transaction_mutation
+  category: world
+  gate: true
+  description: A booked table at a restaurant; a new source then describes that restaurant (matched, new hours). Transaction rows are untouched; the booking still resolves.
+  steps:
+    - guest: "Find a local restaurant for dinner tonight at 20:00, we are 2"
+      expect: {reply_contains: ["Restoran Demo Ponoć"]}
+    - guest: "book 1"
+      expect: {quote: {status: offered}}
+    - guest: "yes"
+      expect: {notifications_contain: ["has accepted your booking"]}
+    - world: {sync: {source: "dir:a", records: [{id: "ponoc", name: "Restoran Demo Ponoć", lat: 43.15381, lon: 19.12401, category: konoba, opening_hours: "Mo-Su 13:00-23:30"}]}}
+      expect:
+        world:
+          transactions_unchanged: true
+          same: [[{source: "dir:a", id: "ponoc"}, {source: "synthetic:zabljak-demo", id: "restoran-demo-ponoc"}]]
+    - guest: "my plan"
+      expect: {reply_contains: ["Restoran Demo Ponoć", "CONFIRMED by provider"]}
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  final: {bookings: ["restaurant_reservation:accepted"]}
+
+- name: world_license_metadata_preserved
+  category: world
+  gate: true
+  description: Licence and attribution terms survive sync, resolution and projection; a result that uses attributed data says so.
+  world_sources:
+    - {source_id: "osm:test", source_class: directory, license: "ODbL-1.0", attribution_required: true, attribution_text: "© OpenStreetMap contributors (test fixture)", redistribution: attribution}
+  steps:
+    - world: {sync: {source: "osm:test", records: [{id: "n1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00"}]}}
+      expect:
+        world:
+          license_preserved: true
+          places: [{entity: {source: "osm:test", id: "n1"}, attribution: ["osm:test"]}]
+    - guest: "Where can I get ice cream?"
+      expect: {reply_contains: ["Sladoled Polar", "© OpenStreetMap contributors"]}
+
+- name: world_raw_payload_respects_license
+  category: world
+  description: A source whose terms forbid caching keeps only the hash and normalized facts, never the raw payload.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "api:nocache", source_class: directory, cache_raw: false, license: "API terms: no caching of raw responses"}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery}]}}
+    - world: {sync: {source: "api:nocache", records: [{id: "Z", name: "Galerija Vjetar", lat: 43.1395, lon: 19.1395, category: gallery}]}}
+      expect:
+        world:
+          raw_present: [{source: "dir:a", id: "1"}]
+          raw_absent: [{source: "api:nocache", id: "Z"}]
+
+- name: world_traveler_data_boundary
+  category: world
+  gate: true
+  description: Guest identity, preferences and conversation never enter world records - not even through a traveller correction.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery}]}}
+    - guest: "I generally prefer vegetarian places"
+    - world: {correction: {entity: {source: "dir:a", id: "1"}, field: "attributes.wheelchair_access", value: false, actor: traveler, actor_ref: "eval-guest"}}
+      expect:
+        world:
+          no_traveler_data: ["eval-guest", "I generally prefer vegetarian"]
+
+- name: world_snapshot_reproducible
+  category: world
+  gate: true
+  description: A frozen snapshot restored into an empty database reproduces the same resolved world (evidence hash and projection).
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "own:polar", source_class: provider_owned}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00"}]}}
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00"}]}}
+    - world: {snapshot: {}}
+      expect: {world: {entities: 1}}
+
+- name: world_discovery_uses_resolved_value
+  category: world
+  description: Discovery reads the resolved projection - it does not know or care how many sources fed it.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "partner:b", source_class: partner_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert}]}}
+    - world: {sync: {source: "partner:b", records: [{id: "p", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-21:00", attributes: {vegan_options: true}}]}}
+    - guest: "Where can I get vegan ice cream?"
+      expect: {reply_contains: ["Sladoled Polar", "open until 21:00", "vegan options"]}

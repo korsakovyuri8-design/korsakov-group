@@ -11,10 +11,12 @@ from app.agent.messages import to_cyrillic_template
 
 _L = {
     "open_until": {"en": "open until {t}", "cnr": "otvoreno do {t}", "ru": "открыто до {t}"},
+    "open_24_7": {"en": "open 24/7", "cnr": "otvoreno 24/7", "ru": "открыто круглосуточно"},
     "opens_at": {"en": "opens at {t}", "cnr": "otvara se u {t}", "ru": "откроется в {t}"},
     "closed": {"en": "closed at that time", "cnr": "zatvoreno u to vrijeme", "ru": "закрыто в это время"},
     "closed_now": {"en": "closed now", "cnr": "sada zatvoreno", "ru": "сейчас закрыто"},
     "closed_reason": {"en": "temporarily closed ({r})", "cnr": "privremeno zatvoreno ({r})", "ru": "временно закрыто ({r})"},
+    "hours_disputed": {"en": "opening hours disputed", "cnr": "radno vrijeme sporno", "ru": "часы работы спорные"},
     "hours_unknown": {"en": "no opening-hours data", "cnr": "nema podataka o radnom vremenu",
                       "ru": "нет данных о часах работы"},
     "kitchen_until": {"en": "kitchen until {t}", "cnr": "kuhinja do {t}", "ru": "кухня до {t}"},
@@ -36,6 +38,13 @@ _L = {
     "fact_event": {"en": "event details", "cnr": "detalji događaja", "ru": "данные о событии"},
     "dress": {"en": "dress code: {v}", "cnr": "pravila oblačenja: {v}", "ru": "дресс-код: {v}"},
     "sold_out": {"en": "SOLD OUT", "cnr": "RASPRODATO", "ru": "БИЛЕТОВ НЕТ"},
+    "conflict": {"en": "sources disagree about the {fact} - please check before going",
+                 "cnr": "izvori se ne slažu oko: {fact} - provjerite prije polaska",
+                 "ru": "источники расходятся: {fact} — проверьте перед визитом"},
+    "existence:unconfirmed": {"en": "no longer listed by its source - may have closed, please check",
+                              "cnr": "izvor ga više ne navodi - moguće da je zatvoreno",
+                              "ru": "источник его больше не показывает — возможно, закрылось"},
+    "fact_start": {"en": "start time", "cnr": "vrijeme početka", "ru": "время начала"},
     "none_because": {"en": "I couldn't find anything that fits{ctx} in my local data: {why}. I won't guess - would you like me to ask the staff?",
                      "cnr": "U mojim lokalnim podacima nema ničega što odgovara{ctx}: {why}. Ne nagađam - da pitam osoblje?",
                      "ru": "В моих местных данных ничего подходящего не нашлось{ctx}: {why}. Гадать не буду — спросить у сотрудников?"},
@@ -107,6 +116,15 @@ def L(key: str, locale: str, **kw: object) -> str:
     return text.format(**kw) if kw else text
 
 
+def always_open(hours: dict | None) -> bool:
+    """Every day 00:00-00:00, no seasonal / special / closure overrides."""
+    h = hours or {}
+    weekly = h.get("weekly") or {}
+    days = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+    return all(weekly.get(d) == [["00:00", "00:00"]] for d in days) and not (
+        h.get("seasonal") or h.get("special") or h.get("closed"))
+
+
 def _hhmm(dt: datetime | None) -> str:
     return dt.strftime("%H:%M") if dt else "?"
 
@@ -122,12 +140,17 @@ def status_text(c: Candidate, locale: str, *, now: bool = False) -> str:
         if c.kitchen.state == OpenState.CLOSED:
             return out + ", " + L("kitchen_closed_now", locale)
         return out
-    if st.state == OpenState.OPEN:
+    if st.state == OpenState.OPEN and always_open(c.place.hours):
+        out = L("open_24_7", locale)
+    elif st.state == OpenState.OPEN:
         out = L("open_until", locale, t=_hhmm(st.closes_at))
     elif st.state == OpenState.OPEN_LATER:
         out = L("opens_at", locale, t=_hhmm(st.opens_at))
     elif st.state == OpenState.CLOSED:
         out = L("closed_reason", locale, r=st.reason) if st.reason else L("closed_now" if now else "closed", locale)
+    elif ((c.place.resolution or {}).get("opening_hours") or {}).get("state") in ("needs_verification",
+                                                                                 "conflicted"):
+        out = L("hours_disputed", locale)
     else:
         out = L("hours_unknown", locale)
     if c.kitchen is not None and c.kitchen.state == OpenState.OPEN:
@@ -160,6 +183,9 @@ def _caveat_labels(c: Candidate, locale: str) -> list[str]:
             name = L(f"fact_{fact}", locale) if f"fact_{fact}" in _L else fact
             out.append(L("fresh_stale", locale, fact=name, d=days) if state == "stale"
                        else L("fresh_unknown", locale, fact=name))
+        elif kind == "conflict":
+            name = L(f"fact_{v}", locale) if f"fact_{v}" in _L else v
+            out.append(L("conflict", locale, fact=name))
         elif kind == "dress":
             out.append(L("dress", locale, v=v))
         elif kind == "age":
@@ -202,6 +228,8 @@ def event_line(i: int, e: EventCandidate, locale: str, tz_fmt) -> str:
                        else L("fresh_unknown", locale, fact=L("fact_event", locale)))
         elif c in _L:
             cav.append(L(c, locale))
+    if ((e.event.resolution or {}).get("start_at") or {}).get("state") in ("needs_verification", "conflicted"):
+        cav.append(L("conflict", locale, fact=L("fact_start", locale)))
     if e.event.age_limit:
         cav.append(L("age", locale, v=e.event.age_limit))
     extra = "; ".join(x for x in [price] + cav if x)

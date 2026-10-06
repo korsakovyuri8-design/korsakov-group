@@ -93,3 +93,7 @@ def register_handlers(worker: JobWorker, container: Container) -> None:
 
     worker.register("provider_reconcile", provider_reconcile)
     worker.register("notify_guest", notify_guest)
+
+    from app.world.jobs import register_world_handlers
+
+    register_world_handlers(worker, container)

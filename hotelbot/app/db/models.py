@@ -607,6 +607,13 @@ class Place(_Provenance, Base):
     verification: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     active: Mapped[bool] = mapped_column(default=True)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+    # World data fabric (Iteration 5): this row is the RESOLVED PROJECTION of
+    # a canonical entity. `resolution` = per-field state/winner/conflicts,
+    # `quality` = data-quality components. `geohash` feeds the spatial index.
+    canonical_entity_id: Mapped[str | None] = mapped_column(ForeignKey("canonical_entities.id"), index=True)
+    geohash: Mapped[str | None] = mapped_column(String(12), index=True)
+    resolution: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    quality: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class Event(_Provenance, Base):
@@ -636,6 +643,8 @@ class Event(_Provenance, Base):
     latitude: Mapped[float | None] = mapped_column(Float)
     longitude: Mapped[float | None] = mapped_column(Float)
     active: Mapped[bool] = mapped_column(default=True)
+    canonical_entity_id: Mapped[str | None] = mapped_column(ForeignKey("canonical_entities.id"), index=True)
+    resolution: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class Offering(_Provenance, Base):
@@ -753,6 +762,270 @@ class ItineraryItem(Base):
     details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+# ===================================================== WORLD DATA FABRIC
+# SOURCE RECORD != REAL-WORLD ENTITY. Sources deliver SourceEntities; entity
+# resolution LINKS them to CanonicalEntities (links are history, never
+# destructive); every field value is a FactAssertion by one source; the
+# resolver turns assertions into the traveller-facing projection (places /
+# events rows). See docs/WORLD_FABRIC.md.
+
+
+class WorldSourceRow(Base):
+    """A registered world-data source: identity, authority class, licence
+    terms and sync health."""
+
+    __tablename__ = "world_sources"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)       # source_id, e.g. "osm:me"
+    source_type: Mapped[str] = mapped_column(String(32))                 # synthetic | fixture | api | partner_feed | correction ...
+    source_class: Mapped[str] = mapped_column(String(32))                # authority vocabulary (policies.yaml)
+    name: Mapped[str] = mapped_column(String(200))
+    format: Mapped[str] = mapped_column(String(64))                      # source-native record format
+    license: Mapped[str] = mapped_column(String(200))
+    attribution_required: Mapped[bool] = mapped_column(default=False)
+    attribution_text: Mapped[str | None] = mapped_column(String(300))
+    redistribution: Mapped[str] = mapped_column(String(32), default="allowed")   # allowed | attribution | display_only | none
+    retention_days: Mapped[int | None] = mapped_column(Integer)          # raw payload retention
+    cache_raw: Mapped[bool] = mapped_column(default=True)                # may we keep the source payload?
+    default_confidence: Mapped[float] = mapped_column(Float, default=0.8)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # category map, country, ...
+    status: Mapped[str] = mapped_column(String(16), default="never_synced")   # healthy | failing | stale | never_synced
+    last_attempt_at: Mapped[datetime | None] = mapped_column()
+    last_success_at: Mapped[datetime | None] = mapped_column()
+    last_full_sync_at: Mapped[datetime | None] = mapped_column()
+    last_error: Mapped[str | None] = mapped_column(Text)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    records_seen: Mapped[int] = mapped_column(Integer, default=0)
+    records_changed: Mapped[int] = mapped_column(Integer, default=0)
+    cursor: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class CanonicalEntity(Base):
+    """One real-world thing (a place, an event, a provider, a venue)."""
+
+    __tablename__ = "canonical_entities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    entity_type: Mapped[str] = mapped_column(String(16), index=True)    # PLACE | EVENT | PROVIDER | VENUE
+    canonical_name: Mapped[str] = mapped_column(String(300))
+    canonical_slug: Mapped[str] = mapped_column(String(120), index=True)
+    region: Mapped[str | None] = mapped_column(String(64), index=True)   # coverage area code
+    country_code: Mapped[str | None] = mapped_column(String(2))
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    geohash: Mapped[str | None] = mapped_column(String(12), index=True)
+    starts_at: Mapped[datetime | None] = mapped_column(index=True)      # events: for blocking
+    active: Mapped[bool] = mapped_column(default=True)
+    deactivated_at: Mapped[datetime | None] = mapped_column()
+    deactivation_reason: Mapped[str | None] = mapped_column(String(200))
+    merged_into_id: Mapped[str | None] = mapped_column(ForeignKey("canonical_entities.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class SourceEntity(Base):
+    """A record exactly as one source delivered it (raw, if the licence
+    allows keeping it) plus its normalized form. Never deleted by a merge
+    or by a sync that no longer lists it (tombstone instead)."""
+
+    __tablename__ = "source_entities"
+    __table_args__ = (UniqueConstraint("source_id", "source_record_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    source_id: Mapped[str] = mapped_column(ForeignKey("world_sources.id"), index=True)
+    source_type: Mapped[str] = mapped_column(String(32))
+    source_record_id: Mapped[str] = mapped_column(String(255))
+    entity_type: Mapped[str] = mapped_column(String(16))
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    raw: Mapped[dict[str, Any] | None] = mapped_column(JSON)            # None when the licence forbids caching
+    raw_hash: Mapped[str] = mapped_column(String(64))
+    normalized: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    issues: Mapped[list[Any]] = mapped_column(JSON, default=list)      # normalization problems (never "fixed" by guessing)
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    geohash: Mapped[str | None] = mapped_column(String(12), index=True)
+    observed_at: Mapped[datetime | None] = mapped_column()
+    first_seen_at: Mapped[datetime] = mapped_column(default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(default=utcnow)
+    last_synced_at: Mapped[datetime] = mapped_column(default=utcnow)
+    active_at_source: Mapped[bool] = mapped_column(default=True)
+    tombstoned_at: Mapped[datetime | None] = mapped_column()
+
+
+class EntityLink(Base):
+    """SourceEntity -> CanonicalEntity. Links are ended, never deleted, so a
+    wrong merge can be split without rebuilding source data."""
+
+    __tablename__ = "entity_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    source_entity_id: Mapped[str] = mapped_column(ForeignKey("source_entities.id"), index=True)
+    canonical_entity_id: Mapped[str] = mapped_column(ForeignKey("canonical_entities.id"), index=True)
+    active: Mapped[bool] = mapped_column(default=True, index=True)
+    method: Mapped[str] = mapped_column(String(32))                     # new | auto_match | manual | split | correction
+    score: Mapped[float | None] = mapped_column(Float)
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    decided_by: Mapped[str] = mapped_column(String(64), default="resolver")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column()
+    end_reason: Mapped[str | None] = mapped_column(String(200))
+
+
+class EntityAlias(Base):
+    __tablename__ = "entity_aliases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    canonical_entity_id: Mapped[str] = mapped_column(ForeignKey("canonical_entities.id"), index=True)
+    source_entity_id: Mapped[str | None] = mapped_column(ForeignKey("source_entities.id"))
+    alias: Mapped[str] = mapped_column(String(300))
+    folded: Mapped[str] = mapped_column(String(300), index=True)
+    language: Mapped[str | None] = mapped_column(String(16))
+    kind: Mapped[str] = mapped_column(String(16), default="name")       # name | local | en | alternate | transliteration
+
+
+class EntityIdentifier(Base):
+    """Normalized identifiers used for exact blocking: phone (E.164), web
+    domain, external ids ("ext:<namespace>")."""
+
+    __tablename__ = "entity_identifiers"
+    __table_args__ = (Index("ix_entity_identifiers_kind_value", "kind", "value"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    source_entity_id: Mapped[str] = mapped_column(ForeignKey("source_entities.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(64))
+    value: Mapped[str] = mapped_column(String(300))
+
+
+class MatchReview(Base):
+    """An AMBIGUOUS match: the record stays a separate entity until a person
+    (or a better signal) decides."""
+
+    __tablename__ = "match_reviews"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    source_entity_id: Mapped[str] = mapped_column(ForeignKey("source_entities.id"), index=True)
+    candidates: Mapped[list[Any]] = mapped_column(JSON, default=list)   # [{canonical_entity_id, score, evidence}]
+    status: Mapped[str] = mapped_column(String(16), default="open")     # open | resolved
+    resolution: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column()
+
+
+class FactAssertion(Base):
+    """One source's claim about one field of one entity. Two sources may
+    claim different values: both are kept; the resolver decides by policy."""
+
+    __tablename__ = "fact_assertions"
+    __table_args__ = (Index("ix_fact_assertions_entity_field", "canonical_entity_id", "field_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    canonical_entity_id: Mapped[str] = mapped_column(ForeignKey("canonical_entities.id"))
+    source_entity_id: Mapped[str] = mapped_column(ForeignKey("source_entities.id"), index=True)
+    source_id: Mapped[str] = mapped_column(String(128), index=True)
+    source_class: Mapped[str] = mapped_column(String(32))
+    field_name: Mapped[str] = mapped_column(String(64))
+    value: Mapped[Any] = mapped_column(JSON, nullable=True)
+    observed_at: Mapped[datetime] = mapped_column()
+    valid_from: Mapped[datetime | None] = mapped_column()
+    valid_until: Mapped[datetime | None] = mapped_column()
+    confidence: Mapped[float] = mapped_column(Float, default=0.8)
+    verification_type: Mapped[str] = mapped_column(String(32), default="source_reported")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    superseded_at: Mapped[datetime | None] = mapped_column()
+    superseded_reason: Mapped[str | None] = mapped_column(String(64))
+
+
+class WorldCorrection(Base):
+    """Audit of a correction (staff, provider, operator, traveller). The
+    correction itself is a FactAssertion from a correction source."""
+
+    __tablename__ = "world_corrections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    canonical_entity_id: Mapped[str] = mapped_column(ForeignKey("canonical_entities.id"), index=True)
+    field_name: Mapped[str] = mapped_column(String(64))
+    value: Mapped[Any] = mapped_column(JSON, nullable=True)
+    actor_type: Mapped[str] = mapped_column(String(16))                 # staff | provider | operator | traveler
+    actor_ref: Mapped[str] = mapped_column(String(128))                 # opaque; never a guest identity
+    note: Mapped[str | None] = mapped_column(Text)
+    assertion_id: Mapped[str] = mapped_column(ForeignKey("fact_assertions.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    withdrawn_at: Mapped[datetime | None] = mapped_column()
+
+
+class WorldChange(Base):
+    """Change history: what changed, where it came from, when."""
+
+    __tablename__ = "world_changes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    canonical_entity_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    source_entity_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    source_id: Mapped[str | None] = mapped_column(String(128))
+    change_type: Mapped[str] = mapped_column(String(32))
+    field_name: Mapped[str | None] = mapped_column(String(64))
+    old_value: Mapped[Any] = mapped_column(JSON, nullable=True)
+    new_value: Mapped[Any] = mapped_column(JSON, nullable=True)
+    detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    detected_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
+
+
+class CoverageArea(Base):
+    """Geography a source can be synced for and places are assigned to:
+    country / administrative area / locality / bbox / radius / provider area."""
+
+    __tablename__ = "coverage_areas"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    kind: Mapped[str] = mapped_column(String(24))                       # country | admin_area | locality | bbox | radius | provider_area
+    name: Mapped[str] = mapped_column(String(200))
+    country_code: Mapped[str | None] = mapped_column(String(2))
+    parent_code: Mapped[str | None] = mapped_column(String(64))
+    timezone: Mapped[str | None] = mapped_column(String(64))
+    min_lat: Mapped[float | None] = mapped_column(Float)
+    min_lon: Mapped[float | None] = mapped_column(Float)
+    max_lat: Mapped[float | None] = mapped_column(Float)
+    max_lon: Mapped[float | None] = mapped_column(Float)
+    center_lat: Mapped[float | None] = mapped_column(Float)
+    center_lon: Mapped[float | None] = mapped_column(Float)
+    radius_km: Mapped[float | None] = mapped_column(Float)
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class MarketplaceLink(Base):
+    """Explicit identity between the two worlds: a canonical entity IS this
+    provider / IS SOLD AS this offering. Established at ingest or by partner
+    mapping - never inferred from similar names at transaction time."""
+
+    __tablename__ = "entity_marketplace_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    canonical_entity_id: Mapped[str] = mapped_column(ForeignKey("canonical_entities.id"), index=True)
+    provider_id: Mapped[str | None] = mapped_column(ForeignKey("external_providers.id"), index=True)
+    offering_id: Mapped[str | None] = mapped_column(ForeignKey("offerings.id"), index=True)
+    established_by: Mapped[str] = mapped_column(String(32))             # ingest | partner_mapping | operator
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class WorldSnapshot(Base):
+    """Frozen world state (sources, records, links, assertions) for
+    reproducible evaluation."""
+
+    __tablename__ = "world_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    source_versions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    counts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    content: Mapped[str] = mapped_column(Text)                          # gzip+base64 JSON
 
 
 # ---------------------------------------------------- Core v1 aliases
