@@ -13,7 +13,7 @@ from app.db.models import AvailabilitySlot, Event, ItemStatus, Place
 from app.discovery.engine import DiscoveryQuery, discover_events, discover_places
 from app.discovery.nlu import parse_discovery
 from app.marketplace.inventory import find_slot
-from app.places.geo import Point, distance_km, walking_minutes
+from app.shared.geo import Point, distance_km, walking_minutes
 from app.places.hours import OpenState, open_during, status_at
 from app.places.taxonomy import SUBCATEGORIES, Category, category_of, label
 from app.trip import itinerary
@@ -80,7 +80,7 @@ def test_geo_distance_and_walking():
 
 
 def test_taxonomy_has_all_top_level_categories_and_localized_labels():
-    assert len(Category) == 19
+    assert len(Category) == 20 and "NATURE" in Category.__members__
     assert {s.category for s in SUBCATEGORIES.values()} <= set(Category)
     assert category_of("pharmacy") == "HEALTH"
     assert label("konoba", "ru") == "коноба" and label("pharmacy", "en") == "pharmacy"
@@ -110,7 +110,7 @@ def test_nlu_constraints_and_time():
     local = parse_discovery("Find somewhere local for dinner", MON).query
     assert local.any_of == {"cuisine": ["montenegrin"]}
     jazz = parse_discovery("Is there any live jazz this week?", MON)
-    assert jazz.events and "jazz" in jazz.query.tags_preferred
+    assert jazz.events and "jazz" in jazz.query.relevance_tags
 
 
 def test_nlu_leaves_property_questions_alone():
@@ -176,7 +176,7 @@ def test_discovery_soft_preference_never_returns_the_opposite(region):
     res = discover_places(region, _q(categories={"NIGHTLIFE"}, preferred={"noise_level": "lively"},
                                      tags_preferred={"lively"}, limit=10), now, TZ)
     names = [c.place.name for c in res]
-    assert names[0] == "Bar Demo Koktel" and "Pub Demo" not in names                # pub is recorded as quiet
+    assert names[0] in ("Bar Demo Koktel", "Demo Rooftop Lounge") and "Pub Demo" not in names   # pub is quiet
 
 
 def test_discovery_explanations_come_from_fields(region):
@@ -184,7 +184,7 @@ def test_discovery_explanations_come_from_fields(region):
     res = discover_places(region, _q(subcategories={"nightclub"}, limit=1), now, TZ)
     c = res[0]
     assert "age:21" in c.caveats and "cover:10" in c.caveats
-    assert "data:stale" in c.caveats                                                # verified 2026-09-25
+    assert any(x.startswith("fresh:hours:stale:") for x in c.caveats)                # verified 2026-09-25
 
 
 def test_events_never_show_past_ones(region):

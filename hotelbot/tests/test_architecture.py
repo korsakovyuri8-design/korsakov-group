@@ -19,7 +19,7 @@ from app.db.models import Offering, Place
 from app.marketplace import bridge
 
 APP = Path(__file__).resolve().parents[1] / "app"
-DISCOVERY = [APP / "discovery", APP / "places"]
+DISCOVERY = [APP / "discovery", APP / "places", APP / "world"]
 TRANSACTION = [APP / "transactions", APP / "marketplace"]
 # Loading a region pack writes both worlds (it is a data file of the region).
 EXEMPT = {APP / "places" / "pack.py", APP / "marketplace" / "bridge.py"}
@@ -50,7 +50,37 @@ def test_discovery_world_does_not_import_transactions():
 
 
 def test_transaction_world_does_not_import_discovery():
-    assert _violations(TRANSACTION, ("app.discovery", "app.places.hours", "app.places.geo", "app.trip")) == []
+    assert _violations(TRANSACTION, ("app.discovery", "app.places.hours", "app.shared.geo", "app.trip")) == []
+
+
+def test_neutral_modules_belong_to_neither_world():
+    """Time parsing, geo and identifiers are shared by both worlds and must
+    not pull either one in."""
+    neutral = [APP / "shared", APP / "nlp" / "temporal.py"]
+    bad = []
+    for root in neutral:
+        for f in ([root] if root.suffix == ".py" else root.rglob("*.py")):
+            bad += [f"{f.relative_to(APP)} imports {m}" for m in _imports(f)
+                    if m.startswith(("app.transactions", "app.marketplace", "app.discovery", "app.places",
+                                     "app.world", "app.trip"))]
+    assert bad == []
+
+
+def test_trip_reaches_the_marketplace_only_through_the_bridge():
+    bad = []
+    for f in (APP / "trip").rglob("*.py"):
+        bad += [f"{f.relative_to(APP)} imports {m}" for m in _imports(f)
+                if m.startswith("app.marketplace") and m != "app.marketplace"
+                or m == "app.marketplace" and "bridge" not in f.read_text(encoding="utf-8")]
+    assert bad == []
+    # plan / preference / reference logic is pure: no world access at all
+    for name in ("selection.py", "schedule.py", "preferences.py"):
+        mods = _imports(APP / "trip" / name)
+        assert not {m for m in mods if m.startswith(("app.transactions", "app.marketplace"))}, name
+
+
+def test_world_sources_do_not_know_the_transaction_world():
+    assert _violations([APP / "world"], ("app.transactions", "app.marketplace", "app.trip", "app.agent")) == []
 
 
 def test_place_only_entities_have_no_transaction_side(container):

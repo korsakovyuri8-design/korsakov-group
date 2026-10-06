@@ -1,4 +1,4 @@
-"""Travel taxonomy: 19 top-level categories + an open subcategory vocabulary.
+"""Travel taxonomy: 20 top-level categories + an open subcategory vocabulary.
 
 The database stores `category` + free-text `subcategory` + attributes, so a
 new kind of place ("eSIM kiosk", "padel court") needs no schema change: add
@@ -18,6 +18,7 @@ class Category(str, enum.Enum):
     ACCOMMODATION = "ACCOMMODATION"
     FOOD = "FOOD"
     NIGHTLIFE = "NIGHTLIFE"
+    NATURE = "NATURE"
     TRANSPORT = "TRANSPORT"
     RENTAL = "RENTAL"
     GUIDE = "GUIDE"
@@ -69,6 +70,9 @@ SUBCATEGORIES: dict[str, Subcategory] = {s.key: s for s in [
     _s("pub", C.NIGHTLIFE, "pub", "pab", "паб", "pub", "pab", "паб"),
     _s("nightclub", C.NIGHTLIFE, "nightclub", "noćni klub", "ночной клуб", "nightclub", "club", "clubbing", "dancing",
        "nocni klub", "disko*", "клуб", "ночн* клуб*"),
+    _s("rooftop", C.NIGHTLIFE, "rooftop bar", "bar na krovu", "бар на крыше", "rooftop", "roof terrace",
+       "на крыше"),
+    _s("lounge", C.NIGHTLIFE, "lounge bar", "lounge bar", "лаунж-бар", "lounge", "лаунж*"),
     _s("live_music_venue", C.NIGHTLIFE, "live music venue", "svirka uživo", "живая музыка", "concert bar",
        "live music venue"),
     # CULTURE / ATTRACTION
@@ -78,20 +82,29 @@ SUBCATEGORIES: dict[str, Subcategory] = {s.key: s for s in [
     _s("cinema", C.CULTURE, "cinema", "bioskop", "кинотеатр", "cinema", "movie*", "film", "bioskop*", "кино"),
     _s("religious_site", C.CULTURE, "religious site", "vjerski objekat", "храм", "church", "monastery", "mosque",
        "crkv*", "manastir*", "церк*", "монастыр*"),
-    _s("historic_site", C.ATTRACTION, "historic site", "istorijski lokalitet", "историческое место", "histor*",
-       "architect*", "monument*", "ruins", "istorij*", "spomenik*", "архитектур*", "истори*", "памятник*"),
-    _s("viewpoint", C.ATTRACTION, "viewpoint", "vidikovac", "смотровая площадка", "viewpoint", "view", "panorama",
+    _s("historic_site", C.CULTURE, "historic site", "istorijski lokalitet", "историческое место", "histor*",
+       "ruins", "istorij*", "истори*"),
+    _s("architecture", C.CULTURE, "architecture", "arhitektura", "архитектура", "architect*", "arhitektur*",
+       "архитектур*"),
+    _s("monument", C.CULTURE, "monument", "spomenik", "памятник", "monument*", "memorial", "spomenik*", "памятник*"),
+    _s("visitor_center", C.ATTRACTION, "visitor centre", "info centar parka", "визит-центр", "visitor cent*",
+       "info centar", "визит-центр*"),
+    _s("viewpoint", C.NATURE, "viewpoint", "vidikovac", "смотровая площадка", "viewpoint", "view", "panorama",
        "vidikovac*", "смотров*", "вид на"),
-    _s("park", C.ATTRACTION, "park", "park", "парк", "park", "парк*"),
-    _s("national_park", C.ATTRACTION, "national park", "nacionalni park", "национальный парк", "national park",
+    _s("park", C.NATURE, "park", "park", "парк", "park", "парк*"),
+    _s("national_park", C.NATURE, "national park", "nacionalni park", "национальный парк", "national park",
        "nacionalni park", "национальн* парк*"),
-    _s("lake", C.ATTRACTION, "lake", "jezero", "озеро", "lake", "jezer*", "озер*"),
-    _s("beach", C.ACTIVITY, "beach", "plaža", "пляж", "beach", "plaz*", "пляж*"),
-    _s("ski_resort", C.ACTIVITY, "ski resort", "skijalište", "горнолыжный курорт", "ski resort", "slope*", "skijalist*",
-       "горнолыжн*", "склон*"),
+    _s("lake", C.NATURE, "lake", "jezero", "озеро", "lake", "jezer*", "озер*"),
+    _s("beach", C.NATURE, "beach", "plaža", "пляж", "beach", "plaz*", "пляж*"),
+    _s("ski_resort", C.ACTIVITY, "ski area", "skijalište", "горнолыжный курорт", "ski resort", "ski area", "slope*",
+       "skijalist*", "горнолыжн*", "склон*"),
+    _s("trailhead", C.NATURE, "trailhead", "početak staze", "начало тропы", "trailhead", "trail", "hiking trail",
+       "staz*", "троп*"),
     # WELLNESS
-    _s("spa", C.WELLNESS, "spa", "spa", "спа", "spa", "massage", "sauna", "wellness", "masaz*", "sauna", "массаж*",
-       "сауна", "спа"),
+    _s("spa", C.WELLNESS, "spa", "spa", "спа", "spa", "wellness", "спа"),
+    _s("sauna", C.WELLNESS, "sauna", "sauna", "сауна", "sauna", "сауна", "бан*"),
+    _s("massage", C.WELLNESS, "massage", "masaža", "массаж", "massage", "masaz*", "массаж*"),
+    _s("pool", C.WELLNESS, "swimming pool", "bazen", "бассейн", "pool", "swim*", "bazen*", "бассейн*"),
     _s("gym", C.WELLNESS, "gym", "teretana", "спортзал", "gym", "fitness", "teretan*", "фитнес", "спортзал*"),
     # SHOPPING
     _s("supermarket", C.SHOPPING, "supermarket", "supermarket", "супермаркет", "supermarket", "grocer*", "groceries",
@@ -118,13 +131,18 @@ SUBCATEGORIES: dict[str, Subcategory] = {s.key: s for s in [
        "currency exchange", "mjenjacnic*", "обмен* валют*", "обменник*"),
     _s("sim_shop", C.CONNECTIVITY, "SIM / eSIM", "SIM kartica", "SIM-карта", "sim", "esim", "e-sim", "mobile data",
        "sim kartic*", "сим", "симк*", "есим", "мобильн* интернет*"),
+    _s("public_wifi", C.CONNECTIVITY, "public Wi-Fi", "javni Wi-Fi", "бесплатный Wi-Fi", "public wifi",
+       "free wifi", "javni wifi", "бесплатн* wi-fi", "вайфай"),
+    _s("charging_point", C.CONNECTIVITY, "phone charging", "punjenje telefona", "зарядка телефона",
+       "charge my phone", "phone charging", "napuniti telefon", "зарядить телефон"),
     _s("coworking", C.CONNECTIVITY, "coworking", "kovorking", "коворкинг", "coworking", "co-working",
        "work for", "place to work", "laptop", "kovorking*", "raditi", "коворкинг*", "поработать", "ноутбук*"),
     _s("print_shop", C.ESSENTIAL_SERVICE, "printing", "štampanje", "печать", "print*", "stampa*", "kopirnic*",
        "распечат*", "печать"),
     _s("post_office", C.ESSENTIAL_SERVICE, "post office", "pošta", "почта", "post office", "parcel", "posta",
        "paket*", "почт*", "посылк*"),
-    _s("laundry", C.ESSENTIAL_SERVICE, "laundry", "perionica", "прачечная", "laundry", "washing", "perionic*",
+    _s("laundry", C.ESSENTIAL_SERVICE, "laundry", "perionica", "прачечная", "laundry", "washing", "wash clothes",
+       "wash my clothes", "wash our clothes", "washing machine", "oprati ves*", "постирать", "perionic*",
        "prac*", "прачечн*", "постират*"),
     _s("luggage_storage", C.ESSENTIAL_SERVICE, "luggage storage", "garderoba", "камера хранения", "luggage", "bags",
        "left luggage", "garderob*", "prtljag", "багаж*", "камер* хранени*"),
@@ -132,10 +150,22 @@ SUBCATEGORIES: dict[str, Subcategory] = {s.key: s for s in [
        "toalet", "туалет*"),
     _s("tourist_info", C.ESSENTIAL_SERVICE, "tourist information", "turistički info centar", "туристический центр",
        "tourist info*", "turisticki info*", "туристическ* информ*"),
+    _s("embassy", C.ESSENTIAL_SERVICE, "embassy / consulate", "ambasada / konzulat", "посольство / консульство",
+       "embass*", "consulate", "ambasad*", "konzulat*", "посольств*", "консульств*"),
     _s("police", C.ESSENTIAL_SERVICE, "police", "policija", "полиция", "police", "polic*", "полици*"),
     # MOBILITY INFRASTRUCTURE
     _s("bus_station", C.MOBILITY_INFRASTRUCTURE, "bus station", "autobuska stanica", "автовокзал", "bus", "coach",
        "autobus*", "автобус*", "автовокзал*"),
+    _s("bus_stop", C.MOBILITY_INFRASTRUCTURE, "bus stop", "autobusko stajalište", "остановка", "bus stop",
+       "stajalist*", "остановк*"),
+    _s("train_station", C.MOBILITY_INFRASTRUCTURE, "train station", "željeznička stanica", "вокзал", "train",
+       "railway", "zeljeznick*", "voz", "поезд*", "вокзал*"),
+    _s("ferry_terminal", C.MOBILITY_INFRASTRUCTURE, "ferry terminal", "trajektno pristanište", "паромный терминал",
+       "ferry", "trajekt*", "паром*"),
+    _s("bike_share", C.MOBILITY_INFRASTRUCTURE, "bike share", "javni bicikli", "велопрокат", "bike share",
+       "shared bike*", "javni bicikl*", "велошеринг*"),
+    _s("scooter_share", C.MOBILITY_INFRASTRUCTURE, "e-scooter share", "električni trotineti", "электросамокаты",
+       "e-scooter*", "electric scooter*", "trotinet*", "самокат*"),
     _s("car_park", C.MOBILITY_INFRASTRUCTURE, "car park", "parking", "парковка", "car park", "parking", "park the car",
        "parking", "parkiral*", "парковк*", "припарков*"),
     _s("fuel_station", C.MOBILITY_INFRASTRUCTURE, "fuel station", "benzinska pumpa", "заправка", "fuel", "petrol",
@@ -164,6 +194,21 @@ def label(subcategory: str, locale: str) -> str:
     return sub.labels.get(locale.split("-")[0]) or sub.labels["en"]
 
 
+def register_subcategory(key: str, category: str, labels: dict[str, str], keywords: tuple[str, ...] = ()) -> None:
+    """Add (or extend) a subcategory from DATA - a WorldSource may introduce
+    "padel_court" without any code or schema change."""
+    cat = Category(category) if category in Category.__members__ else Category.OTHER
+    existing = SUBCATEGORIES.get(key)
+    if existing is not None:
+        keywords = tuple(dict.fromkeys(existing.keywords + tuple(keywords)))
+        labels = {**existing.labels, **labels}
+        cat = existing.category
+    SUBCATEGORIES[key] = Subcategory(key, cat, {"en": labels.get("en", key.replace("_", " ")),
+                                                "cnr": labels.get("cnr", labels.get("en", key)),
+                                                "ru": labels.get("ru", labels.get("en", key)), **labels},
+                                     tuple(keywords))
+
+
 def category_of(subcategory: str, fallback: str = "OTHER") -> str:
     sub = SUBCATEGORIES.get(subcategory)
     return sub.category.value if sub else fallback
@@ -172,5 +217,5 @@ def category_of(subcategory: str, fallback: str = "OTHER") -> str:
 # Generic words name a family, not one kind: "a bar" includes cocktail and wine bars.
 FAMILIES = {
     "restaurant": {"restaurant", "konoba", "fast_food"},
-    "bar": {"bar", "cocktail_bar", "wine_bar", "pub", "live_music_venue"},
+    "bar": {"bar", "cocktail_bar", "wine_bar", "pub", "live_music_venue", "rooftop", "lounge"},
 }

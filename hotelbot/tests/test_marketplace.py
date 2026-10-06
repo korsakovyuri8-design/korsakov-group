@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.clock import FrozenClock
 from app.container import build_container
 from app.db.models import (
+    Action,
     ExternalProvider,
     HoldStatus,
     InventoryHold,
@@ -247,7 +248,29 @@ def test_commission_never_changes_the_guest_price(mk):
     assert snap["guest_price"] == "90.00" and snap["commission"] == "15.00"     # fixed 15 per booking
     pct = pricing.commission(s.scalar(select(ExternalProvider).where(ExternalProvider.slug == "demo-transfers")),
                              Decimal("45.00"))
-    assert pct == {"guest_price": "45.00", "commission_type": "percent", "commission": "4.50"}
+    assert pct == {"guest_price": "45.00", "commission_type": "percent", "commission": "4.50", "basis": "potential"}
+
+
+def test_commission_is_earned_only_after_confirmation(chat, container):
+    """A quote carries a POTENTIAL commission; consent, submission and a
+    pending answer earn nothing; only the provider's confirmation does."""
+    from app.marketplace import commission
+
+    reply = chat("I need an airport transfer from Podgorica tomorrow at 14:00, we are 2")
+    assert reply.actions and reply.actions[0].detail.get("status") == "offered"
+    with container.session_factory() as s:
+        assert commission.total(s) == 0                       # quoted: nothing earned
+    chat("yes")
+    with container.session_factory() as s:
+        statuses = {a.status for a in s.scalars(select(Action))}
+        if not statuses & set(commission.EARNING):
+            assert commission.total(s) == 0                   # consented / submitted: nothing earned
+    for _ in range(10):
+        if not container.worker.run_once():
+            break
+    with container.session_factory() as s:
+        accepted = [a for a in s.scalars(select(Action)) if a.status in commission.EARNING]
+        assert accepted and commission.total(s) > 0
 
 
 def test_terms_merge_and_render():

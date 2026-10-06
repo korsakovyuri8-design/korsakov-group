@@ -13,13 +13,14 @@ queries places; when one needs the other, it asks here.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.capabilities.registry import CapabilityRegistry
-from app.db.models import Event, Offering, Place
+from app.db.models import Event, ExternalProvider, Offering, Place
 
 
 @dataclass(frozen=True)
@@ -46,3 +47,40 @@ def options_for(session: Session, *, place: Place | None = None, event: Event | 
                            .order_by(Offering.slug))
     return [ExecutionOption(o, o.service_type) for o in rows
             if capabilities is None or capabilities.service(o.service_type) is not None]
+
+
+def ranking_signals(session: Session, *, property_id: str | None,
+                    capabilities: CapabilityRegistry | None = None) -> Callable[[Place], tuple[int, float]]:
+    """Discovery's commercial inputs, computed on the transaction side:
+    (relationship rank, potential commission) per place. The engine uses
+    them ONLY as the last tie-breakers, after every hard constraint and
+    every guest-facing criterion. Commission is a percentage of a future
+    completed booking; nothing is earned or recorded here.
+
+    preferred / exclusive (explicit property choice) -> 0; anything else -> 1.
+    A blocked provider's offerings never count."""
+    from app.db.models import ProviderRelation
+    from app.marketplace.discovery import relations
+
+    cache: dict[str, tuple[int, float]] = {}
+
+    def signals(place: Place) -> tuple[int, float]:
+        if place.id in cache:
+            return cache[place.id]
+        rank, commission = 1, 0.0
+        for opt in options_for(session, place=place, capabilities=capabilities):
+            rel = relations(session, property_id, opt.service_type).get(opt.offering.provider_id)
+            if rel == ProviderRelation.BLOCKED:
+                continue
+            if rel in (ProviderRelation.PREFERRED, ProviderRelation.EXCLUSIVE):
+                rank = 0
+            provider = session.get(ExternalProvider, opt.offering.provider_id)
+            ctype = opt.offering.commission_type or (provider.commission_type if provider else None)
+            value = opt.offering.commission_value if opt.offering.commission_value is not None else (
+                provider.commission_value if provider else None)
+            if ctype == "percent" and value is not None:
+                commission = max(commission, float(value))
+        cache[place.id] = (rank, commission)
+        return cache[place.id]
+
+    return signals

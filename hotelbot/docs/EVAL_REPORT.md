@@ -1,8 +1,8 @@
 # HOTELBOT evaluation report
 
-Generated 2026-10-06 08:33 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
+Generated 2026-10-06 11:09 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
 
-**TOTAL 154 · PASS 150 · FAIL 4**
+**TOTAL 198 · PASS 194 · FAIL 4**
 
 | Category | Pass |
 |---|---|
@@ -17,6 +17,36 @@ Generated 2026-10-06 08:33 UTC by `python -m evals`. Deterministic: no LLM unles
 | transactions | 43/43 |
 | local | 23/23 |
 | marketplace | 28/28 |
+| discovery | 44/44 |
+
+## Iteration 4 - raw first run of the discovery scenarios
+
+The 43 discovery scenarios as first written were run **once, before any fix**: **40/43** (2 failing gates). The re-runs below fixed product defects, not expectations, with one exception, which is marked.
+
+| # | Failure in the raw run | Root cause | Kind |
+|---|---|---|---|
+| 1 | `disc_open_now_hard` [GATE]: no-result reply without the reason | the rejection labels had been deleted from the renderer during the iteration (a bad edit) | product defect |
+| 2 | `disc_flagship_trip` [GATE]: "Book the first restaurant, save the second bar and add the concert to **Sunday**" reserved the restaurant for Sunday | the transaction draft read details from the whole message instead of its own clause | product defect (cross-effect) |
+| 3 | `disc_flagship_trip`: no drinks results for Saturday night | "at night" made the parser default the day to today, overriding the day under discussion | product defect |
+| 4 | `disc_flagship_trip`: "save the second bar" found no bar | consequence of 3 | - |
+| 5 | `disc_shortlist_and_view`: "Show my saved bars" read "show" as an event; "What did I save?" fell through to the generic answer | reference parsing | product defect |
+| 6 | `disc_shortlist_and_view`: an unknown-hours grill ranked above known-open restaurants | availability ranked only when a time was given | product defect |
+| 7 | `disc_shortlist_and_view`: expected "Restoran Demo Ponoć" first | my expectation was wrong once availability ranks (Konoba is open and closer) | **test expectation changed** |
+
+Further defects found in the second run and by reading the PASSING transcripts. The assertions are tightened so each is now checked:
+- The ski-day anchor applied to Saturday-night drinks.
+- "cocktails" did not include lounges or rooftops.
+- "two free hours before **dinner**" was parsed as a food need and returned restaurants.
+- "a restaurant for dinner" (no time) offered places closing at 16:00.
+- "closed at that time" was shown when no time was asked ("closed now").
+- "no ticket needed" was shown for events whose source says nothing about tickets.
+- "kitchen hours not known" appeared on cafés in a "somewhere to work" query.
+- Cafés with Wi-Fi were not offered when coworking closes too early.
+- The ticket conditions text in the synthetic data was contradictory.
+
+One regression in a frozen Iteration 3 scenario was caught (`txn_russian_arrival_transfer`: arrival context alone routed a one-transfer message into the planner, losing "tomorrow"). It was fixed in the planner trigger.
+
+Final: discovery 44/44 (one scenario added: `disc_dinner_implies_evening`), all gates 125/125. The 4 known grounding paraphrase failures are unchanged, as instructed.
 
 ## Scenarios
 
@@ -40,6 +70,50 @@ Generated 2026-10-06 08:33 UTC by `python -m evals`. Deterministic: no LLM unles
 | ✅ | `tool_timeout` | authority | yes |
 | ✅ | `integration_rejected` | authority | yes |
 | ✅ | `llm_overclaim_blocked` | authority | yes |
+| ✅ | `disc_open_now_hard` | discovery | yes |
+| ✅ | `disc_open_later_time` | discovery |  |
+| ✅ | `disc_kitchen_closed_venue_open` | discovery | yes |
+| ✅ | `disc_unknown_hours_never_claimed` | discovery | yes |
+| ✅ | `disc_temporary_closure` | discovery | yes |
+| ✅ | `disc_stale_hours_disclosed` | discovery | yes |
+| ✅ | `disc_fresh_not_flagged` | discovery |  |
+| ✅ | `disc_diet_hard_filters` | discovery | yes |
+| ✅ | `disc_diet_soft_keeps_results` | discovery |  |
+| ✅ | `disc_gluten_free_hard` | discovery | yes |
+| ✅ | `disc_price_cheap` | discovery |  |
+| ✅ | `disc_party_size` | discovery | yes |
+| ✅ | `disc_nightlife_not_club` | discovery | yes |
+| ✅ | `disc_age_restriction` | discovery | yes |
+| ✅ | `disc_pharmacy_sunday` | discovery | yes |
+| ✅ | `disc_atm_nearest` | discovery |  |
+| ✅ | `disc_coworking_three_hours` | discovery |  |
+| ✅ | `disc_coworking_closes_too_early` | discovery | yes |
+| ✅ | `disc_laundry` | discovery |  |
+| ✅ | `disc_geo_radius` | discovery | yes |
+| ✅ | `disc_near_another_place` | discovery | yes |
+| ✅ | `disc_near_property` | discovery |  |
+| ✅ | `disc_events_expired_hidden` | discovery | yes |
+| ✅ | `disc_event_wrong_date` | discovery | yes |
+| ✅ | `disc_events_saturday` | discovery |  |
+| ✅ | `disc_dinner_implies_evening` | discovery | yes |
+| ✅ | `disc_save_not_transaction` | discovery | yes |
+| ✅ | `disc_shortlist_and_view` | discovery |  |
+| ✅ | `disc_no_candidates` | discovery | yes |
+| ✅ | `disc_ambiguous_query` | discovery |  |
+| ✅ | `disc_multi_category` | discovery |  |
+| ✅ | `disc_compound_dinner_drinks` | discovery |  |
+| ✅ | `disc_free_window_before_dinner` | discovery |  |
+| ✅ | `disc_tripplan_activity_anchor` | discovery |  |
+| ✅ | `disc_restaurant_bridge` | discovery | yes |
+| ✅ | `disc_restaurant_not_bookable` | discovery | yes |
+| ✅ | `disc_event_without_ticketing` | discovery | yes |
+| ✅ | `disc_event_with_ticketing` | discovery | yes |
+| ✅ | `disc_event_add_to_plan` | discovery | yes |
+| ✅ | `disc_event_add_wrong_day` | discovery |  |
+| ✅ | `disc_provenance_preserved` | discovery | yes |
+| ✅ | `disc_preference_persisted` | discovery |  |
+| ✅ | `disc_one_off_not_persisted` | discovery | yes |
+| ✅ | `disc_flagship_trip` | discovery | yes |
 | ✅ | `known_fact_breakfast_en` | grounding |  |
 | ✅ | `known_fact_wifi_cnr` | grounding |  |
 | ✅ | `unsupported_fact_gym` | grounding |  |
@@ -191,7 +265,7 @@ Transcript:
 ```
 guest: Where can I leave my car overnight?
   bot: I'm sorry, I can't confirm that from the information I have. Would you like me to ask a member of staff?
-       {'intent': 'HOTEL_INFORMATION', 'language': 'en', 'grounded': False, 'handed_off': False}
+       {'intent': 'HOTEL_INFORMATION', 'language': 'en', 'grounded': False, 'handed_off': False, 'outcomes': ['ANSWER']}
 ```
 
 ### `paraphrase_room_access` (grounding)
@@ -207,7 +281,7 @@ Transcript:
 ```
 guest: What's the earliest I can get into my room?
   bot: I'm sorry, I can't confirm that from the information I have. Would you like me to ask a member of staff?
-       {'intent': 'HOTEL_INFORMATION', 'language': 'en', 'grounded': False, 'handed_off': False}
+       {'intent': 'HOTEL_INFORMATION', 'language': 'en', 'grounded': False, 'handed_off': False, 'outcomes': ['ANSWER']}
 ```
 
 ### `paraphrase_dinner_time` (grounding)
@@ -223,7 +297,7 @@ Transcript:
 ```
 guest: Until what time can we get food in the evening?
   bot: I'm sorry, I can't confirm that from the information I have. Would you like me to ask a member of staff?
-       {'intent': 'HOTEL_INFORMATION', 'language': 'en', 'grounded': False, 'handed_off': False}
+       {'intent': 'HOTEL_INFORMATION', 'language': 'en', 'grounded': False, 'handed_off': False, 'outcomes': ['ANSWER']}
 ```
 
 ### `paraphrase_dog_cnr` (grounding)
@@ -239,37 +313,6 @@ Transcript:
 ```
 guest: Smijem li povesti psa?
   bot: Nažalost, to ne mogu potvrditi na osnovu informacija kojima raspolažem. Želite li da pitam nekoga od osoblja?
-       {'intent': 'HOTEL_INFORMATION', 'language': 'cnr', 'grounded': False, 'handed_off': False}
+       {'intent': 'HOTEL_INFORMATION', 'language': 'cnr', 'grounded': False, 'handed_off': False, 'outcomes': ['ANSWER']}
 ```
 
-
-## Adversarial transaction scenarios - raw first run (before fixes)
-
-Written as desired behaviour, run once before any change: **TOTAL 42 · PASS 38 · GATES 32/36**. Verbatim failures:
-
-```text
-FAIL:
-  transactions/txn_provider_timeout [GATE]
-      - step 2: transaction.status = 'failed', expected 'submission_unknown'
-      - step 2 notifications: expected reply to contain "can't confirm yet whether"
-      - final: transactions ['failed'], expected ['submission_unknown']
-  transactions/txn_superseded_code_cannot_be_accepted [GATE]
-      - step 3: expected reply to contain one of ['replaced', 'no longer valid']
-  transactions/txn_lost_response_provider_without_idempotency [GATE]
-      - step 2: transaction.status = 'accepted', expected 'submission_unknown'
-      - step 2 notifications: expected reply to contain "can't confirm yet whether"
-      - step 2 notifications: FORBIDDEN claim 'has accepted' present
-      - final: expected handoff {'reason': 'provider_failure'}, got []
-      - final: transactions ['accepted'], expected ['submission_unknown']
-      - final: provider holds 2 bookings, expected 1
-      - final: provider received 2 submit calls, at most 1
-  transactions/txn_callback_for_another_providers_booking [GATE]
-      - step 4: transaction.status = 'accepted', expected 'submitted'
-```
-
-Diagnosis:
-
-1. `txn_lost_response_provider_without_idempotency` - **real defect, double booking**: a lost response was retried against a provider that ignores idempotency keys -> 2 external bookings. Fixed by SUBMISSION_UNKNOWN (D-054).
-2. `txn_provider_timeout` - **defect under the new policy** (timeout != failure): reported FAILED although the booking may exist. Fixed (D-054); this scenario's expectation was changed deliberately by that decision.
-3. `txn_superseded_code_cannot_be_accepted` - **UX defect**: nothing was booked (correct), but the guest was not told the named offer had been replaced. Fixed (stale-code reply).
-4. `txn_callback_for_another_providers_booking` - **harness defect**, not product: the callback was correctly refused (404) and final state was right; with a frozen clock two transactions share a timestamp and the step check read the wrong one. Fixed in the harness (prefers the transaction created in the step).

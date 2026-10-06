@@ -102,6 +102,9 @@ class _Turn:
     guest_message_id: str | None = None
     # Offers presented in this turn (consent is scoped to them); [] ends the scope.
     offered_quote_ids: list[str] = field(default_factory=list)
+    # What KIND of thing this turn did: ANSWER | FIND | RECOMMEND | SAVE |
+    # ACTION | TRANSACTION | HANDOFF (several possible in one turn).
+    outcomes: list[str] = field(default_factory=list)
 
     @property
     def state(self) -> dict[str, Any]:
@@ -112,6 +115,21 @@ class _Turn:
     def set_state(self, **values: Any) -> None:
         state = {k: v for k, v in {**self.state, **copy.deepcopy(values)}.items() if v is not None}
         self.conv.memory = {**copy.deepcopy(self.conv.memory or {}), "_state": state}
+
+
+def _outcomes(turn: _Turn, handed_off: bool) -> list[str]:
+    """The concierge records its own outcomes; everything else is derived
+    from stored effects of the turn (offers, actions, hand-off)."""
+    out = list(turn.outcomes)
+    if turn.offered_quote_ids or any(a.kind in ("quote", "transaction") for a in turn.actions):
+        out.append("TRANSACTION")
+    if any(a.kind == "hotel_request" for a in turn.actions):
+        out.append("ACTION")
+    if handed_off:
+        out.append("HANDOFF")
+    if not out and turn.reply:
+        out.append("ANSWER")
+    return list(dict.fromkeys(out))
 
 
 class Orchestrator:
@@ -209,6 +227,8 @@ class Orchestrator:
         # Consent is scoped to the offers the bot just made: any other reply ends it.
         turn.set_state(awaiting_quotes=list(dict.fromkeys(turn.offered_quote_ids)) or None, awaiting_quote=None)
         self._update_failures(turn)
+        handed_off = conv.status == ConversationStatus.HANDED_OFF
+        outcomes = _outcomes(turn, handed_off)
         if turn.reply:
             convs.add_message(conv, MessageRole.BOT, turn.reply, language=language,
                               extra={"sources": turn.sources, "intent": turn.intent.intent.value})
@@ -220,7 +240,8 @@ class Orchestrator:
             grounded=turn.grounded,
             sources=turn.sources,
             actions=turn.actions,
-            handed_off=conv.status == ConversationStatus.HANDED_OFF,
+            handed_off=handed_off,
+            outcomes=outcomes,
             knowledge_synthetic=prop.is_synthetic,
             property_slug=runtime.slug,
             stay_id=stay.id,

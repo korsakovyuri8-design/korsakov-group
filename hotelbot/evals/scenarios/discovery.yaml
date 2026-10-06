@@ -1,0 +1,537 @@
+# DISCOVERY - Iteration 4: Local World / Discovery Engine.
+#
+# Invariants under test (gates): candidates only from structured world data;
+# a known-closed place is never recommended for an explicit time; kitchen
+# availability is never claimed from venue hours or unknown data; hard
+# diet / age / group / radius / exclusion constraints are never relaxed;
+# expired events never appear as upcoming; SAVE / PLAN never become a
+# transaction; a reservation is never claimed from discovery state; stale
+# or unknown data is disclosed; distance is computed, never invented.
+#
+# Clocks (UTC -> Europe/Podgorica):
+#   default             Mon 2026-10-05 12:00Z = Mon 14:00 local
+#   2026-10-09T18:00Z   Fri 20:00 local       2026-10-10T13:00Z  Sat 15:00 local
+#   2027-01-11T09:00Z   Mon 10:00 local (Fri = 15.01, Sat = 16.01, Sun = 17.01)
+#   2027-01-13T11:00Z   Wed 12:00 local       2027-01-17T09:00Z  Sun 10:00 local
+# Data: data/regions/zabljak_demo.yaml (synthetic).
+
+# ------------------------------------------------------------ open state
+- name: disc_open_now_hard
+  category: discovery
+  gate: true
+  description: Monday 14:00 - every bar is closed or opens later; "open now" never returns one.
+  steps:
+    - guest: "Is there a bar open now nearby?"
+      expect:
+        reply_contains: ["couldn't find anything", "closed at that time"]
+        forbidden: ["Pub Demo", "Bar Demo Koktel", "open until"]
+        outcomes: [FIND]
+
+- name: disc_open_later_time
+  category: discovery
+  description: Monday 21:00 - only the pub is open then; bars closed on Mondays never appear.
+  steps:
+    - guest: "Find a bar for tonight at 21:00"
+      expect:
+        reply_contains: ["Pub Demo", "open until 00:00"]
+        forbidden: ["Bar Demo Koktel", "Vinski Bar Demo", "Demo Rooftop Lounge"]
+
+- name: disc_kitchen_closed_venue_open
+  category: discovery
+  gate: true
+  description: At 22:45 Ponoć is still open but its kitchen closed at 22:00 - it is not offered for food.
+  steps:
+    - guest: "Where can we still eat tonight at 22:45?"
+      expect:
+        reply_contains: ["Pizzeria Demo", "kitchen until 23:30"]
+        forbidden: ["Restoran Demo Ponoć", "Konoba Demo Durmitor"]
+
+- name: disc_unknown_hours_never_claimed
+  category: discovery
+  gate: true
+  description: At 23:30 only a place WITHOUT hours data remains - shown with the gap disclosed, never as open/serving.
+  steps:
+    - guest: "Find somewhere local to eat tonight at 23:30"
+      expect:
+        reply_contains: ["Grill Demo Bobotov", "no opening-hours data", "kitchen hours not known"]
+        forbidden: ["open until", "kitchen until", "kitchen open at", "Restoran Demo Ponoć"]
+
+- name: disc_temporary_closure
+  category: discovery
+  gate: true
+  description: Konoba Demo Stari Mlin is closed for renovation in January - never offered while closed.
+  clock_start: "2027-01-13T11:00:00+00:00"
+  steps:
+    - guest: "Find a local restaurant open now"
+      expect:
+        reply_contains: ["Konoba Demo Durmitor"]
+        forbidden: ["Stari Mlin"]
+
+- name: disc_stale_hours_disclosed
+  category: discovery
+  gate: true
+  description: Club hours were last verified in September - in January that is disclosed, not presented as current.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Find a nightclub"
+      expect:
+        reply_contains: ["Club Demo", "closed now", "last verified", "may have changed"]
+
+- name: disc_fresh_not_flagged
+  category: discovery
+  description: Recently verified hours carry no staleness warning.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Find a rooftop bar"
+      expect:
+        reply_contains: ["Demo Rooftop Lounge"]
+        forbidden: ["last verified"]
+
+# ----------------------------------------------------- hard vs soft diet
+- name: disc_diet_hard_filters
+  category: discovery
+  gate: true
+  description: '"with vegan options" is a hard constraint - no cocktail bar has them, so nothing is suggested.'
+  clock_start: "2026-10-09T18:00:00+00:00"
+  steps:
+    - guest: "Find a cocktail bar with vegan options"
+      expect:
+        reply_contains: ["couldn't find anything"]
+        forbidden: ["Bar Demo Koktel", "Demo Rooftop Lounge"]
+
+- name: disc_diet_soft_keeps_results
+  category: discovery
+  description: '"vegan options would be nice" is a preference - it ranks, it does not filter.'
+  clock_start: "2026-10-09T18:00:00+00:00"
+  steps:
+    - guest: "Find a cocktail bar for tonight, vegan options would be nice"
+      expect:
+        reply_contains_any: ["Bar Demo Koktel", "Demo Rooftop Lounge"]
+
+- name: disc_gluten_free_hard
+  category: discovery
+  gate: true
+  description: Gluten-free is a filter; places without it never appear.
+  steps:
+    - guest: "We need a restaurant with gluten-free food"
+      expect:
+        reply_contains_any: ["Restoran Demo Jezero", "Demo Green Kitchen"]
+        forbidden: ["Konoba Demo Durmitor", "Restoran Demo Ponoć", "Pizzeria Demo", "Bistro Demo Savin"]
+
+# ------------------------------------------- price / party / style / age
+- name: disc_price_cheap
+  category: discovery
+  description: '"cheap" caps the price range.'
+  steps:
+    - guest: "Find somewhere cheap to eat"
+      expect:
+        reply_contains: ["Pizzeria Demo"]
+        forbidden: ["Restoran Demo Jezero", "Konoba Demo Durmitor", "Demo Green Kitchen"]
+
+- name: disc_party_size
+  category: discovery
+  gate: true
+  description: Demo Green Kitchen seats at most 4 - never offered to a group of 6.
+  steps:
+    - guest: "Find a vegan restaurant, we are 6"
+      expect:
+        reply_contains: ["Restoran Demo Jezero"]
+        forbidden: ["Demo Green Kitchen"]
+
+- name: disc_nightlife_not_club
+  category: discovery
+  gate: true
+  description: '"lively but not a club" excludes nightclubs and quiet places.'
+  clock_start: "2026-10-09T18:00:00+00:00"
+  steps:
+    - guest: "Somewhere lively for drinks tonight, but not a club"
+      expect:
+        reply_contains_any: ["Bar Demo Koktel", "Demo Rooftop Lounge", "Demo Live Music Bar"]
+        forbidden: ["Club Demo", "Pub Demo", "Vinski Bar Demo"]
+
+- name: disc_age_restriction
+  category: discovery
+  gate: true
+  description: With a 16-year-old, 18+ and 21+ venues are excluded (hard).
+  clock_start: "2026-10-09T18:00:00+00:00"
+  steps:
+    - guest: "We're with our 16-year-old, where can we go for drinks tonight?"
+      expect:
+        reply_contains_any: ["Pub Demo", "Vinski Bar Demo", "Demo Live Music Bar"]
+        forbidden: ["Bar Demo Koktel", "Demo Rooftop Lounge", "Club Demo"]
+
+# ------------------------------------------------------------ essentials
+- name: disc_pharmacy_sunday
+  category: discovery
+  gate: true
+  description: Sunday - the nearer pharmacy is closed, the open one is listed first.
+  clock_start: "2027-01-17T09:00:00+00:00"
+  steps:
+    - guest: "I need a pharmacy"
+      expect:
+        reply_contains: ["1. Demo Apoteka Sjever", "open until 18:00"]
+
+- name: disc_atm_nearest
+  category: discovery
+  description: The nearest ATM first; the far one's stale hours are disclosed if shown.
+  steps:
+    - guest: "Where is the nearest ATM?"
+      expect:
+        reply_contains: ["1. Demo ATM (town square)"]
+
+- name: disc_coworking_three_hours
+  category: discovery
+  description: Three hours of work on Monday afternoon - the coworking space is open throughout.
+  steps:
+    - guest: "I need somewhere to work for three hours"
+      expect:
+        reply_contains: ["Demo Cowork Durmitor"]
+
+- name: disc_coworking_closes_too_early
+  category: discovery
+  gate: true
+  description: Saturday 15:00 + three hours - the coworking space closes at 16:00 and is excluded.
+  clock_start: "2026-10-10T13:00:00+00:00"
+  steps:
+    - guest: "I need somewhere to work for three hours"
+      expect:
+        reply_contains_any: ["Kafić Demo Centar", "Demo Tea House"]
+        forbidden: ["Demo Cowork Durmitor"]
+
+- name: disc_laundry
+  category: discovery
+  description: Laundry from structured data.
+  steps:
+    - guest: "Where can I wash my clothes?"
+      expect:
+        reply_contains: ["Demo Self-Service Laundry"]
+
+# -------------------------------------------------------------------- geo
+- name: disc_geo_radius
+  category: discovery
+  gate: true
+  description: '"within 500 m" is a hard radius on computed straight-line distance.'
+  steps:
+    - guest: "Find a cafe within 500 m"
+      expect:
+        reply_contains: ["straight line"]
+        forbidden: ["Demo Lake Café", "Demo Ski Café Savin"]
+
+- name: disc_near_another_place
+  category: discovery
+  gate: true
+  description: '"near the Black Lake" anchors distance on that place, not the hotel.'
+  steps:
+    - guest: "Find a cafe near the Black Lake"
+      expect:
+        reply_contains: ["1. Demo Lake Café", "Black Lake"]
+
+- name: disc_near_property
+  category: discovery
+  description: '"near the hotel" anchors on the property.'
+  steps:
+    - guest: "Find a cafe near the hotel"
+      expect:
+        reply_contains: ["1. Demo Tea House", "from the hotel"]
+
+# ----------------------------------------------------------------- events
+- name: disc_events_expired_hidden
+  category: discovery
+  gate: true
+  description: The New Year concert is over - never listed as upcoming.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Any concerts this week?"
+      expect:
+        reply_contains: ["Sunday chamber concert"]
+        forbidden: ["New Year concert", "no ticket needed", "free entry"]   # the source says nothing about jazz tickets
+
+- name: disc_event_wrong_date
+  category: discovery
+  gate: true
+  description: '"on Sunday" returns Sunday''s concert only, not Friday''s or Saturday''s.'
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Is there a concert on Sunday?"
+      expect:
+        reply_contains: ["Sunday chamber concert", "Sun 17.01 19:30"]
+        forbidden: ["Winter festival concert", "Live jazz evening"]
+
+- name: disc_events_saturday
+  category: discovery
+  description: Everything on Saturday, including events without tickets.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "What's happening on Saturday?"
+      expect:
+        reply_contains: ["Farmers' market", "Kids' ski race"]
+        forbidden: ["Sunday chamber concert"]
+
+- name: disc_dinner_implies_evening
+  category: discovery
+  gate: true
+  description: '"for dinner" with no clock time means this evening - places whose kitchen closes in the afternoon are not dinner.'
+  steps:
+    - guest: "Find a restaurant for dinner"
+      expect:
+        reply_contains_any: ["Restoran Demo Jezero", "Restoran Demo Ponoć", "Pizzeria Demo"]
+        forbidden: ["Demo Green Kitchen", "Bistro Demo Savin"]
+
+# ------------------------------------------------- save / shortlist / view
+- name: disc_save_not_transaction
+  category: discovery
+  gate: true
+  description: SAVE is a plan state - no quote, no transaction, no provider call.
+  clock_start: "2026-10-09T18:00:00+00:00"
+  steps:
+    - guest: "Find a cocktail bar"
+      expect: {reply_contains: ["Bar Demo Koktel"], outcomes: [FIND]}
+    - guest: "save the first bar"
+      expect:
+        reply_contains: ["Saved to your plan", "Nothing is reserved"]
+        outcomes: [SAVE]
+        no_new_quote: true
+  final: {plan: [saved], quotes: [], transactions: []}
+
+- name: disc_shortlist_and_view
+  category: discovery
+  description: Shortlist and save, then "show my saved bars" lists only bars.
+  clock_start: "2026-10-09T18:00:00+00:00"
+  steps:
+    - guest: "Find a local restaurant"
+      expect: {reply_contains: ["Konoba Demo Durmitor"]}
+    - guest: "save the first restaurant"
+      expect: {outcomes: [SAVE]}
+    - guest: "Find a wine bar"
+      expect: {reply_contains: ["Vinski Bar Demo"]}
+    - guest: "shortlist the first bar"
+      expect: {reply_contains: ["shortlist"], outcomes: [SAVE]}
+    - guest: "Show my saved bars"
+      expect:
+        reply_contains: ["Vinski Bar Demo"]
+        forbidden: ["Konoba Demo Durmitor"]
+    - guest: "What did I save?"
+      expect: {reply_contains: ["Vinski Bar Demo", "Konoba Demo Durmitor"]}
+  final: {quotes: [], transactions: []}
+
+# ------------------------------------------------- no result / ambiguous
+- name: disc_no_candidates
+  category: discovery
+  gate: true
+  description: No kosher restaurant exists in the data - say so; never invent one.
+  steps:
+    - guest: "Find a kosher restaurant"
+      expect:
+        reply_contains: ["couldn't find anything"]
+        forbidden: ["Konoba", "Restoran", "Pizzeria", "Green Kitchen"]
+
+- name: disc_ambiguous_query
+  category: discovery
+  description: '"Somewhere nice?" names no kind of place - no candidates are invented.'
+  steps:
+    - guest: "Somewhere nice?"
+      expect:
+        forbidden: ["Konoba", "Restoran", "Bar Demo", "Pizzeria"]
+
+- name: disc_multi_category
+  category: discovery
+  description: Two essential needs in one message -> two independent result lists.
+  steps:
+    - guest: "Find a pharmacy and an ATM nearby"
+      expect:
+        reply_contains: ["Demo Apoteka", "Demo ATM"]
+
+- name: disc_compound_dinner_drinks
+  category: discovery
+  description: '"local dinner and lively drinks afterwards" -> two intents; drinks start after dinner.'
+  clock_start: "2026-10-09T18:00:00+00:00"
+  steps:
+    - guest: "Find somewhere local for dinner at 20:00 and somewhere lively for drinks afterwards"
+      expect:
+        reply_contains: ["Restoran Demo Ponoć", "Drinks"]
+        reply_contains_any: ["Bar Demo Koktel", "Demo Rooftop Lounge", "Demo Live Music Bar"]
+        forbidden: ["Pub Demo"]
+
+# ------------------------------------------------- plan-aware / free time
+- name: disc_free_window_before_dinner
+  category: discovery
+  description: The window comes from the plan (dinner booked at 19:00); only places open through it whose visit fits.
+  steps:
+    - guest: "Find a local restaurant for dinner tonight at 19:00, we are 2"
+      expect: {reply_contains: ["Restoran Demo Ponoć"]}
+    - guest: "book 1"
+      expect: {quote: {status: offered}}
+    - guest: "yes"
+      expect: {reply_contains: ["not confirmed yet"]}
+    - guest: "We have two free hours before dinner, what can we do nearby?"
+      expect:
+        reply_contains: ["17:00-19:00", "Demo Church"]
+        forbidden: ["Black Lake", "Demo Durmitor Museum", "Pizzeria Demo", "Restoran Demo Ponoć ("]
+        no_new_quote: true
+    - guest: "What are we doing tonight?"
+      expect: {reply_contains: ["Restoran Demo Ponoć"]}
+
+- name: disc_tripplan_activity_anchor
+  category: discovery
+  description: '"Saturday we''re skiing" is context, not an order; lunch is found near the ski area that day.'
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Saturday we're skiing. Find somewhere casual for lunch."
+      expect:
+        reply_contains: ["1. Bistro Demo Savin", "Savin Kuk"]
+        no_new_quote: true
+        actions: []
+
+# ------------------------------------------------------ transaction bridge
+- name: disc_restaurant_bridge
+  category: discovery
+  gate: true
+  description: '"Book the first restaurant" goes through the bridge: a quote that needs consent, nothing booked yet.'
+  steps:
+    - guest: "Find a restaurant with vegan options for dinner at 19:00, we are 2"
+      expect: {reply_contains: ["Restoran Demo Jezero"], no_new_quote: true}
+    - guest: "Book the first restaurant"
+      expect:
+        quote: {status: offered}
+        reply_contains: ["Restoran Demo Jezero", "Nothing is booked yet"]
+        outcomes: [TRANSACTION]
+  final: {transactions: []}
+
+- name: disc_restaurant_not_bookable
+  category: discovery
+  gate: true
+  description: A place without a reservation offering is never "booked".
+  steps:
+    - guest: "Find a vegan restaurant for lunch"
+      expect: {reply_contains: ["Demo Green Kitchen"]}
+    - guest: "book Demo Green Kitchen"
+      expect:
+        reply_contains: ["can't be reserved", "walk-ins are welcome"]
+        forbidden: ["is booked", "confirmed"]
+        no_new_quote: true
+  final: {quotes: [], transactions: []}
+
+- name: disc_event_without_ticketing
+  category: discovery
+  gate: true
+  description: A free community walk has no tickets - "buy tickets" sells nothing.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Anything happening on Sunday evening?"
+      expect: {reply_contains: ["Lantern walk to the Black Lake", "Sunday chamber concert"]}
+    - guest: "buy tickets for the walk"
+      expect:
+        reply_contains: ["needs no ticket"]
+        no_new_quote: true
+  final: {quotes: [], transactions: []}
+
+- name: disc_event_with_ticketing
+  category: discovery
+  gate: true
+  description: Event -> ticket offering via the bridge -> a quote needing consent.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Anything happening on Sunday evening?"
+      expect: {reply_contains: ["Sunday chamber concert", "ticket 12.00 EUR"]}
+    - guest: "buy 2 tickets for the concert"
+      expect:
+        quote: {status: offered, amount: "24.00"}
+        reply_contains: ["Nothing is booked yet"]
+        forbidden: ["payment at the door"]
+        outcomes: [TRANSACTION]
+  final: {transactions: []}
+
+- name: disc_event_add_to_plan
+  category: discovery
+  gate: true
+  description: '"Add the concert to Sunday" puts it in the plan - no tickets are bought.'
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Anything happening on Sunday evening?"
+      expect: {reply_contains: ["Sunday chamber concert"]}
+    - guest: "add the concert to Sunday"
+      expect:
+        reply_contains: ["Added to your plan", "Sunday chamber concert", "nothing is reserved"]
+        outcomes: [SAVE]
+        no_new_quote: true
+    - guest: "What do I have on Sunday?"
+      expect: {reply_contains: ["Sunday chamber concert - planned"]}
+  final: {plan: [planned], quotes: [], transactions: []}
+
+- name: disc_event_add_wrong_day
+  category: discovery
+  description: Adding Saturday's concert to Sunday is refused, not silently moved.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "Any concerts on Saturday?"
+      expect: {reply_contains: ["Winter festival concert"]}
+    - guest: "add the concert to Sunday"
+      expect:
+        reply_contains: ["not Sun"]
+  final: {plan: []}
+
+# ------------------------------------------------- provenance / preferences
+- name: disc_provenance_preserved
+  category: discovery
+  gate: true
+  description: Every candidate is traceable to a world record and labelled as synthetic data.
+  steps:
+    - guest: "Where can I buy groceries?"
+      expect:
+        sources: ["place:market-demo"]
+        reply_contains: ["Demo data - synthetic places"]
+
+- name: disc_preference_persisted
+  category: discovery
+  description: An explicit general preference is stored and later used as a SOFT ranking signal.
+  steps:
+    - guest: "I generally prefer vegetarian places"
+      expect: {reply_contains: ["Noted for future suggestions", "vegetarian"], outcomes: [SAVE]}
+    - guest: "Find a restaurant for dinner"
+      expect: {reply_contains: ["usual preference"]}
+
+- name: disc_one_off_not_persisted
+  category: discovery
+  gate: true
+  description: '"Find vegan food tonight" constrains that request only - nothing is remembered.'
+  steps:
+    - guest: "Find vegan food tonight"
+      expect: {reply_contains_any: ["Restoran Demo Jezero", "Pizzeria Demo", "Demo Green Kitchen"]}
+    - guest: "Find a restaurant for dinner"
+      expect: {forbidden: ["usual preference"]}
+
+# --------------------------------------------------------------- flagship
+- name: disc_flagship_trip
+  category: discovery
+  gate: true
+  description: >
+    The Iteration 4 flagship. Transfer and guide are booked first. The
+    flagship message then mixes statements (already booked, skiing, the
+    guide) with five discovery needs; the follow-up books one restaurant
+    (quote only), saves one bar and plans the concert - with no
+    cross-effects.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  steps:
+    - guest: "We arrive Friday at 8pm, there are four of us. Get us a transfer from Podgorica. Find a Russian-speaking guide for Sunday at 10."
+      expect: {reply_contains: ["45.00 EUR", "180.00 EUR"]}
+    - guest: "book all"
+      expect: {reply_contains: ["Demo Transfers", "Demo Durmitor Private Tours"]}
+    - guest: "We arrive Friday around 8pm, four of us. Our transfer is already booked. Find local food that will still be serving when we arrive. Saturday we're skiing. Find somewhere casual for lunch. At night we want cocktails somewhere lively but not a club. Sunday we have the Russian-speaking guide. Find a pharmacy near us and tell me if anything interesting is happening Sunday evening."
+      expect:
+        reply_contains: ["in your plan", "~22:30", "Restoran Demo Ponoć", "Bistro Demo Savin", "Savin Kuk",
+                         "Bar Demo Koktel", "Demo Apoteka", "Sunday chamber concert", "Lantern walk"]
+        forbidden: ["Club Demo", "Konoba Demo Durmitor", "Stari Mlin", "has been booked"]
+        no_new_quote: true
+        actions: []
+    - guest: "Book the first restaurant, save the second bar and add the concert to Sunday"
+      expect:
+        quote: {status: offered}
+        reply_contains: ["Restoran Demo Ponoć", "Saved to your plan", "Added to your plan for Sun 17.01 19:30",
+                         "Nothing is booked yet"]
+        forbidden: ["has accepted"]
+        outcomes: [TRANSACTION, SAVE]
+    - guest: "What do we have on Sunday?"
+      expect: {reply_contains: ["Sunday chamber concert - planned", "guide"]}
+  final:
+    bookings: ["airport_transfer:accepted", "guide_booking:pending_condition"]
+    provider_bookings: 2

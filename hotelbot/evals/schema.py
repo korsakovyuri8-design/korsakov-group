@@ -28,7 +28,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CATEGORIES = ("grounding", "actions", "authority", "handoff", "safety", "memory", "conversation", "languages",
-              "transactions", "local", "marketplace")
+              "transactions", "local", "marketplace", "discovery")
 
 
 class _Strict(BaseModel):
@@ -55,6 +55,9 @@ class StepExpect(_Strict):
     handoff: bool | None = None               # conversation owned by a human after this turn
     handoff_reason: str | None = None
     actions: list[ActionExpect] | None = None # actions created in this turn (exact)
+    # Outcome kinds of the turn (exact set): ANSWER FIND RECOMMEND SAVE ACTION TRANSACTION HANDOFF
+    outcomes: list[str] | None = None
+    outcomes_absent: list[str] = Field(default_factory=list)
     # Staff-transition steps
     notification_contains: list[str] = Field(default_factory=list)
     notification_forbidden: list[str] = Field(default_factory=list)

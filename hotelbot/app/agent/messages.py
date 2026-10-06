@@ -565,6 +565,8 @@ def describe_facts(facts: dict[str, object], locale: str) -> str:
 STATUS_LABELS: dict[str, dict[str, str]] = {
     "saved": {"en": "saved", "cnr": "sačuvano", "ru": "сохранено"},
     "shortlisted": {"en": "shortlisted", "cnr": "u užem izboru", "ru": "в списке вариантов"},
+    "planned": {"en": "planned - nothing reserved", "cnr": "u planu - ništa nije rezervisano",
+                "ru": "в плане - ничего не забронировано"},
     "proposed": {"en": "proposed", "cnr": "predloženo", "ru": "предложено"},
     "offered": {"en": "price offered - not booked", "cnr": "ponuda - nije rezervisano", "ru": "есть цена - не забронировано"},
     "accepted_by_guest": {"en": "sending", "cnr": "šalje se", "ru": "отправляется"},

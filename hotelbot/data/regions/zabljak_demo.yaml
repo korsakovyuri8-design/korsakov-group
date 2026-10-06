@@ -162,6 +162,16 @@ providers:
     commission_value: 10
     config: {currency: EUR, validity_minutes: 15}
 
+  - slug: demo-tickets
+    name: "Demo Tickets (synthetic)"
+    provider_type: tickets
+    integration_type: mock
+    services: [event_tickets]
+    policies: {free_cancellation_hours: 48}
+    commission_type: percent
+    commission_value: 8
+    config: {currency: EUR, validity_minutes: 15, conditions: "Tickets are issued by the organiser under your booking reference; show it at the entrance."}
+
 places:
   # ------------------------------------------------------------------ FOOD
   - slug: konoba-demo-durmitor
@@ -465,6 +475,181 @@ places:
     attributes: {paid: true, price_per_hour: 0.5, currency: EUR}
     location: {lat: 43.1533, lon: 19.1192}
 
+  # ---------------------------------------------- ITERATION 4 additions
+  # Deliberate variety for the discovery engine (each exercised by an eval):
+  #  - Bistro Demo Savin: casual lunch at the ski area, kitchen follows opening hours
+  #  - Konoba Demo Stari Mlin: TEMPORARILY CLOSED 04.01-20.01.2027 (renovation)
+  #  - Demo Green Kitchen: vegan / gluten-free / halal, max 4 per table, daytime only
+  #  - Grill Demo Bobotov: NO structured hours (unknown) - never claimed open
+  #  - Demo Rooftop Lounge: lively cocktails, not a club, groups up to 6
+  #  - Demo Live Music Bar: live music Thu-Sat, cover charge
+  #  - Demo Ski Café Savin / ATM Savin: seasonal; the ATM's hours are STALE
+  - slug: bistro-demo-savin
+    name: "Bistro Demo Savin"
+    subcategory: restaurant
+    tags: [casual, ski, lunch]
+    description: {en: "Casual lunch at the foot of the Savin Kuk slopes: soups, grills, polenta."}
+    attributes: {cuisine: [montenegrin, international], vegetarian_options: true, vegan_options: false,
+                 dress_code: casual, walk_in_supported: true, reservation_supported: false, max_group: 10,
+                 kitchen_follows_opening_hours: true, children_allowed: true, child_friendly: true,
+                 noise_level: moderate, rating: 4.3}
+    price_range: 2
+    location: {lat: 43.1322, lon: 19.0832, address: "Savin Kuk lower station"}
+    verification: {hours: "2026-12-20"}
+    hours:
+      weekly: {mon: [["11:00", "17:00"]], tue: [["11:00", "17:00"]], wed: [["11:00", "17:00"]], thu: [["11:00", "17:00"]], fri: [["11:00", "17:00"]], sat: [["11:00", "17:00"]], sun: [["11:00", "17:00"]]}
+
+  - slug: konoba-demo-stari-mlin
+    name: "Konoba Demo Stari Mlin"
+    subcategory: konoba
+    tags: [local, traditional]
+    attributes: {cuisine: [montenegrin], vegetarian_options: true, reservation_supported: false,
+                 walk_in_supported: true, noise_level: moderate, rating: 4.6}
+    price_range: 2
+    location: {lat: 43.1570, lon: 19.1180}
+    verification: {hours: "2026-12-20", closure: "2027-01-02"}
+    hours:
+      weekly: {mon: [], tue: [], wed: [["12:00", "23:00"]], thu: [["12:00", "23:00"]], fri: [["12:00", "23:00"]], sat: [["12:00", "23:00"]], sun: [["12:00", "23:00"]]}
+      kitchen: {mon: [], tue: [], wed: [["12:00", "22:00"]], thu: [["12:00", "22:00"]], fri: [["12:00", "22:00"]], sat: [["12:00", "22:00"]], sun: [["12:00", "22:00"]]}
+      closed: [{from: "2027-01-04", to: "2027-01-20", reason: "renovation"}]
+
+  - slug: green-kitchen-demo
+    name: "Demo Green Kitchen"
+    subcategory: restaurant
+    tags: [healthy, vegan, casual]
+    attributes: {cuisine: [vegetarian, international], vegetarian_options: true, vegan_options: true,
+                 gluten_free_options: true, halal: true, kosher: false, max_group: 4, dress_code: casual,
+                 walk_in_supported: true, reservation_supported: false, takeaway_supported: true,
+                 kitchen_follows_opening_hours: true, wheelchair_access: true, rating: 4.4}
+    price_range: 2
+    location: {lat: 43.1553, lon: 19.1236}
+    verification: {hours: "2026-12-28"}
+    hours:
+      weekly: {mon: [["08:00", "16:00"]], tue: [["08:00", "16:00"]], wed: [["08:00", "16:00"]], thu: [["08:00", "16:00"]], fri: [["08:00", "16:00"]], sat: [["08:00", "16:00"]], sun: [["08:00", "16:00"]]}
+
+  - slug: grill-demo-bobotov
+    name: "Grill Demo Bobotov"
+    subcategory: konoba
+    tags: [local, grill]
+    description: {en: "Grill house. Opening hours not on record."}
+    attributes: {cuisine: [montenegrin, grill], vegetarian_options: false, noise_level: lively}
+    price_range: 1
+    location: {lat: 43.1528, lon: 19.1262}
+
+  - slug: rooftop-demo-lounge
+    name: "Demo Rooftop Lounge"
+    subcategory: rooftop
+    tags: [lively, cocktails, view]
+    attributes: {noise_level: lively, music_type: [lounge, house], dj: false, live_music: false, age_restriction: 18,
+                 dress_code: smart casual, max_group: 6, table_booking: false, reservation_supported: false,
+                 average_price: 10, indoor: true, outdoor_seating: true, smoking_policy: terrace only, rating: 4.5}
+    price_range: 3
+    location: {lat: 43.1549, lon: 19.1244}
+    verification: {hours: "2027-01-05"}
+    hours:
+      weekly: {mon: [], tue: [], wed: [["17:00", "00:00"]], thu: [["17:00", "00:00"]], fri: [["17:00", "00:00"]],
+               sat: [["17:00", "01:00"]], sun: [["17:00", "23:00"]]}
+      last_entry: "00:30"
+
+  - slug: live-bar-demo
+    name: "Demo Live Music Bar"
+    subcategory: live_music_venue
+    tags: [lively, live music, rock, folk]
+    attributes: {noise_level: very_lively, live_music: true, music_type: [rock, folk], cover_charge: 5,
+                 reservation_supported: false, average_price: 5, indoor: true, smoking_policy: no smoking}
+    price_range: 1
+    location: {lat: 43.1534, lon: 19.1215}
+    verification: {hours: "2026-12-15"}
+    hours:
+      weekly: {mon: [], tue: [], wed: [], thu: [["20:00", "00:00"]], fri: [["20:00", "00:00"]], sat: [["20:00", "00:00"]], sun: []}
+
+  - slug: cafe-demo-jezero
+    name: "Demo Lake Café"
+    subcategory: cafe
+    tags: [view, coffee, cake]
+    attributes: {vegetarian_options: true, outdoor_seating: true, children_allowed: true, pets_allowed: true,
+                 kitchen_follows_opening_hours: true}
+    price_range: 2
+    location: {lat: 43.1455, lon: 19.0945}
+    hours:
+      weekly: {mon: [["09:00", "18:00"]], tue: [["09:00", "18:00"]], wed: [["09:00", "18:00"]], thu: [["09:00", "18:00"]], fri: [["09:00", "18:00"]], sat: [["09:00", "18:00"]], sun: [["09:00", "18:00"]]}
+
+  - slug: caj-demo
+    name: "Demo Tea House"
+    subcategory: cafe
+    tags: [quiet, tea, books, wifi]
+    attributes: {wifi: true, power_outlets: true, noise_level: quiet, vegetarian_options: true, vegan_options: true}
+    price_range: 1
+    location: {lat: 43.1559, lon: 19.1203}
+    hours:
+      weekly: {mon: [["10:00", "20:00"]], tue: [["10:00", "20:00"]], wed: [["10:00", "20:00"]], thu: [["10:00", "20:00"]], fri: [["10:00", "20:00"]], sat: [["10:00", "20:00"]], sun: [["10:00", "20:00"]]}
+
+  - slug: ski-cafe-demo-savin
+    name: "Demo Ski Café Savin"
+    subcategory: cafe
+    tags: [ski, coffee, casual]
+    attributes: {vegetarian_options: true, dress_code: casual, kitchen_follows_opening_hours: true}
+    price_range: 1
+    location: {lat: 43.1315, lon: 19.0826}
+    hours:
+      seasonal: [{from: "12-15", to: "04-10", weekly: {mon: [["08:30", "16:30"]], tue: [["08:30", "16:30"]], wed: [["08:30", "16:30"]], thu: [["08:30", "16:30"]], fri: [["08:30", "16:30"]], sat: [["08:30", "16:30"]], sun: [["08:30", "16:30"]]}}]
+      weekly: {}
+
+  - slug: savin-kuk-demo
+    name: "Savin Kuk ski area (demo entry)"
+    subcategory: ski_resort
+    tags: [ski, snow]
+    attributes: {weather_dependent: true}
+    location: {lat: 43.1310, lon: 19.0820}
+    hours:
+      seasonal: [{from: "12-15", to: "04-10", weekly: {mon: [["09:00", "16:00"]], tue: [["09:00", "16:00"]], wed: [["09:00", "16:00"]], thu: [["09:00", "16:00"]], fri: [["09:00", "16:00"]], sat: [["09:00", "16:00"]], sun: [["09:00", "16:00"]]}}]
+      weekly: {}
+
+  - slug: sauna-demo
+    name: "Demo Finnish Sauna"
+    subcategory: sauna
+    tags: [sauna, relax]
+    attributes: {age_restriction: 16, reservation_supported: false, price_per_visit: 12, currency: EUR}
+    price_range: 2
+    location: {lat: 43.1562, lon: 19.1194}
+    hours:
+      weekly: {mon: [["14:00", "22:00"]], tue: [["14:00", "22:00"]], wed: [["14:00", "22:00"]], thu: [["14:00", "22:00"]], fri: [["14:00", "22:00"]], sat: [["14:00", "22:00"]], sun: [["14:00", "22:00"]]}
+
+  - slug: massage-demo
+    name: "Demo Massage Studio"
+    subcategory: massage
+    tags: [massage, relax]
+    attributes: {reservation_required: true, reservation_supported: false}
+    price_range: 3
+    location: {lat: 43.1541, lon: 19.1241}
+    hours:
+      weekly: {mon: [["10:00", "20:00"]], tue: [["10:00", "20:00"]], wed: [["10:00", "20:00"]], thu: [["10:00", "20:00"]], fri: [["10:00", "20:00"]], sat: [["10:00", "20:00"]], sun: []}
+
+  - slug: mini-market-demo
+    name: "Demo Mini Market (late)"
+    subcategory: supermarket
+    attributes: {payment: [cash, card]}
+    location: {lat: 43.1575, lon: 19.1215}
+    hours:
+      weekly: {mon: [["07:00", "23:00"]], tue: [["07:00", "23:00"]], wed: [["07:00", "23:00"]], thu: [["07:00", "23:00"]], fri: [["07:00", "23:00"]], sat: [["07:00", "23:00"]], sun: [["07:00", "23:00"]]}
+
+  - slug: bankomat-demo-savin
+    name: "Demo ATM (Savin Kuk)"
+    subcategory: atm
+    attributes: {currency: EUR}
+    location: {lat: 43.1318, lon: 19.0828}
+    verification: {hours: "2026-06-01"}
+    hours:
+      weekly: {mon: [["00:00", "00:00"]], tue: [["00:00", "00:00"]], wed: [["00:00", "00:00"]], thu: [["00:00", "00:00"]], fri: [["00:00", "00:00"]], sat: [["00:00", "00:00"]], sun: [["00:00", "00:00"]]}
+
+  - slug: laundry-demo
+    name: "Demo Self-Service Laundry"
+    subcategory: laundry
+    attributes: {self_service: true, price_per_load: 6, currency: EUR}
+    location: {lat: 43.1537, lon: 19.1201}
+    hours:
+      weekly: {mon: [["08:00", "20:00"]], tue: [["08:00", "20:00"]], wed: [["08:00", "20:00"]], thu: [["08:00", "20:00"]], fri: [["08:00", "20:00"]], sat: [["08:00", "20:00"]], sun: []}
+
   # ------------------------------------------------------- RENTAL / GUIDE
   - slug: ski-demo-mali
     name: "Ski Demo Mali"
@@ -548,6 +733,37 @@ events:
     tags: [rafting, outdoor]
     start: "2026-08-15T10:00:00"
     end: "2026-08-15T18:00:00"
+
+  - slug: sunday-concert-jan
+    title: {en: "Sunday chamber concert", cnr: "Nedjeljni kamerni koncert", ru: "Воскресный камерный концерт"}
+    category: concert
+    tags: [classical, live music]
+    description: {en: "String quartet: Montenegrin and classical repertoire."}
+    location: {lat: 43.1551, lon: 19.1224, address: "Demo Cultural Centre, Žabljak"}
+    start: "2027-01-17T19:30:00"
+    end: "2027-01-17T21:30:00"
+    ticket_required: true
+    ticket_price: 12
+    currency: EUR
+    last_verified_at: "2027-01-08"
+  - slug: lantern-walk-jan
+    title: {en: "Lantern walk to the Black Lake", cnr: "Šetnja sa lampionima do Crnog jezera", ru: "Прогулка с фонарями к Чёрному озеру"}
+    category: local_event
+    tags: [walk, family, free]
+    description: {en: "Free community walk; meet at the town square. No tickets."}
+    location: {lat: 43.1544, lon: 19.1225, address: "Town square, Žabljak"}
+    start: "2027-01-17T17:30:00"
+    end: "2027-01-17T19:00:00"
+    ticket_required: false
+    last_verified_at: "2027-01-08"
+  - slug: kids-ski-race-jan
+    title: {en: "Kids' ski race", cnr: "Dječja ski trka", ru: "Детские лыжные гонки"}
+    category: sports
+    tags: [ski, family]
+    place: savin-kuk-demo
+    start: "2027-01-16T10:00:00"
+    end: "2027-01-16T12:00:00"
+    last_verified_at: "2026-11-01"
 
 offerings:
   - slug: table-konoba-durmitor
@@ -759,3 +975,13 @@ offerings:
     policies: {min_duration_hours: 2}
     recurring:
       - {days: [mon, tue, wed, thu, fri, sat, sun], start: "10:00", end: "18:00", capacity: 1, from: "2026-05-01", to: "2027-04-30"}
+  # -------------------------------------------------------------- tickets
+  - slug: ticket-sunday-concert
+    service_type: event_tickets
+    title: {en: "Tickets: Sunday chamber concert"}
+    event: sunday-concert-jan
+    provider: demo-tickets
+    attributes: {unit: person, fixed_start: true}
+    pricing: {model: per_person, amount: 12}
+    availability:
+      - {start: "2027-01-17T19:30:00", end: "2027-01-17T21:30:00", capacity: 40}

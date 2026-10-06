@@ -250,7 +250,11 @@ class TransactionDialogue:
 
     # ============================================================== drafting
     def try_start_service(self, turn: _Turn, service_type: str, *, preset: dict[str, Any] | None = None,
-                          venue: Place | None = None) -> bool:
+                          venue: Place | None = None, text: str | None = None) -> bool:
+        """`text`: the part of the message this service was asked in ("book
+        the first restaurant" out of "book the first restaurant, save the
+        second bar and add the concert to Sunday") - details are read from
+        it only, so other clauses never leak into this draft."""
         if not self.offered(turn, service_type):
             return False
         spec = SERVICE_CATALOG[service_type]
@@ -262,7 +266,7 @@ class TransactionDialogue:
         if venue is not None:
             draft["values"]["venue"], draft["values"]["_venue_id"] = venue.name, venue.id
         draft["values"].update(preset or {})
-        self._absorb(turn, draft)
+        self._absorb(turn, draft, text=text)
         log_event("transaction_draft_started", conversation_id=turn.conv.id, service_type=service_type)
         return self._advance(turn, TransactionService(turn.session, self.deps), draft)
 
@@ -444,13 +448,15 @@ class TransactionDialogue:
         wk = when_key(service_type)
         start = as_utc(datetime.fromisoformat(values[wk])) if wk and values.get(wk) else None
         day = date.fromisoformat(draft["partial"][wk]) if wk and draft["partial"].get(wk) else None
+        if day is None and start is None and values.get("_event_day"):
+            day = date.fromisoformat(values["_event_day"])     # a ticket: the event's own date
         cap = turn.runtime.capabilities.service(service_type)
         details = {k: v for k, v in values.items() if not k.startswith("_")}
         result = discovery.discover(
             turn.session, service_type=service_type, details=details, region=turn.runtime.region,
             property_id=turn.runtime.property_id, now=self.deps.clock.now(), tz=turn.runtime.timezone,
             declared=cap.provider if cap else None, start=start, day=day, venue_id=values.get("_venue_id"),
-            replaces=draft.get("replaces"))
+            event_id=values.get("_event_id"), replaces=draft.get("replaces"))
         log_event("provider_discovery", service_type=service_type, ready=len(result.candidates),
                   pending=len(result.pending), reason=result.reason,
                   top=[(c.provider.slug, c.offering.slug if c.offering else None) for c in result.candidates[:3]])
@@ -566,7 +572,7 @@ class TransactionDialogue:
 
     def _draft_from(self, request: dict[str, Any], service_type: str) -> dict[str, Any]:
         values = {k: v for k, v in request.items()
-                  if k == "_venue_id" or not (k.startswith("_") or k in ("offering", "weather_dependent"))}
+                  if k in ("_venue_id", "_event_id", "_event_day") or not (k.startswith("_") or k in ("offering", "weather_dependent"))}
         return new_draft(service_type, values)
 
     def _modified(self, turn: _Turn, quote: Quote) -> dict[str, Any] | None:

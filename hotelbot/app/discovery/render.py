@@ -13,11 +13,53 @@ _L = {
     "open_until": {"en": "open until {t}", "cnr": "otvoreno do {t}", "ru": "открыто до {t}"},
     "opens_at": {"en": "opens at {t}", "cnr": "otvara se u {t}", "ru": "откроется в {t}"},
     "closed": {"en": "closed at that time", "cnr": "zatvoreno u to vrijeme", "ru": "закрыто в это время"},
+    "closed_now": {"en": "closed now", "cnr": "sada zatvoreno", "ru": "сейчас закрыто"},
     "closed_reason": {"en": "temporarily closed ({r})", "cnr": "privremeno zatvoreno ({r})", "ru": "временно закрыто ({r})"},
     "hours_unknown": {"en": "no opening-hours data", "cnr": "nema podataka o radnom vremenu",
                       "ru": "нет данных о часах работы"},
     "kitchen_until": {"en": "kitchen until {t}", "cnr": "kuhinja do {t}", "ru": "кухня до {t}"},
-    "walk": {"en": "{km} km, ~{m} min walk", "cnr": "{km} km, ~{m} min pješke", "ru": "{km} км, ~{m} мин пешком"},
+    "walk": {"en": "{km} km from {anchor} (straight line, ~{m} min walk)",
+             "cnr": "{km} km od: {anchor} (vazdušnom linijom, ~{m} min pješke)",
+             "ru": "{km} км от: {anchor} (по прямой, ~{m} мин пешком)"},
+    "kitchen_closed_now": {"en": "kitchen closed", "cnr": "kuhinja ne radi", "ru": "кухня закрыта"},
+    "kitchen_opens": {"en": "kitchen opens {t}", "cnr": "kuhinja od {t}", "ru": "кухня с {t}"},
+    "kitchen_unknown": {"en": "kitchen hours not known - I can't say if food is served",
+                        "cnr": "radno vrijeme kuhinje nepoznato", "ru": "часы кухни неизвестны"},
+    "fresh_stale": {"en": "{fact} last verified {d} days ago - may have changed, please check",
+                    "cnr": "{fact} provjereno prije {d} dana - moguće izmjene",
+                    "ru": "{fact}: проверено {d} дн. назад - могли измениться"},
+    "fresh_unknown": {"en": "{fact} never verified - can't confirm", "cnr": "{fact} nije provjereno",
+                      "ru": "{fact}: не проверено - подтвердить не могу"},
+    "fact_hours": {"en": "opening hours", "cnr": "radno vrijeme", "ru": "часы работы"},
+    "fact_kitchen": {"en": "kitchen hours", "cnr": "radno vrijeme kuhinje", "ru": "часы кухни"},
+    "fact_closure": {"en": "closure information", "cnr": "informacija o zatvaranju", "ru": "данные о закрытии"},
+    "fact_event": {"en": "event details", "cnr": "detalji događaja", "ru": "данные о событии"},
+    "dress": {"en": "dress code: {v}", "cnr": "pravila oblačenja: {v}", "ru": "дресс-код: {v}"},
+    "sold_out": {"en": "SOLD OUT", "cnr": "RASPRODATO", "ru": "БИЛЕТОВ НЕТ"},
+    "none_because": {"en": "I couldn't find anything that fits{ctx} in my local data: {why}. I won't guess - would you like me to ask the staff?",
+                     "cnr": "U mojim lokalnim podacima nema ničega što odgovara{ctx}: {why}. Ne nagađam - da pitam osoblje?",
+                     "ru": "В моих местных данных ничего подходящего не нашлось{ctx}: {why}. Гадать не буду — спросить у сотрудников?"},
+    "why": {"en": "{n} {what}", "cnr": "{n} {what}", "ru": "{n} {what}"},
+    "rej_closed_at_time": {"en": "closed at that time", "cnr": "zatvoreno u to vrijeme", "ru": "закрыто в это время"},
+    "rej_temporarily_closed": {"en": "temporarily closed", "cnr": "privremeno zatvoreno", "ru": "временно закрыто"},
+    "rej_kitchen_closed": {"en": "kitchen closed by then", "cnr": "kuhinja zatvorena", "ru": "кухня уже закрыта"},
+    "rej_closes_too_early": {"en": "close too early", "cnr": "zatvaraju ranije", "ru": "закрываются раньше"},
+    "rej_closes_before_window_ends": {"en": "close before your window ends", "cnr": "zatvaraju ranije",
+                                      "ru": "закрываются раньше, чем закончится ваше время"},
+    "rej_does_not_fit_window": {"en": "need more time than you have", "cnr": "traže više vremena",
+                                "ru": "требуют больше времени, чем у вас есть"},
+    "rej_outside_radius": {"en": "too far", "cnr": "predaleko", "ru": "слишком далеко"},
+    "rej_group_too_large": {"en": "too small for your group", "cnr": "premalo za vašu grupu",
+                            "ru": "слишком малы для вашей группы"},
+    "rej_age_restricted": {"en": "age-restricted", "cnr": "starosno ograničenje", "ru": "есть возрастное ограничение"},
+    "rej_too_expensive": {"en": "above your budget", "cnr": "preko budžeta", "ru": "дороже бюджета"},
+    "rej_excluded_kind": {"en": "excluded by you", "cnr": "isključeno", "ru": "исключено вами"},
+    "rej_requires": {"en": "lack what you need", "cnr": "nemaju ono što tražite", "ru": "не подходят по требованиям"},
+    "rej_excluded": {"en": "excluded by you", "cnr": "isključeno", "ru": "исключено вами"},
+    "rej_opposite_of_preference": {"en": "the opposite of what you asked", "cnr": "suprotno od traženog",
+                                   "ru": "противоположны запросу"},
+    "rej_state_unknown": {"en": "with unknown hours (left out because open ones exist)",
+                          "cnr": "bez podataka o radnom vremenu", "ru": "без данных о часах работы"},
     "reservation_required": {"en": "reservation required", "cnr": "obavezna rezervacija", "ru": "нужна бронь"},
     "age": {"en": "{v}+ only", "cnr": "samo {v}+", "ru": "только {v}+"},
     "cover": {"en": "entry {v} EUR", "cnr": "ulaz {v} EUR", "ru": "вход {v} EUR"},
@@ -51,6 +93,7 @@ _L = {
                     "ru": " или «забронируй 1», где это возможно"},
     "events_header": {"en": "Events{ctx}:", "cnr": "Događaji{ctx}:", "ru": "События{ctx}:"},
     "free": {"en": "free entry", "cnr": "ulaz slobodan", "ru": "вход свободный"},
+    "no_ticket": {"en": "no ticket needed", "cnr": "bez karte", "ru": "билет не нужен"},
     "ticket": {"en": "ticket {p} {c}", "cnr": "karta {p} {c}", "ru": "билет {p} {c}"},
 }
 
@@ -68,14 +111,23 @@ def _hhmm(dt: datetime | None) -> str:
     return dt.strftime("%H:%M") if dt else "?"
 
 
-def status_text(c: Candidate, locale: str) -> str:
+def status_text(c: Candidate, locale: str, *, now: bool = False) -> str:
+    """`now`: the state is the CURRENT one (no time was asked)."""
     st = c.status
+    if st.state == OpenState.OPEN and c.kitchen is not None and c.kitchen.state != OpenState.OPEN \
+            and c.place.category in ("FOOD", "NIGHTLIFE"):
+        out = L("open_until", locale, t=_hhmm(st.closes_at))
+        if c.kitchen.state == OpenState.OPEN_LATER:
+            return out + ", " + L("kitchen_opens", locale, t=_hhmm(c.kitchen.opens_at))
+        if c.kitchen.state == OpenState.CLOSED:
+            return out + ", " + L("kitchen_closed_now", locale)
+        return out
     if st.state == OpenState.OPEN:
         out = L("open_until", locale, t=_hhmm(st.closes_at))
     elif st.state == OpenState.OPEN_LATER:
         out = L("opens_at", locale, t=_hhmm(st.opens_at))
     elif st.state == OpenState.CLOSED:
-        out = L("closed_reason", locale, r=st.reason) if st.reason else L("closed", locale)
+        out = L("closed_reason", locale, r=st.reason) if st.reason else L("closed_now" if now else "closed", locale)
     else:
         out = L("hours_unknown", locale)
     if c.kitchen is not None and c.kitchen.state == OpenState.OPEN:
@@ -103,6 +155,13 @@ def _caveat_labels(c: Candidate, locale: str) -> list[str]:
         kind, _, v = cv.partition(":")
         if cv in _L:
             out.append(L(cv, locale))
+        elif kind == "fresh":
+            fact, state, days = v.split(":")
+            name = L(f"fact_{fact}", locale) if f"fact_{fact}" in _L else fact
+            out.append(L("fresh_stale", locale, fact=name, d=days) if state == "stale"
+                       else L("fresh_unknown", locale, fact=name))
+        elif kind == "dress":
+            out.append(L("dress", locale, v=v))
         elif kind == "age":
             out.append(L("age", locale, v=v))
         elif kind == "cover":
@@ -112,11 +171,12 @@ def _caveat_labels(c: Candidate, locale: str) -> list[str]:
     return out
 
 
-def candidate_line(i: int, c: Candidate, locale: str) -> str:
+def candidate_line(i: int, c: Candidate, locale: str, anchor: str = "the hotel", *, now: bool = False) -> str:
     parts = [f"{i}. {c.place.name} ({label(c.place.subcategory, locale)})"]
-    detail = [status_text(c, locale)]
+    detail = [status_text(c, locale, now=now)]
     if c.distance_km is not None:
-        detail.append(L("walk", locale, km=f"{c.distance_km:.1f}", m=walking(c.distance_km)))
+        detail.append(L("walk", locale, km=f"{c.distance_km:.1f}", m=c.walk_minutes or walking(c.distance_km),
+                        anchor=anchor))
     detail += _reason_labels(c, locale) + _caveat_labels(c, locale)
     return parts[0] + " - " + "; ".join(detail)
 
@@ -126,9 +186,33 @@ def event_line(i: int, e: EventCandidate, locale: str, tz_fmt) -> str:
     where = f" @ {e.place.name}" if e.place else ""
     if e.event.ticket_required and e.event.ticket_price is not None:
         price = L("ticket", locale, p=f"{e.event.ticket_price:.2f}", c=e.event.currency or "")
+    elif (e.event.attributes or {}).get("ticketing") == "unknown":
+        price = ""                     # the source does not say - neither "free" nor "ticket needed"
     elif not e.event.ticket_required:
-        price = L("free", locale)
+        # "free" only when the data says so; otherwise just: no ticket.
+        free = e.event.ticket_price == 0 or "free" in set((e.event.tags or {}).get("tags", []))
+        price = L("free" if free else "no_ticket", locale)
     else:
         price = ""
-    extra = "; ".join(x for x in [price] + [L(c, locale) for c in e.caveats if c in _L] if x)
+    cav = []
+    for c in e.caveats:
+        if c.startswith("fresh:"):
+            _, fact, state, days = c.split(":")
+            cav.append(L("fresh_stale", locale, fact=L("fact_event", locale), d=days) if state == "stale"
+                       else L("fresh_unknown", locale, fact=L("fact_event", locale)))
+        elif c in _L:
+            cav.append(L(c, locale))
+    if e.event.age_limit:
+        cav.append(L("age", locale, v=e.event.age_limit))
+    extra = "; ".join(x for x in [price] + cav if x)
     return f"{i}. {title}{where} - {tz_fmt(e.event.start_at)}" + (f"; {extra}" if extra else "")
+
+
+def rejection_summary(rejected, locale: str) -> str:  # noqa: ANN001  (collections.Counter)
+    """"3 closed at that time, 1 above your budget" - why nothing survived."""
+    parts = []
+    for reason, n in rejected.most_common():
+        key = "rej_" + reason.split(":")[0]
+        if key in _L:
+            parts.append(L("why", locale, n=n, what=L(key, locale)))
+    return ", ".join(dict.fromkeys(parts))

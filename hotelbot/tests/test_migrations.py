@@ -207,3 +207,33 @@ def test_marketplace_upgrade_keeps_providers_and_offerings(engine):
         assert off["slug"] == "set" and off["guest_price"] is None
         assert {"inventory_holds", "property_providers"} <= set(sa.inspect(conn).get_table_names())
     assert _diff(engine) == []
+
+
+def test_local_world_upgrade_keeps_places_and_events(engine):
+    """0006 -> 0007: places/events gain provenance and per-fact verification;
+    traveller preferences get their own table; downgrade is clean."""
+    _upgrade(engine, "0006_layers")
+    with engine.begin() as conn:
+        conn.execute(sa.text(
+            "insert into places (id, region, slug, name, category, subcategory, description, tags, attributes, hours,"
+            " active, source, confidence, provider_owned, is_synthetic, updated_at) values ('pl1', 'r1', 'cafe',"
+            " 'Cafe', 'FOOD', 'cafe', :j, :j, :j, :j, :t, 'test', 1.0, :f, :t, :now)"),
+            {"j": "{}", "t": True, "f": False, "now": NOW})
+        conn.execute(sa.text(
+            "insert into events (id, region, slug, title, category, tags, start_at, ticket_required, attributes,"
+            " source, confidence, provider_owned, is_synthetic) values ('e1', 'r1', 'gig', :title,"
+            " 'concert', :j, :now, :f, :j, 'test', 1.0, :f, :t)"), {"title": '{"en": "Gig"}', "j": "{}", "now": NOW, "t": True,
+                                                     "f": False})
+    _upgrade(engine, "0007_local_world")
+    with engine.connect() as conn:
+        [place] = _rows(conn, "select slug, source_id, timezone, price_range from places")
+        [event] = _rows(conn, "select slug, active, latitude from events")
+        assert place["slug"] == "cafe" and place["source_id"] is None and place["price_range"] is None
+        assert event["slug"] == "gig" and event["latitude"] is None
+        assert "traveler_preferences" in sa.inspect(conn).get_table_names()
+    assert _diff(engine) == []
+    with engine.begin() as conn:
+        command.downgrade(alembic_config(conn), "0006_layers")
+    with engine.connect() as conn:
+        assert "traveler_preferences" not in sa.inspect(conn).get_table_names()
+        assert _rows(conn, "select slug from places")[0]["slug"] == "cafe"

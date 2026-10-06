@@ -54,11 +54,18 @@ def compute(pricing: dict[str, Any], details: dict[str, Any], *, tz: str = "UTC"
     return total.quantize(CENT)
 
 
-def commission(offering_or_provider: Any, amount: Decimal) -> dict[str, Any]:
-    """Commercial snapshot for later accounting. Never alters `amount`."""
+def commission(offering_or_provider: Any, amount: Decimal, *, provider: Any = None) -> dict[str, Any]:
+    """Commercial snapshot taken at quote time, for later accounting. Never
+    alters `amount`. The figure is POTENTIAL: it is earned only once the
+    provider has confirmed (or completed) the booking - see
+    app/marketplace/commission.py. Percent of the guest price for paid
+    services; a fixed referral/lead fee (or 0) for free bookings such as a
+    restaurant table."""
     ctype = getattr(offering_or_provider, "commission_type", None)
     cval = getattr(offering_or_provider, "commission_value", None)
-    out: dict[str, Any] = {"guest_price": str(amount), "commission_type": ctype}
+    if ctype is None and provider is not None:      # the offering has no terms of its own: the provider's apply
+        ctype, cval = getattr(provider, "commission_type", None), getattr(provider, "commission_value", None)
+    out: dict[str, Any] = {"guest_price": str(amount), "commission_type": ctype, "basis": "potential"}
     if ctype == "percent" and cval is not None:
         out["commission"] = str((amount * Decimal(cval) / 100).quantize(CENT))
     elif ctype in ("fixed", "markup") and cval is not None:

@@ -38,7 +38,7 @@ from app.knowledge.schemas import ProviderSpec
 from app.observability import log_event
 from app.places.hours import DAYS
 from app.knowledge.ingest import apply_marketplace
-from app.places.taxonomy import Category, category_of
+from app.places.taxonomy import Category
 from app.transactions.catalog import SERVICE_CATALOG
 
 
@@ -72,6 +72,12 @@ class PlaceSpec(_M):
     attributes: dict[str, Any] = Field(default_factory=dict)
     location: Location | None = None
     service_area_km: float | None = None
+    timezone: str | None = None
+    phone: str | None = None
+    website: str | None = None
+    price_range: int | None = Field(default=None, ge=1, le=4)
+    # Per dynamic fact: {hours: date, kitchen: date, prices: date, closure: date}.
+    verification: dict[str, date] = Field(default_factory=dict)
     hours: dict[str, Any] = Field(default_factory=dict)
     source: str | None = None
     last_verified_at: date | None = None
@@ -87,16 +93,27 @@ class EventSpec(_M):
     place: str | None = None
     start: datetime
     end: datetime | None = None
-    ticket_required: bool = False
+    ticket_required: bool | None = None        # None = the source does not say
     ticket_price: Decimal | None = None
     currency: str | None = None
     age_limit: int | None = None
     language: str | None = None
     booking_source: str | None = None
     attributes: dict[str, Any] = Field(default_factory=dict)
+    description: dict[str, str] = Field(default_factory=dict)
+    location: Location | None = None
     source: str | None = None
     last_verified_at: date | None = None
     confidence: float = 1.0
+
+
+class TaxonomySpec(_M):
+    """A subcategory this source introduces - the taxonomy grows by data."""
+
+    key: str = Field(pattern=r"^[a-z0-9_]+$")
+    category: str
+    labels: dict[str, str]
+    keywords: list[str] = Field(default_factory=list)
 
 
 class SlotSpec(_M):
@@ -157,6 +174,7 @@ class OfferingSpec(_M):
 
 class RegionPack(_M):
     region: RegionInfo
+    taxonomy: list[TaxonomySpec] = Field(default_factory=list)
     providers: list[ProviderSpec] = Field(default_factory=list)
     places: list[PlaceSpec] = Field(default_factory=list)
     events: list[EventSpec] = Field(default_factory=list)
@@ -188,6 +206,13 @@ def _local(dt: datetime, tz: ZoneInfo) -> datetime:
 
 
 def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
+    """The pack carries two worlds: the LOCAL world (places, events) goes
+    through the generic WorldSource sync; the TRANSACTION world (providers,
+    offerings, inventory) is loaded here."""
+    from app.world.sources import SyntheticRegionSource
+    from app.world.store import sync
+
+    world = sync(session, SyntheticRegionSource(pack))
     info = pack.region
     tz = ZoneInfo(info.timezone)
     src, synth = info.source, info.synthetic
@@ -206,46 +231,8 @@ def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
         if slug not in providers:
             row.active = False
     session.flush()
-
-    # places
     places = {p.slug: p for p in session.scalars(select(Place).where(Place.region == info.slug))}
-    seen = set()
-    for spec in pack.places:
-        seen.add(spec.slug)
-        row = places.get(spec.slug) or Place(region=info.slug, slug=spec.slug)
-        row.name, row.subcategory = spec.name, spec.subcategory
-        row.category = (spec.category.value if spec.category else category_of(spec.subcategory))
-        row.tags, row.description, row.attributes = {"tags": spec.tags}, spec.description, spec.attributes
-        row.latitude = spec.location.lat if spec.location else None
-        row.longitude = spec.location.lon if spec.location else None
-        row.address = spec.location.address if spec.location else None
-        row.service_area_km, row.hours, row.active = spec.service_area_km, spec.hours, True
-        row.source, row.confidence, row.provider_owned = spec.source or src, spec.confidence, spec.provider_owned
-        row.last_verified_at, row.is_synthetic = _verified(spec.last_verified_at, info.verified_at, tz), synth
-        session.add(row)
-        places[spec.slug] = row
-    for slug, row in places.items():
-        if slug not in seen:
-            row.active = False
-    session.flush()
-
-    # events: upserted by slug (saved plan items and ticket offerings point at
-    # them); events dropped from the pack are kept but stop being current.
     events = {e.slug: e for e in session.scalars(select(Event).where(Event.region == info.slug))}
-    for spec in pack.events:
-        place = places.get(spec.place) if spec.place else None
-        row = events.get(spec.slug) or Event(region=info.slug, slug=spec.slug)
-        row.title, row.category, row.tags = spec.title, spec.category, {"tags": spec.tags}
-        row.place_id, row.start_at = (place.id if place else None), _local(spec.start, tz)
-        row.end_at = _local(spec.end, tz) if spec.end else None
-        row.ticket_required, row.ticket_price, row.currency = spec.ticket_required, spec.ticket_price, spec.currency
-        row.age_limit, row.language, row.booking_source = spec.age_limit, spec.language, spec.booking_source
-        row.attributes, row.source, row.confidence = spec.attributes, spec.source or src, spec.confidence
-        row.last_verified_at = _verified(spec.last_verified_at, info.verified_at, tz)
-        row.is_synthetic, row.provider_owned = synth, False
-        session.add(row)
-        events[spec.slug] = row
-    session.flush()
 
     # offerings + availability
     offerings = {o.slug: o for o in session.scalars(select(Offering).where(Offering.region == info.slug))}
@@ -264,6 +251,8 @@ def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
         row.commission_type, row.commission_value = spec.commission_type, spec.commission_value
         row.partner_price, row.guest_price = spec.partner_price, spec.guest_price
         row.source, row.is_synthetic = spec.source or src, synth
+        row.source_id, row.source_type, row.source_record_id = f"pack:{info.slug}", "synthetic" if synth else "manual", \
+            spec.slug
         row.last_verified_at = _verified(spec.last_verified_at, info.verified_at, tz)
         session.add(row)
         session.flush()
@@ -280,8 +269,7 @@ def ingest_region(session: Session, pack: RegionPack) -> dict[str, int]:
             session.execute(insert(AvailabilitySlot), rows)
         slots += len(rows)
     session.flush()
-    report = {"providers": len(pack.providers), "places": len(pack.places), "events": len(pack.events),
-              "offerings": len(pack.offerings), "slots": slots}
+    report = {"providers": len(pack.providers), **world, "offerings": len(pack.offerings), "slots": slots}
     log_event("region_ingested", region=info.slug, **report)
     return report
 

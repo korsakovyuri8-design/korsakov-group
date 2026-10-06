@@ -1,5 +1,7 @@
 # Local travel layer ("Trip / Stay OS")
 
+> Iteration 4 rebuilt discovery as the Local World / Discovery Engine - see [`DISCOVERY.md`](DISCOVERY.md) for the current pipeline, world sources, constraints, ranking and the plan commands. This page keeps the region-pack, hours and plan basics.
+
 The guest's journey: ANSWER → FIND → RECOMMEND → SAVE → BOOK → TRANSACT → CHANGE / CANCEL → HANDOFF.
 
 ```text

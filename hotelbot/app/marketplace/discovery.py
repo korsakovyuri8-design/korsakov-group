@@ -128,7 +128,8 @@ def _static_misfit(offering: Offering, details: dict[str, Any], provider: Extern
 def discover(session: Session, *, service_type: str, details: dict[str, Any], region: str | None,
              property_id: str | None, now: datetime, tz: str, declared: str | None = None,
              start: datetime | None = None, day: date | None = None,
-             venue_id: str | None = None, replaces: str | None = None) -> DiscoveryResult:
+             venue_id: str | None = None, event_id: str | None = None,
+             replaces: str | None = None) -> DiscoveryResult:
     """`replaces`: the transaction a change would replace - its own inventory
     counts as free for the new offer (it is released if the change goes through)."""
     rel = relations(session, property_id, service_type)
@@ -149,9 +150,11 @@ def discover(session: Session, *, service_type: str, details: dict[str, Any], re
                                    Offering.active).order_by(Offering.slug)
         if venue_id:
             q = q.where(Offering.place_id == venue_id)
+        if event_id:
+            q = q.where(Offering.event_id == event_id)     # tickets for THIS event only
         offerings = list(session.scalars(q))
         if not offerings:
-            if venue_id is None:   # provider without catalogued offerings: it prices and decides itself
+            if venue_id is None and event_id is None:   # provider without catalogued offerings: it prices and decides itself
                 ready.append(Candidate(provider, None, start=start, rank=(boost, 1, Decimal(0), provider.slug)))
             continue
         for offering in offerings:

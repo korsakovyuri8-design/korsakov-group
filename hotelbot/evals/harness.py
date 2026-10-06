@@ -227,6 +227,11 @@ def _check_guest_step(prefix: str, exp: StepExpect, reply, container: Container,
         failures.append(f"{prefix}: expected silence, bot said {reply.text!r}")
     if exp.silent is False and not reply.text:
         failures.append(f"{prefix}: expected a reply, bot was silent")
+    if exp.outcomes is not None and sorted(exp.outcomes) != sorted(reply.outcomes):
+        failures.append(f"{prefix}: outcomes {sorted(reply.outcomes)} != {sorted(exp.outcomes)}")
+    for o in exp.outcomes_absent:
+        if o in reply.outcomes:
+            failures.append(f"{prefix}: outcome {o} present")
     if exp.handoff is not None and reply.handed_off is not exp.handoff:
         failures.append(f"{prefix}: handed_off {reply.handed_off} != {exp.handoff}")
     if exp.handoff_reason:
@@ -477,7 +482,7 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
                     result.transcript.append(Turn("guest", step.guest, {"property": slug or "default"}))
                     result.transcript.append(Turn("bot", reply.text, {
                         "intent": reply.intent, "language": reply.language, "grounded": reply.grounded,
-                        "sources": reply.sources, "handed_off": reply.handed_off,
+                        "sources": reply.sources, "handed_off": reply.handed_off, "outcomes": reply.outcomes,
                         "actions": [a.detail for a in reply.actions]}))
                     _check_guest_step(prefix, step.expect, reply, container, before, result.failures)
                     _authority_check(prefix, reply.text, container, reply.stay_id, result.failures,

@@ -45,6 +45,7 @@ capabilities:
     bar_table: {}
     rental: {}
     guide_booking: {}
+    event_tickets: {}
   integrations: [human_staff]
   external_services: [transport, activities]
 

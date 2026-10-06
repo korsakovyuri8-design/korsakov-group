@@ -38,6 +38,8 @@ class AgentReply(BaseModel):
     sources: list[str] = []
     actions: list[ActionTaken] = []
     handed_off: bool = False
+    # ANSWER | FIND | RECOMMEND | SAVE | ACTION | TRANSACTION | HANDOFF
+    outcomes: list[str] = []
     duplicate: bool = False
     knowledge_synthetic: bool = False
     property_slug: str | None = None

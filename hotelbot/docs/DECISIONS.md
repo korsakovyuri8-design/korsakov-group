@@ -748,3 +748,146 @@ SUBMISSION_UNKNOWN backs no claim, neither booked nor failed (authority tests). 
 - **COMPLETED from SUBMITTED is allowed:** completion implies the provider took the job. A later ACCEPTED is a backwards move: 409, no state change, no notification.
 - **Callbacks are matched by (provider, reference).** A validly signed callback from provider A quoting provider B's reference is `unknown_reference` (404), and B's booking is untouched.
 - **A duplicate event id is `duplicate`;** the same state with a new event id is `already_in_state`. Either way there is no second notification.
+
+---
+
+## D-056 - World sources: one adapter interface, normalized records, provenance on every record
+
+**Decision.** The LOCAL WORLD is filled only through a `WorldSource` (`app/world/sources.py`). A source exposes `source_id`, `source_type`, `region()`, `places()`, `events()` and `taxonomy()`, and returns normalized records (`app/world/records.py`). `app/world/store.sync()` is the one writer:
+
+- it upserts by (region, slug);
+- it registers taxonomy additions;
+- it **deactivates** records the same source no longer lists, and never deletes them, because plan items and offerings may point at them.
+
+Each place and event stores `source_id` (indexed), `source_type`, `source_record_id`, `last_verified_at`, `confidence` and `is_synthetic`. Places also store a per-fact `verification` map (hours, kitchen, closure, prices).
+
+Two implementations ship: `SyntheticRegionSource` (the region pack YAML; `source_id = synthetic:<region>`) and `FixtureSource` (in-memory, for tests and hand-curated records). There are no real APIs this iteration. The pack loader now syncs the world part through `SyntheticRegionSource` and loads only the transaction part itself.
+
+**Why.** Replacing synthetic data must mean adding a source, not editing discovery code. See docs/DISCOVERY.md, "Replacing synthetic data".
+
+---
+
+## D-057 - Discovery pipeline with explicit hard constraints and a policy-ordered ranking key
+
+**Decision.** `app/discovery/engine.run()` = RETRIEVE → NORMALIZE → HARD FILTER → RANK → EXPLAIN. UNDERSTAND is the NLU: it builds a `DiscoveryQuery` and never candidates.
+
+- **Hard constraints are filters, with a recorded reason.** They cover:
+  - excluded kinds;
+  - required attributes (diet, accessibility, pets, family);
+  - excluded attributes (dress code);
+  - age, group size, price ceiling, radius;
+  - a known-closed state at an explicit time;
+  - a kitchen closed at an explicit meal time;
+  - closing before a requested end;
+  - a window too short for the visit.
+
+  Rejections are counted per reason, so "nothing found" is explained ("5 closed at that time").
+- **Soft preferences only re-rank.** One exception: a soft preference never yields its exact opposite ("lively" never returns a place recorded as quiet).
+- **Ranking is lexicographic, in policy order:**
+  1. availability (state at the asked time, or now);
+  2. relevance;
+  3. traveller and request preferences;
+  4. distance (0.5 km buckets);
+  5. data reliability (freshness);
+  6. rating;
+  7. value;
+  8. property relationship;
+  9. commission.
+
+  Commerce is last by construction and cannot lift a candidate over any earlier criterion. Hard constraints are applied before ranking exists.
+- **Essential needs** (pharmacy, ATM, laundry, coworking…) rank by availability, distance (0.1 km buckets) and reliability only.
+- **When the guest asked for a time** and places known to be open or serving exist, places whose state is UNKNOWN are not used to pad the list (counted as `state_unknown`). When nothing known is open, they are shown, with the gap stated.
+
+**Evidence (raw first run).** An unknown-hours grill outranked known-open restaurants because availability counted only when a time was given. Availability now always ranks.
+
+---
+
+## D-058 - Kitchen state is a separate fact; freshness is per fact
+
+**Decision.**
+- **`food_state()` is the only source of "serving".** It uses kitchen hours. It may fall back to venue hours only when the data explicitly says `kitchen_follows_opening_hours`. `serves_food: false` means CLOSED, and a closed venue overrides its kitchen. Anything else is UNKNOWN: it is never inferred.
+- **Freshness is per fact class:**
+
+  | Fact class | FRESH | AGING | STALE after |
+  |---|---|---|---|
+  | hours, kitchen | ≤ 30 d | ≤ 90 d | 90 d |
+  | closure | ≤ 14 d | ≤ 30 d | 30 d |
+  | prices | ≤ 60 d | ≤ 180 d | 180 d |
+  | event | ≤ 14 d | ≤ 45 d | 45 d |
+  | static | ≤ 365 d | ≤ 730 d | 730 d |
+
+  Missing dates and confidence below 0.7 are UNKNOWN. STALE and UNKNOWN facts are disclosed in the reply ("opening hours last verified 108 days ago - may have changed"). Freshness ranks (reliability) but never upgrades a fact.
+
+---
+
+## D-059 - SAVE / SHORTLIST / PLAN are plan states, never transactions
+
+**Decision.** "save the second bar", "shortlist the first one" and "add the concert to Sunday" create `ItineraryItem`s with status SAVED, SHORTLISTED or PLANNED.
+
+- No quote, no inventory hold and no provider call are made.
+- "Add X to <day>" refuses (and says so) when the event is on another day.
+- Commands are parsed per clause (`app/trip/selection.py`), and each clause resolves against the stored results by number, ordinal-within-kind ("the second bar") or name. An ambiguous or unknown reference does nothing for that clause and says so; it is never guessed.
+- A message containing any non-command clause ("what did I save?") is not a command message.
+
+**Booking from discovery goes only through the bridge.** A transaction draft started from a clause reads details from that clause only.
+
+**Evidence (raw first run).** "Book the first restaurant, save the second bar and add the concert to **Sunday**" moved the restaurant reservation to Sunday: the draft had absorbed the whole message. Fixed by `try_start_service(text=clause)`.
+
+---
+
+## D-060 - Statements are context, requests are items; day context propagates
+
+**Decision.** In a multi-part message the planner treats statements as trip CONTEXT:
+- "Our transfer is already booked";
+- "Saturday we're skiing";
+- "Sunday we have the guide".
+
+They never become orders. Each statement is checked against the plan ("in your plan: … CONFIRMED by provider" / "I don't see it in your plan").
+
+Context rules:
+- A booked transfer gives the estimated arrival time at the property (pickup time + the provider's typical journey time) for "food still serving when we arrive".
+- The day named by a statement or request applies to the following requests until another day is named. A bare day part ("at night") does not name a day.
+- An activity on a day ("we're skiing") anchors that day's *daytime* needs near the activity's place. It does not affect night-time needs.
+- Essential needs (pharmacy) never inherit a future day: they are about now.
+
+A single request goes to the planner only when it is discovery paired with a statement of context. A lone transaction keeps its own handler, which reads the whole sentence.
+
+**Evidence.** The raw run anchored Saturday-night drinks at the ski area. A later regression (arrival context alone routing a one-transfer message into the planner) lost "tomorrow" from a Russian transfer request; caught by the frozen Iteration 3 scenario.
+
+---
+
+## D-061 - Traveller preferences: only explicit, general statements; always soft
+
+**Decision.** `TravelerPreference` (per guest, unique key) stores only:
+- general statements ("I generally prefer vegetarian places", "we usually avoid loud bars");
+- identity statements ("I'm vegan").
+
+It stores the verbatim statement and the source message id. One-off request constraints ("find vegan food tonight", "one of us is vegan") are hard for that request and are never stored.
+
+Stored preferences re-rank only. A request's own explicit constraint on the same key wins. When a preference influenced the shown results, the reply says so.
+
+---
+
+## D-062 - Commission: potential at quote time, earned only on confirmation
+
+**Decision.**
+- **The quote snapshot is labelled potential.** It records `basis: "potential"`. `app/marketplace/commission.earned()` counts only transactions the provider ACCEPTED or COMPLETED. Nothing is earned on consent, submission, PENDING_CONDITION, SUBMISSION_UNKNOWN, rejection or cancellation.
+- **Supported models:** percent of the guest price (paid services) and fixed (a referral or lead fee for free bookings such as tables; 0 at the start). Property revenue share is later work.
+- **The demo numbers are synthetic placeholders, not a market model.**
+- **Relations:**
+  - available (default);
+  - preferred: an explicit property choice. It is ranked, never silently assigned, and the provider is always named;
+  - exclusive: only from an explicit relationship record, never inferred;
+  - blocked.
+
+  In discovery the relationship and potential commission enter only as the last two tie-breakers, via `bridge.ranking_signals()`.
+
+**Evidence.** A new test found that a quote recorded no commission when its offering had no own terms: the provider's terms were ignored (Iteration 3 defect). Fixed with a fallback to the provider.
+
+---
+
+## D-063 - Alternatives: best fit plus a format alternative; more is deferred
+
+**Decision (unchanged mechanics).** A quote is shown for the best fit. For guides, one quote is also shown for the best of each other format (private vs group), which is a substantive difference. A pricier option with no advantage is never shown.
+
+**Deferred.** Other substantive alternatives (minivan for luggage, child seats, free cancellation, a different guide language) are deferred. Today every shown alternative is a real quote with an inventory hold, and "book all" books every open offer, so a minivan alternative next to a sedan would book both transfers. Doing this correctly needs unheld or grouped alternatives: a transaction-mechanics change, out of scope for Iteration 4.

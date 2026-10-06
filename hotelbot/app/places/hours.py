@@ -114,3 +114,48 @@ def open_during(hours: dict[str, Any] | None, start: datetime, end: datetime | N
     if st.state != OpenState.OPEN:
         return False
     return end is None or (st.closes_at is not None and st.closes_at >= end)
+
+
+# ------------------------------------------------------- place-level states
+def local_at(at_utc: datetime, place_tz: str | None, region_tz: str) -> datetime:
+    """Naive local time AT THE PLACE (its own timezone, else the region's)."""
+    from zoneinfo import ZoneInfo
+
+    from app.clock import as_utc
+
+    return as_utc(at_utc).astimezone(ZoneInfo(place_tz or region_tz)).replace(tzinfo=None)
+
+
+def venue_state(place, at_local: datetime) -> HoursStatus:  # noqa: ANN001
+    return status_at(place.hours, at_local)
+
+
+def food_state(place, at_local: datetime) -> HoursStatus:  # noqa: ANN001
+    """Is FOOD being served? Only from kitchen hours (or an explicit "the
+    kitchen follows opening hours" attribute) - an open bar is not an open
+    kitchen. No data = UNKNOWN, never assumed."""
+    attrs = place.attributes or {}
+    if attrs.get("serves_food") is False:
+        return HoursStatus(OpenState.CLOSED, reason="no food served")
+    if (place.hours or {}).get("kitchen"):
+        kitchen = status_at(place.hours, at_local, key="kitchen")
+        venue = status_at(place.hours, at_local)
+        if venue.state != OpenState.OPEN and kitchen.state == OpenState.OPEN:
+            return venue   # a closure of the venue closes the kitchen too
+        return kitchen
+    if attrs.get("kitchen_follows_opening_hours"):
+        return status_at(place.hours, at_local)
+    return HoursStatus(OpenState.UNKNOWN)
+
+
+def open_throughout(place, start_local: datetime, end_local: datetime) -> bool | None:  # noqa: ANN001
+    """Open for the whole window (a two-hour gap before dinner)? None = no data."""
+    st = status_at(place.hours, start_local)
+    if st.state == OpenState.UNKNOWN:
+        return None
+    if st.state != OpenState.OPEN:
+        return False
+    if st.closes_at is not None and st.closes_at < end_local:
+        return False
+    lim = (place.hours or {}).get("last_entry")
+    return not (lim and st.closes_at is None)

@@ -554,6 +554,7 @@ class ItemStatus(str, enum.Enum):
 
     SAVED = "saved"
     SHORTLISTED = "shortlisted"
+    PLANNED = "planned"       # put in the plan by the guest (an event, a visit) - nothing reserved
     PROPOSED = "proposed"
     DISMISSED = "dismissed"
 
@@ -562,7 +563,12 @@ class _Provenance:
     """Every external factual record carries where it came from and how
     fresh it is (dynamic facts - hours, prices, events - go stale)."""
 
-    source: Mapped[str] = mapped_column(String(255), default="unknown")
+    source: Mapped[str] = mapped_column(String(255), default="unknown")          # human label
+    # Normalised provenance (app/world/sources.py): which WorldSource produced
+    # the record, what kind of source it is, and the record's id there.
+    source_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    source_type: Mapped[str | None] = mapped_column(String(32))   # synthetic | official_feed | mapping | partner | ...
+    source_record_id: Mapped[str | None] = mapped_column(String(255))
     last_verified_at: Mapped[datetime | None] = mapped_column()
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
     provider_owned: Mapped[bool] = mapped_column(default=False)   # supplied by the business itself
@@ -591,7 +597,14 @@ class Place(_Provenance, Base):
     longitude: Mapped[float | None] = mapped_column(Float)
     address: Mapped[str | None] = mapped_column(String(300))
     service_area_km: Mapped[float | None] = mapped_column(Float)
+    timezone: Mapped[str | None] = mapped_column(String(64))       # None = the region's timezone
+    phone: Mapped[str | None] = mapped_column(String(64))
+    website: Mapped[str | None] = mapped_column(String(300))
+    price_range: Mapped[int | None] = mapped_column(Integer)      # 1 (cheap) .. 4 (expensive)
     hours: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)        # see app/places/hours.py
+    # Per-fact verification dates for dynamic facts that age at their own
+    # pace: {"hours": iso, "kitchen": iso, "prices": iso, "closure": iso}.
+    verification: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     active: Mapped[bool] = mapped_column(default=True)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
@@ -618,6 +631,11 @@ class Event(_Provenance, Base):
     language: Mapped[str | None] = mapped_column(String(16))
     booking_source: Mapped[str | None] = mapped_column(String(200))
     attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    description: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Location when the event has no venue Place (a street festival).
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    active: Mapped[bool] = mapped_column(default=True)
 
 
 class Offering(_Provenance, Base):
@@ -694,6 +712,24 @@ class InventoryHold(Base):
     quote_id: Mapped[str | None] = mapped_column(ForeignKey("quotes.id"), index=True)
     transaction_id: Mapped[str | None] = mapped_column(String(36), index=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class TravelerPreference(Base):
+    """A durable preference the traveller STATED explicitly ("I generally
+    prefer vegetarian restaurants"). Separate from Stay facts and from
+    one-off request constraints: "find vegan food tonight" is never stored."""
+
+    __tablename__ = "traveler_preferences"
+    __table_args__ = (UniqueConstraint("guest_id", "key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    guest_id: Mapped[str] = mapped_column(ForeignKey("guests.id"), index=True)
+    key: Mapped[str] = mapped_column(String(64))           # e.g. diet, budget, nightlife_style, noise
+    value: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    statement: Mapped[str] = mapped_column(Text)          # verbatim words of the traveller
+    source_message_id: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
 
 class ItineraryItem(Base):

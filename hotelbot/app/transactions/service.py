@@ -153,7 +153,7 @@ class TransactionService:
             amount=result.amount, description=result.description, conditions=result.conditions,
             valid_until=result.valid_until, provider_reference=result.provider_reference, status=QuoteStatus.OFFERED,
             consent={}, terms=terms, offering_id=offering.id if offering else None,
-            commercial=pricing.commission(offering or provider, result.amount),
+            commercial=pricing.commission(offering or provider, result.amount, provider=provider),
             replaces_transaction_id=replaces.id if replaces else None, created_at=now,
         )
         self.s.add(quote)

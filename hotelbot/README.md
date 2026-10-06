@@ -1,4 +1,4 @@
-# HOTELBOT: AI guest operations layer (prototype, iteration 3)
+# HOTELBOT: AI guest operations layer (prototype, iteration 4)
 
 A WhatsApp-first guest-operations agent for any accommodation (hotels, hostels, resorts, vacation rentals, apartments, glamping). Hotel Aleksandar (Žabljak, Montenegro) will be the first real property; in the core it is just one `Property` with `property_type: hotel`.
 
@@ -57,7 +57,8 @@ Guest ──< Stay >── Property ──< KnowledgeDocument
 | Transactions | Quotes, explicit scoped consent, provider adapters (mock, signed webhook), idempotent submission via a PostgreSQL job queue with retries/backoff, signed replay-protected callbacks, honest failure + staff handoff. See [`docs/PROVIDER_INTEGRATION.md`](docs/PROVIDER_INTEGRATION.md). |
 | Marketplace | Transport (taxi / airport / intercity), rentals (skis, snowboards, bikes, e-bikes, cars, gear) and guides/tours on one model: provider discovery by fit + availability + price + property relationships, inventory holds, material terms before consent, weather-conditional bookings, changes as replacement offers, policy-checked cancellation, multi-service requests with per-item consent. See [`docs/MARKETPLACE.md`](docs/MARKETPLACE.md). |
 | Local travel | Region packs of places / events / offerings / inventory; discovery ("open now", "still serving at 22:30", "after midnight", vegan, wheelchair, pets, lively); save / book from results; trip plan with per-item status; multi-part trip requests. See [`docs/LOCAL_TRAVEL.md`](docs/LOCAL_TRAVEL.md). |
-| Evaluation | 154 deterministic product scenarios; invariant scenarios (98) are gates (see below). |
+| Discovery engine | Local World behind a `WorldSource` adapter (synthetic pack / fixtures; provenance on every record). Pipeline UNDERSTAND → RETRIEVE → NORMALIZE → HARD FILTER → RANK → EXPLAIN with explicit hard vs soft constraints, kitchen state separate from venue hours, per-fact freshness disclosed, computed distance with anchors (hotel, another place, the day's activity), explained no-results, compound requests, save / shortlist / plan commands per clause, free-time windows from the plan, explicit traveller preferences (soft), restaurant and ticket bridges, outcome kinds on every reply. See [`docs/DISCOVERY.md`](docs/DISCOVERY.md). |
+| Evaluation | 198 deterministic product scenarios; invariant scenarios (125) are gates (see below). |
 
 ## Quick start
 
@@ -157,11 +158,11 @@ python -m evals --category authority
 python -m evals --markdown docs/EVAL_REPORT.md --json eval.json
 ```
 
-Scenarios live in `evals/scenarios/*.yaml` (grounding, actions, authority, handoff, safety, memory, conversation, languages, transactions, local, marketplace). Each one runs through a fresh real container: real packs plus scenario edits, an optional scripted LLM, and an optional mocked partner endpoint. Every bot message is also checked against the authority invariant. `gate: true` scenarios are product invariants: they run in pytest, and the CLI exits 1 if one fails. Latest report: [`docs/EVAL_REPORT.md`](docs/EVAL_REPORT.md). Retrieval findings: [`docs/RETRIEVAL_ANALYSIS.md`](docs/RETRIEVAL_ANALYSIS.md).
+Scenarios live in `evals/scenarios/*.yaml` (grounding, actions, authority, handoff, safety, memory, conversation, languages, transactions, local, marketplace, discovery). Each one runs through a fresh real container: real packs plus scenario edits, an optional scripted LLM, and an optional mocked partner endpoint. Every bot message is also checked against the authority invariant. `gate: true` scenarios are product invariants: they run in pytest, and the CLI exits 1 if one fails. Latest report: [`docs/EVAL_REPORT.md`](docs/EVAL_REPORT.md). Retrieval findings: [`docs/RETRIEVAL_ANALYSIS.md`](docs/RETRIEVAL_ANALYSIS.md).
 
 ## Migrations
 
-New databases are created from the models and stamped. Existing databases are upgraded with Alembic on startup (`HOTELBOT_AUTO_MIGRATE=true`); Core v1 databases (no version table) are detected and upgraded. Manual alternative: `HOTELBOT_AUTO_MIGRATE=false alembic upgrade head`. `0002_stay_engine` is forward-only; `0003_transactions`, `0004_local_travel` and `0005_marketplace` are additive. **Back up first** - see [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for backup, restore and worker operations.
+New databases are created from the models and stamped. Existing databases are upgraded with Alembic on startup (`HOTELBOT_AUTO_MIGRATE=true`); Core v1 databases (no version table) are detected and upgraded. Manual alternative: `HOTELBOT_AUTO_MIGRATE=false alembic upgrade head`. `0002_stay_engine` is forward-only; `0003_transactions` through `0007_local_world` are additive (`0007` is reversible). **Back up first** - see [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for backup, restore and worker operations.
 
 ## Testing
 
@@ -181,15 +182,20 @@ app/
   stays/        service
   knowledge/    schemas (pack format), ingest, service (retriever)
   transactions/ catalog, slots, consent, service, dialogue, callbacks, format, providers/ (mock, webhook)
-  marketplace/  discovery (provider candidates), inventory (holds), pricing, terms, bridge (the seam to places/events)
+  marketplace/  discovery (provider candidates), inventory (holds), pricing, terms, commission (earned only on
+                confirmation), bridge (the seam to places/events; ranking signals)
   nlp/          temporal (days, times, counts - shared by both worlds)
+  shared/       geo (distance, travel-time estimator interface - shared by both worlds)
+  world/        records, sources (WorldSource, SyntheticRegionSource, FixtureSource), store (sync)
   jobs/         queue (outbox, SKIP LOCKED, retries), handlers
-  places/       taxonomy, hours, geo, freshness, availability, pack (region ingest)
-  discovery/    nlu, engine, render
-  trip/         itinerary, concierge (discovery, save/book, plan, multi-part trips)
+  places/       taxonomy, hours (venue + food state), freshness (per fact), pack (region ingest)
+  discovery/    nlu (UNDERSTAND), engine (RETRIEVE..EXPLAIN), render
+  trip/         itinerary, concierge (discovery, commands, plan, multi-part trips), selection (references),
+                schedule (day views, free windows), preferences (explicit traveller preferences)
   llm/  tools/  db/  whatsapp/  api/  schemas/   worker.py, clock.py
-migrations/     Alembic (0001_core_v1 ... 0006_layers)
+migrations/     Alembic (0001_core_v1 ... 0007_local_world)
 evals/          harness, report, scenarios/
 data/           hotel/example_hotel.yaml, properties/demo_apartment.yaml, regions/zabljak_demo.yaml   (SYNTHETIC)
-docs/           DECISIONS.md, EVAL_REPORT.md, RETRIEVAL_ANALYSIS.md, PROVIDER_INTEGRATION.md, OPERATIONS.md, LOCAL_TRAVEL.md, MARKETPLACE.md
+docs/           DECISIONS.md, EVAL_REPORT.md, RETRIEVAL_ANALYSIS.md, PROVIDER_INTEGRATION.md, OPERATIONS.md, LOCAL_TRAVEL.md,
+                MARKETPLACE.md, DISCOVERY.md
 ```
