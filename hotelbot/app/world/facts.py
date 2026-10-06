@@ -65,6 +65,14 @@ def write_assertions(session: Session, se: SourceEntity, canonical_id: str, fiel
     changed = []
     for name, value in fields.items():
         when = observed.get(name) or now
+        if as_utc(when) > as_utc(now):
+            # a source clock ahead of ours: impossible freshness must not win
+            # anything - the observation counts as "now", and the skew is recorded
+            session.add(WorldChange(canonical_entity_id=canonical_id, source_entity_id=se.id, source_id=se.source_id,
+                                    change_type="future_observation_clamped", field_name=name,
+                                    detail={"reported": as_utc(when).isoformat(), "used": as_utc(now).isoformat()},
+                                    detected_at=now))
+            when = now
         old = current.pop(name, None)
         if old is not None and _canon(old.value) == _canon(value):
             if as_utc(when) > as_utc(old.observed_at):

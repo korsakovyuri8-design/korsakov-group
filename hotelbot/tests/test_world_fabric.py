@@ -342,3 +342,50 @@ def test_scope_area_assignment(s):
     assert regions == {"Galerija A": "old-town", "Galerija B": "town"}          # smallest containing area
     assert coverage.scope_for(s, "old-town").contains(43.1405, 19.1405) is True
     assert Scope("radius", center=(43.14, 19.14), radius_km=1).contains(43.20, 19.14) is False
+
+
+# ============================================ adversarial identity classes
+def test_relocation_needs_strong_identity_and_older_location(s):
+    old = {"name": "Restoran Lipa", "phone": "069 444 555", "website": "restoran-lipa.me", "category": "restaurant"}
+    _sync(s, "a", [{"id": "1", **old, "lat": 43.140, "lon": 19.140, "updated_at": "2026-02-01T10:00:00+01:00"}])
+    _sync(s, "b", [{"id": "x", **old, "lat": 43.158, "lon": 19.142, "updated_at": "2026-10-01T10:00:00+02:00"}],
+          cls="partner_feed")
+    assert _cid(s, "a", "1") == _cid(s, "b", "x")                         # moved: one business
+    _sync(s, "c", [{"id": "y", **old, "lat": 43.149, "lon": 19.160, "updated_at": "2026-10-02T10:00:00+02:00"}])
+    assert _cid(s, "c", "y") != _cid(s, "a", "1")                          # both locations current: a chain
+
+
+def test_contradicted_identifier_does_not_merge(s):
+    _sync(s, "a", [{"id": "1", "name": "Galerija Kamen", "lat": 43.14, "lon": 19.14, "category": "gallery",
+                    "phone": "069 111 000", "ids": {"tripdir": "T-1"}}])
+    _sync(s, "b", [{"id": "2", "name": "Restoran Vidikovac", "lat": 43.15, "lon": 19.14, "category": "restaurant",
+                    "phone": "067 222 000", "ids": {"tripdir": "T-1"}}])
+    assert _cid(s, "a", "1") != _cid(s, "b", "2")
+
+
+def test_stale_phone_is_not_identity_evidence(s):
+    _sync(s, "a", [{"id": "1", "name": "Kafe Stari Most", "lat": 43.143, "lon": 19.143, "category": "cafe",
+                    "phone": "069 900 100", "updated_at": "2023-05-01T10:00:00+02:00"}])
+    _sync(s, "b", [{"id": "2", "name": "Kafe Lipa", "lat": 43.1432, "lon": 19.1431, "category": "cafe",
+                    "phone": "069 900 100", "updated_at": "2026-10-01T10:00:00+02:00"}])
+    assert _cid(s, "a", "1") != _cid(s, "b", "2")
+
+
+def test_future_observation_is_clamped_and_recorded(s):
+    from app.db.models import WorldChange
+
+    _sync(s, "a", [{"id": "1", "name": "Galerija", "lat": 43.14, "lon": 19.14, "category": "gallery",
+                    "updated_at": "2027-06-01T10:00:00+02:00"}])
+    a = s.scalar(select(FactAssertion).where(FactAssertion.field_name == "name"))
+    assert a.observed_at.replace(tzinfo=timezone.utc) <= NOW
+    assert s.scalar(select(WorldChange).where(WorldChange.change_type == "future_observation_clamped")) is not None
+
+
+def test_licence_change_is_recorded_and_attribution_is_sticky(s):
+    rec = [{"id": "n", "name": "Galerija", "lat": 43.14, "lon": 19.14, "category": "gallery"}]
+    run_sync(s, FixtureAdapter(_d("osm", attribution_required=True, attribution_text="© OSM", license="ODbL-1.0"),
+                               rec), now=NOW)
+    run_sync(s, FixtureAdapter(_d("osm", license="CC0-1.0"), rec), now=NOW + timedelta(days=1))
+    row = s.get(WorldSourceRow, "osm")
+    assert row.license == "CC0-1.0" and row.config["terms_history"][0]["license"] == "ODbL-1.0"
+    assert s.scalar(select(Place)).resolution["_attribution"] == ["osm"]        # published under ODbL terms

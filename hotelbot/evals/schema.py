@@ -55,6 +55,8 @@ class WorldResolutionExpect(_Strict):
     state: str | None = None
     source: str | None = None                # winning source
     conflicting: int | None = None           # number of disagreeing assertions kept
+    not_source: str | None = None            # this source must NOT be the winner
+    reason_contains: str | None = None       # the recorded reason for the outcome
 
 
 class WorldPlaceExpect(_Strict):

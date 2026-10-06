@@ -23,5 +23,15 @@ def required(session: Session, source_ids: set[str]) -> list[WorldSourceRow]:
 
 
 def lines_for(session: Session, source_ids: set[str], locale: str) -> list[str]:
+    """`source_ids` come from the projection, which already decided that
+    attribution is owed (current or historical terms); the text is the
+    current one, else the last text the source required."""
     label = _LABEL.get(locale.split("-")[0], _LABEL["en"])
-    return [label.format(t=row.attribution_text) for row in required(session, source_ids) if row.attribution_text]
+    out = []
+    for row in session.scalars(select(WorldSourceRow).where(WorldSourceRow.id.in_(source_ids or {""}))
+                               .order_by(WorldSourceRow.id)):
+        text = row.attribution_text or next((h.get("attribution_text") for h in reversed(
+            (row.config or {}).get("terms_history", [])) if h.get("attribution_text")), None)
+        if text:
+            out.append(label.format(t=text))
+    return out

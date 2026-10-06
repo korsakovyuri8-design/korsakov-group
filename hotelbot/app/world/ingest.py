@@ -71,15 +71,36 @@ class SyncReport:
 
 
 # ============================================================== sources
-def register_source(session: Session, d: SourceDescriptor, policies: Policies | None = None) -> WorldSourceRow:
+TERMS = ("license", "attribution_required", "attribution_text", "redistribution", "retention_days", "cache_raw")
+
+
+def register_source(session: Session, d: SourceDescriptor, policies: Policies | None = None,
+                    now: datetime | None = None) -> WorldSourceRow:
+    """Register / update a source. A change of licence terms is never silent:
+    the previous terms go to `config.terms_history` (with the time they
+    ended) and a WorldChange is recorded; data published under earlier terms
+    keeps their attribution (projection._attribution)."""
+    from datetime import timezone
+
     d.validate((policies or load()).source_classes)
-    row = session.get(WorldSourceRow, d.source_id) or WorldSourceRow(id=d.source_id, status="never_synced",
-                                                                       consecutive_failures=0, records_seen=0,
-                                                                       records_changed=0, cursor={})
+    now = now or datetime.now(timezone.utc)
+    existing = session.get(WorldSourceRow, d.source_id)
+    row = existing or WorldSourceRow(id=d.source_id, status="never_synced", consecutive_failures=0, records_seen=0,
+                                     records_changed=0, cursor={})
+    history = list((existing.config or {}).get("terms_history", [])) if existing else []
+    if existing is not None:
+        old = {k: getattr(existing, k) for k in TERMS}
+        new = {k: getattr(d, k) for k in TERMS}
+        if old != new:
+            row.terms_changed = True          # transient flag: the caller re-projects this source's entities
+            history.append({**old, "until": now.isoformat()})
+            session.add(WorldChange(source_id=d.source_id, change_type="source_terms_changed", old_value=old,
+                                    new_value=new, detected_at=now))
     row.source_type, row.source_class, row.name, row.format = d.source_type, d.source_class, d.name, d.format
     row.license, row.attribution_required, row.attribution_text = d.license, d.attribution_required, d.attribution_text
     row.redistribution, row.retention_days, row.cache_raw = d.redistribution, d.retention_days, d.cache_raw
-    row.default_confidence, row.config = d.default_confidence, dict(d.config)
+    row.default_confidence = d.default_confidence
+    row.config = {**dict(d.config), **({"terms_history": history} if history else {})}
     session.add(row)
     session.flush()
     return row
@@ -366,8 +387,12 @@ def run_sync(session: Session, adapter: SourceAdapter, *, now: datetime, scope: 
     policies = policies or load()
     d = adapter.descriptor
     scope = scope or Scope()
-    src = register_source(session, d, policies)
+    src = register_source(session, d, policies, now)
     report = SyncReport(d.source_id, mode)
+    if getattr(src, "terms_changed", False):
+        report.affected |= set(session.scalars(
+            select(EntityLink.canonical_entity_id).join(SourceEntity, EntityLink.source_entity_id == SourceEntity.id)
+            .where(SourceEntity.source_id == d.source_id, EntityLink.active)))
     cursor = dict(src.cursor or {})
     resume = cursor.get("in_progress") if cursor.get("in_progress", {}).get("mode") == mode else None
     started = datetime.fromisoformat(resume["run_started_at"]) if resume else now

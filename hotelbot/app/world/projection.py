@@ -108,12 +108,22 @@ def quality(session: Session, canonical: CanonicalEntity, res: dict[str, Resolut
 
 
 def _attribution(res: dict[str, Resolution], sources: dict[str, WorldSourceRow]) -> list[str]:
+    """Sources whose terms require attribution for a SHOWN (winning) value:
+    the current terms, or the terms the value was published under (a source
+    dropping its requirement later does not strip attribution from data it
+    gave us before)."""
     needed = set()
     for r in res.values():
-        if r.winner is not None:
-            src = sources.get(r.winner.source_id)
-            if src is not None and src.attribution_required:
-                needed.add(src.id)
+        if r.winner is None:
+            continue
+        src = sources.get(r.winner.source_id)
+        if src is None:
+            continue
+        created = as_utc(r.winner.created_at) if r.winner.created_at else None
+        earlier = [h for h in (src.config or {}).get("terms_history", []) if h.get("attribution_required")
+                   and created is not None and datetime.fromisoformat(h["until"]) >= created]
+        if src.attribution_required or earlier:
+            needed.add(src.id)
     return sorted(needed)
 
 

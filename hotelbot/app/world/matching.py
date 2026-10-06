@@ -71,6 +71,24 @@ TYPE_CLASSES: dict[str, tuple[str, ...]] = {
     "festival": ("festival",),
 }
 _TYPE_OF = {w: cls for cls, words in TYPE_CLASSES.items() for w in words}
+
+
+def _taxonomy_type_words() -> dict[str, str]:
+    """Every single-word taxonomy keyword ("galerija", "gallery", "apoteka",
+    "museum" ...) names a KIND of place, not a business: it is a type token,
+    never name content (else "Galerija Luna" ~ "Galerija Sunce")."""
+    from app.places.taxonomy import SUBCATEGORIES
+
+    out: dict[str, str] = {}
+    for key, sub in SUBCATEGORIES.items():
+        for kw in list(sub.keywords) + list(sub.labels.values()):
+            w = fold(kw).strip()
+            if w and " " not in w and "*" not in w and len(w) > 2 and w.isalpha():
+                out.setdefault(w, f"kind:{key}")
+    return out
+
+
+_TYPE_OF = {**_taxonomy_type_words(), **_TYPE_OF}      # curated classes win (konoba ~ restaurant)
 _STOP = {"the", "a", "an", "and", "of", "i", "u", "na", "de", "la", "le", "el", "il", "da", "di", "&", "v"}
 CATEGORY_GROUPS = [{"FOOD", "NIGHTLIFE"}]       # a cafe-bar may be filed under either
 
@@ -137,6 +155,8 @@ class Profile:
     starts: list[datetime]
     venues: set[str]
     organizers: set[str]
+    phone_seen: dict[str, datetime] = field(default_factory=dict)    # newest observation of each phone
+    coords_newest: datetime | None = None                             # newest observation of a location
 
 
 def _profile(session: Session, canonical: CanonicalEntity) -> Profile:
@@ -151,11 +171,18 @@ def _profile(session: Session, canonical: CanonicalEntity) -> Profile:
     for se in ses:
         n = se.normalized or {}
         f = n.get("fields", {})
+        seen = n.get("observed", {})
         if se.latitude is not None:
             prof.points.append(Point(se.latitude, se.longitude))
+            when = _dt(seen.get("coordinates")) or se.last_seen_at
+            if when is not None and (prof.coords_newest is None or when > prof.coords_newest):
+                prof.coords_newest = when
         for kind, value in n.get("identifiers", []):
             if kind == "phone":
                 prof.phones.add(value)
+                when = _dt(seen.get("phone")) or se.last_seen_at
+                if when is not None and (value not in prof.phone_seen or when > prof.phone_seen[value]):
+                    prof.phone_seen[value] = when
             elif kind == "domain":
                 prof.domains.add(value)
             elif kind.startswith("ext:") or kind == "ticket_url":
@@ -172,6 +199,22 @@ def _profile(session: Session, canonical: CanonicalEntity) -> Profile:
     if not prof.points and canonical.latitude is not None:
         prof.points.append(Point(canonical.latitude, canonical.longitude))
     return prof
+
+
+def _dt(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    from app.clock import as_utc
+
+    return as_utc(datetime.fromisoformat(value) if isinstance(value, str) else value)
+
+
+# Identity evidence ages too: a phone seen only years ago may have been reassigned.
+CONTACT_EVIDENCE_MAX_AGE = timedelta(days=365)
+# Relocation needs one location to be clearly older than the other; two
+# CURRENT locations of one brand are a chain, not a move.
+RELOCATION_MIN_GAP = timedelta(days=90)
+RELOCATION_MAX_KM = 50.0
 
 
 def _candidates(session: Session, ent: NormalizedEntity, source_id: str) -> list[CanonicalEntity]:
@@ -229,33 +272,50 @@ def _best_name(ent: NormalizedEntity, prof: Profile, locality: set[str]) -> tupl
 def _decide_place(ent: NormalizedEntity, prof: Profile, locality: set[str], source_id: str) -> tuple[str, float, dict]:
     from app.places.taxonomy import category_of
 
-    ext = {(k, v) for k, v in ent.identifiers if (k.startswith("ext:") and k != f"ext:{source_id}")} & prof.ext_ids
-    ext |= {(k, v) for k, v in ent.identifiers if k == f"ext:{source_id}"} & prof.ext_ids
+    ext = {(k, v) for k, v in ent.identifiers if k.startswith("ext:")} & prof.ext_ids
     p = Point(ent.latitude, ent.longitude) if ent.latitude is not None else None
     d = min((distance_km(p, q) for q in prof.points), default=None) if p else None
     s, type_conflict = _best_name(ent, prof, locality)
     phones = {v for k, v in ent.identifiers if k == "phone"}
     domains = {v for k, v in ent.identifiers if k == "domain"}
-    phone_eq, domain_eq = bool(phones & prof.phones), bool(domains & prof.domains)
-    phone_conflict = bool(phones and prof.phones and not phone_eq)
+    mine = _dt(ent.observed.get("phone")) or _dt(ent.observed.get("name"))
+    # a shared phone counts only if the other record's phone evidence is not stale relative to ours
+    phone_eq = any(ph in prof.phones and (mine is None or prof.phone_seen.get(ph) is None
+                                          or abs(mine - prof.phone_seen[ph]) <= CONTACT_EVIDENCE_MAX_AGE)
+                   for ph in phones)
+    phone_stale_shared = bool(phones & prof.phones) and not phone_eq
+    domain_eq = bool(domains & prof.domains)
+    phone_conflict = bool(phones and prof.phones and not (phones & prof.phones))
     sub = ent.fields.get("subcategory")
     cat = category_of(sub) if sub else None
     cat_conflict = bool(cat and prof.categories and cat not in prof.categories
                         and not any({cat} | prof.categories <= g for g in CATEGORY_GROUPS)
                         and "OTHER" not in prof.categories | {cat})
     ev = {"distance_m": None if d is None else round(d * 1000), "name_similarity": round(s, 3),
-          "phone_equal": phone_eq, "phone_conflict": phone_conflict, "domain_equal": domain_eq,
-          "type_conflict": type_conflict, "category_conflict": cat_conflict,
+          "phone_equal": phone_eq, "phone_shared_but_stale": phone_stale_shared, "phone_conflict": phone_conflict,
+          "domain_equal": domain_eq, "type_conflict": type_conflict, "category_conflict": cat_conflict,
           "shared_ids": sorted(f"{k}={v}" for k, v in ext)}
     if ext:
-        return (AMBIGUOUS, 0.5, {**ev, "rule": "shared id but far apart"}) if d is not None and d > 2.0 else \
-            (MATCH, 1.0, {**ev, "rule": "shared explicit identifier"})
+        # an identifier can be wrong (copied, recycled, mis-keyed): it merges
+        # only when nothing in the records contradicts it
+        contradiction = (s < 0.5 and not phone_eq and not domain_eq) or type_conflict or cat_conflict or \
+            phone_conflict
+        if (d is not None and d > 2.0) or contradiction:
+            return AMBIGUOUS, 0.5, {**ev, "rule": "shared id but the records contradict each other"}
+        return MATCH, 1.0, {**ev, "rule": "shared explicit identifier"}
     if d is None:
         if (phone_eq or domain_eq) and s >= 0.9:
             return MATCH, 0.9, {**ev, "rule": "no coordinates: same contact and name"}
         return (AMBIGUOUS, 0.5, {**ev, "rule": "no coordinates: similar name"}) if s >= 0.9 else \
             (NO_MATCH, 0.0, ev)
     if d > 0.3:
+        mine_loc = _dt(ent.observed.get("coordinates")) or mine
+        moved = (mine_loc is not None and prof.coords_newest is not None
+                 and abs(mine_loc - prof.coords_newest) >= RELOCATION_MIN_GAP)
+        if s >= 0.85 and phone_eq and domain_eq and d <= RELOCATION_MAX_KM and moved \
+                and not (type_conflict or cat_conflict):
+            return MATCH, 0.85, {**ev, "rule": "relocated: same name, phone and website; one location is "
+                                              "clearly older evidence"}
         return NO_MATCH, 0.0, {**ev, "rule": "too far apart (chains are separate locations)"}
     if type_conflict or cat_conflict:
         if phone_eq:
@@ -266,7 +326,11 @@ def _decide_place(ent: NormalizedEntity, prof: Profile, locality: set[str], sour
             return AMBIGUOUS, 0.6, {**ev, "rule": "similar name nearby but different phone"}
         return MATCH, round(0.7 + 0.3 * s, 3), {**ev, "rule": "same name, same place"}
     if (phone_eq or domain_eq) and d <= 0.05:
-        return MATCH, 0.9, {**ev, "rule": "same phone/website at the same spot"}
+        # one shared contact can be a building / agency number: names must
+        # be compatible, or TWO independent contacts must agree
+        if s >= 0.5 or (phone_eq and domain_eq):
+            return MATCH, 0.9, {**ev, "rule": "same contact at the same spot"}
+        return AMBIGUOUS, 0.4, {**ev, "rule": "same contact at the same spot but unrelated names"}
     if (phone_eq or domain_eq) and d <= 0.2 and s >= 0.5:
         return MATCH, 0.85, {**ev, "rule": "same phone/website nearby, related name"}
     if s >= 0.6:
@@ -302,9 +366,21 @@ def _decide_event(ent: NormalizedEntity, prof: Profile, locality: set[str], sour
     return NO_MATCH, 0.0, ev
 
 
+# Counters for benchmarking / observability (process-local).
+STATS = {"decisions": 0, "candidates_evaluated": 0, "match": 0, "no_match": 0, "ambiguous": 0}
+
+
 def resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: set[str] = frozenset()) -> Decision:
+    decision = _resolve(session, ent, source_id, locality)
+    STATS["decisions"] += 1
+    STATS[decision.outcome.lower()] += 1
+    return decision
+
+
+def _resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: set[str] = frozenset()) -> Decision:
     matches, ambiguous = [], []
     for canonical in _candidates(session, ent, source_id):
+        STATS["candidates_evaluated"] += 1
         prof = _profile(session, canonical)
         decide = _decide_event if ent.entity_type == "EVENT" else _decide_place
         outcome, score, evidence = decide(ent, prof, locality, source_id)

@@ -21,10 +21,9 @@ from __future__ import annotations
 
 import argparse
 import random
-import statistics
 import sys
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -110,10 +109,42 @@ def generate(n: int, seed: int = 11) -> tuple[list[dict], dict[str, list[dict]]]
     return truth, sources
 
 
-def run(entities: int, db: str) -> dict:
+def _pct(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    v = sorted(values)
+    return round(v[min(len(v) - 1, int(q * len(v)))] * 1000, 2)
+
+
+def run(entities: int, db: str, *, queries: int = 200) -> dict:
+    from sqlalchemy import func
+
+    from app.db.models import CanonicalEntity, FactAssertion, MatchReview
+    from app.world import matching, projection
+
     engine = make_engine(db)
+    with engine.begin() as conn:                       # clean slate (benchmark database only)
+        from sqlalchemy import MetaData
+
+        meta = MetaData()
+        meta.reflect(conn)
+        meta.drop_all(conn)
     create_schema(engine)
-    out: dict = {"entities_truth": entities, "db": db.split(":")[0]}
+    out: dict = {"db": db.split(":")[0], "truth_seed_entities": entities}
+    proj_times: list[float] = []
+    original = projection.project
+
+    def timed(*a, **kw):  # noqa: ANN002, ANN003
+        t0 = time.perf_counter()
+        try:
+            return original(*a, **kw)
+        finally:
+            proj_times.append(time.perf_counter() - t0)
+
+    projection.project = timed
+    for k in matching.STATS:
+        matching.STATS[k] = 0
+    page_times: list[float] = []
     with sessionmaker(engine)() as s:
         for code, lat, lon in CITIES:
             coverage.upsert_area(s, code=code, kind="locality", name=code.title(), center=(lat, lon), radius_km=15,
@@ -122,55 +153,86 @@ def run(entities: int, db: str) -> dict:
         truth, sources = generate(entities)
         out["truth_businesses"] = len(truth)
         classes = {"dir": "directory", "partner": "partner_feed", "tour": "tourism_feed"}
+        total_records, total_seconds = 0, 0.0
         for name, records in sources.items():
             d = SourceDescriptor(source_id=f"bench:{name}", source_type="fixture", source_class=classes[name],
                                  name=name, format="generic.v1", license="benchmark (synthetic)",
                                  config={"country_code": "ME", "timezone": "Europe/Podgorica"})
+            last = [time.perf_counter()]
+
+            def checkpoint(sess, last=last):  # noqa: ANN001
+                sess.commit()
+                now = time.perf_counter()
+                page_times.append(now - last[0])
+                last[0] = now
+
             t0 = time.perf_counter()
-            report = run_sync(s, FixtureAdapter(d, records, page_size=500), now=NOW, checkpoint=lambda x: x.commit())
+            run_sync(s, FixtureAdapter(d, records, page_size=500), now=NOW, checkpoint=checkpoint)
             s.commit()
             dt = time.perf_counter() - t0
+            total_records += len(records)
+            total_seconds += dt
             out[f"ingest_{name}"] = {"records": len(records), "seconds": round(dt, 1),
-                                     "records_per_s": round(len(records) / dt, 1), "matched": report.matched,
-                                     "ambiguous": report.ambiguous}
-        # ---- ER quality vs ground truth
-        by_canonical: dict[str, set[str]] = defaultdict(set)
-        by_truth: dict[str, set[str]] = defaultdict(set)
+                                     "records_per_s": round(len(records) / dt, 1)}
+        projection.project = original
+        out["ingest_total"] = {
+            "source_records": total_records, "seconds": round(total_seconds, 1),
+            "records_per_s": round(total_records / total_seconds, 1),
+            "canonical_entities": s.scalar(select(func.count()).select_from(CanonicalEntity)),
+            "assertions": s.scalar(select(func.count()).select_from(FactAssertion)),
+            "er_decisions": matching.STATS["decisions"],
+            "er_candidates_evaluated": matching.STATS["candidates_evaluated"],
+            "er_candidates_per_decision": round(matching.STATS["candidates_evaluated"]
+                                                / max(matching.STATS["decisions"], 1), 2),
+            "page_500_p50_ms": _pct(page_times, 0.5), "page_500_p95_ms": _pct(page_times, 0.95),
+            "projection_p50_ms": _pct(proj_times, 0.5), "projection_p95_ms": _pct(proj_times, 0.95)}
+        # ---- entity resolution vs ground truth (pairwise)
+        clusters: dict[str, list[str]] = defaultdict(list)
+        by_truth: dict[str, list[str]] = defaultdict(list)
         for se in s.scalars(select(SourceEntity).where(SourceEntity.source_id.like("bench:%"))):
-            cid = active_canonical(s, se.id)
             tr = (se.raw or {}).get("truth")
-            by_canonical[cid].add(tr)
-            by_truth[tr].add(cid)
-        false_merges = sum(1 for trs in by_canonical.values() if len(trs) > 1)
-        multi_source = [t for t, cids in by_truth.items() if True]
-        missed = sum(len(cids) - 1 for cids in by_truth.values())
-        records_total = sum(len(r) for r in sources.values())
-        possible_links = records_total - len(by_truth)
+            clusters[active_canonical(s, se.id)].append(tr)
+            by_truth[tr].append(se.id)
+
+        def pairs(n: int) -> int:
+            return n * (n - 1) // 2
+
+        predicted = sum(pairs(len(m)) for m in clusters.values())
+        correct = sum(sum(pairs(c) for c in Counter(m).values()) for m in clusters.values())
+        true_pairs = sum(pairs(len(v)) for v in by_truth.values())
+        false_merge_entities = sum(1 for m in clusters.values() if len(set(m)) > 1)
+        reviews = s.scalar(select(func.count()).select_from(MatchReview))
         out["entity_resolution"] = {
-            "source_records": records_total, "canonical_entities": len(by_canonical),
-            "truth_entities_seen": len(multi_source), "false_merges": false_merges,
-            "missed_duplicate_links": missed, "possible_links": possible_links,
-            "link_recall": round(1 - missed / possible_links, 3) if possible_links else 1.0,
-            "precision": 1.0 if false_merges == 0 else round(1 - false_merges / len(by_canonical), 4)}
-        # ---- spatial: index vs full scan
+            "precision": round(correct / predicted, 4) if predicted else 1.0,
+            "recall": round(correct / true_pairs, 4) if true_pairs else 1.0,
+            "false_merges_entities": false_merge_entities,
+            "false_merge_pairs": predicted - correct,
+            "missed_links_pairs": true_pairs - correct,
+            "ambiguous_rate": round(reviews / total_records, 4),
+            "match_rate": round(matching.STATS["match"] / max(matching.STATS["decisions"], 1), 4)}
+        # ---- spatial: index vs full scan, nearest-N
         idx = GeohashIndex()
         rng = random.Random(3)
-        t_idx, t_scan, mismatches = [], [], 0
-        for _ in range(50):
+        t_idx, t_scan, t_near, mismatches = [], [], [], 0
+        for i in range(queries):
             _, lat, lon = rng.choice(CITIES)
             c = Point(lat + rng.uniform(-0.03, 0.03), lon + rng.uniform(-0.03, 0.03))
             t0 = time.perf_counter()
             a = {p.id for p, _ in idx.within_radius(s, c, 1.0)}
             t_idx.append(time.perf_counter() - t0)
             t0 = time.perf_counter()
-            b = {p.id for p in s.scalars(select(Place).where(Place.active))
-                 if p.latitude is not None and distance_km(c, Point(p.latitude, p.longitude)) <= 1.0}
-            t_scan.append(time.perf_counter() - t0)
-            mismatches += a != b
-        out["spatial_radius_1km"] = {"places": s.query(Place).count(),
-                                     "index_ms_median": round(statistics.median(t_idx) * 1000, 2),
-                                     "full_scan_ms_median": round(statistics.median(t_scan) * 1000, 2),
-                                     "result_mismatches": mismatches}
+            idx.nearest(s, c, 5)
+            t_near.append(time.perf_counter() - t0)
+            if i < 20:                                  # full scans are slow: correctness sample
+                t0 = time.perf_counter()
+                b = {p.id for p in s.scalars(select(Place).where(Place.active))
+                     if p.latitude is not None and distance_km(c, Point(p.latitude, p.longitude)) <= 1.0}
+                t_scan.append(time.perf_counter() - t0)
+                mismatches += a != b
+        out["spatial"] = {"places": s.scalar(select(func.count()).select_from(Place)),
+                          "radius_1km_p50_ms": _pct(t_idx, 0.5), "radius_1km_p95_ms": _pct(t_idx, 0.95),
+                          "nearest_5_p50_ms": _pct(t_near, 0.5), "nearest_5_p95_ms": _pct(t_near, 0.95),
+                          "full_scan_p50_ms": _pct(t_scan, 0.5), "index_vs_scan_mismatches": mismatches}
     engine.dispose()
     return out
 

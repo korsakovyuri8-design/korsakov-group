@@ -87,14 +87,20 @@ A translated name alone never matches.
 
 | Condition | Outcome |
 |---|---|
-| shared explicit identifier | MATCH (AMBIGUOUS if more than 2 km apart) |
-| more than 300 m apart | NO_MATCH (chains are separate locations) |
+| shared explicit identifier, nothing contradicting it | MATCH |
+| shared explicit identifier, but contradicted (unrelated name without a shared contact, different kind, different phone) or more than 2 km apart | AMBIGUOUS |
+| more than 300 m apart | NO_MATCH (chains: same brand elsewhere) |
+| more than 300 m apart, **relocation**: same name, same current phone AND website, one location's evidence ≥ 90 days older, ≤ 50 km | MATCH (both locations current = chain = NO_MATCH) |
 | different kind or category | NO_MATCH (AMBIGUOUS if they share a phone) |
-| name ≥ 0.85 and ≤ 100 m | MATCH, but a *different phone* downgrades to AMBIGUOUS unless the name is ≥ 0.95 and they are ≤ 30 m apart |
-| same phone or domain, ≤ 50 m | MATCH (any name) |
-| same phone or domain, ≤ 200 m, name ≥ 0.5 | MATCH |
+| name ≥ 0.85 and ≤ 100 m | MATCH, but a different phone downgrades to AMBIGUOUS unless the name is ≥ 0.95 and they are ≤ 30 m apart |
+| same contact at the same spot (≤ 50 m) | MATCH only with a compatible name (≥ 0.5) or TWO independent contacts (phone and website); otherwise AMBIGUOUS (a building's booking line) |
+| same contact ≤ 200 m, name ≥ 0.5 | MATCH |
 | name ≥ 0.6, ≤ 300 m | AMBIGUOUS |
-| same spot (≤ 30 m), same kind, different names | AMBIGUOUS |
+| same spot, same kind, different names | AMBIGUOUS |
+
+A contact is identity evidence only while fresh. A phone the other record last showed more than 365 days before ours does not count, because numbers are recycled.
+
+Kind words never count as name content. Every single-word taxonomy keyword ("galerija", "apoteka", "museum"…) is a type token, so "Galerija Luna" and "Galerija Sunce" don't look alike.
 
 **Event rules:**
 
@@ -115,6 +121,8 @@ Two or more MATCH candidates → AMBIGUOUS.
 - **Ambiguous cases stay separate.** They get a review; `identity.resolve_review` merges only on a person's decision.
 - **Split, merge and revert.** `identity.split` (one record out into a new entity), `identity.merge` (the other entity stays with `merged_into_id`) and `identity.revert_merge` only end and create links and move assertions with their source entity. Source records and assertions are never destroyed. Plan items and offerings pointing at a merged-away place still resolve: the bridge follows `merged_into`.
 - **Measured.** The benchmark and the eval gates measure false merges against ground truth: 0.
+
+**Observation dates** reported in the future are clamped to the ingest time, and the skew is recorded (`future_observation_clamped`). A wrong clock never wins on recency.
 
 ## Field resolution policies
 
@@ -219,6 +227,7 @@ It is reactivated when a source lists it again.
 - **Per result.** The projection records which winning sources require attribution (`resolution._attribution`), and replies that show such data add "Data: <attribution>".
 - **Raw payloads** are not stored when caching is forbidden, and are dropped after the retention period. Normalized facts stay.
 - **Snapshots** carry the licence metadata.
+- **Term changes** are never silent. The previous terms go to `config.terms_history` with the time they ended, a `source_terms_changed` change is recorded, and the source's entities are re-projected. A value published under terms that required attribution keeps it, even if the source drops the requirement later.
 
 ## Snapshot model
 

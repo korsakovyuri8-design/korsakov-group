@@ -83,8 +83,14 @@ def run_world_step(step: WorldStep, state: WorldState, container, failures: list
         if step.sync is not None:
             p = step.sync
             src = p["source"]
+            if p.get("descriptor"):                 # the source's terms change (licence, attribution...)
+                import dataclasses
+
+                state.descriptors[src] = dataclasses.replace(state.descriptors[src], **p["descriptor"])
             d = state.descriptors[src]
             adapter = state.adapters.get(src)
+            if adapter is not None:
+                adapter.descriptor = d
             if adapter is None:
                 adapter = state.adapters[src] = FixtureAdapter(d)
             if "records" in p:
@@ -255,6 +261,10 @@ def check_world(exp: WorldExpect, state: WorldState, container, failures: list[s
                 failures.append(f"{tag}: state {r.state} ({r.reason}), expected {rx.state}")
             if rx.source is not None and (r.winner is None or r.winner.source_id != rx.source):
                 failures.append(f"{tag}: winner {r.winner.source_id if r.winner else None}, expected {rx.source}")
+            if rx.not_source is not None and r.winner is not None and r.winner.source_id == rx.not_source:
+                failures.append(f"{tag}: {rx.not_source} won ({r.reason}), it must not")
+            if rx.reason_contains is not None and rx.reason_contains.lower() not in (r.reason or "").lower():
+                failures.append(f"{tag}: reason {r.reason!r} lacks {rx.reason_contains!r}")
             if rx.conflicting is not None and len(r.conflicting) != rx.conflicting:
                 failures.append(f"{tag}: {len(r.conflicting)} conflicting kept, expected {rx.conflicting}")
         for px in exp.places:

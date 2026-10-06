@@ -1,0 +1,246 @@
+# WORLD (adversarial) - identity and fact-resolution edge cases.
+#
+# Written as DESIRED behaviour before running (raw-first). Each case targets
+# a known way entity resolution / field resolution goes wrong in real data.
+# Default clock: Mon 2026-10-05 12:00Z (14:00 local).
+
+- name: adv_business_relocation
+  category: world
+  description: >
+    Same name, phone and website; the directory still has the old address
+    (8 months old), the business's partner feed has the new one 2 km away.
+    Strong identity evidence -> ONE entity; the old location is kept as
+    history/dissent; the current location follows the coordinates policy.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "partner:b", source_class: partner_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Restoran Lipa", lat: 43.1400, lon: 19.1400, phone: "069 444 555", website: "restoran-lipa.me", category: restaurant, updated_at: "2026-02-01T10:00:00+01:00"}]}}
+    - world: {sync: {source: "partner:b", records: [{id: "lipa", name: "Restoran Lipa", lat: 43.1580, lon: 19.1420, phone: "+382 69 444 555", website: "https://restoran-lipa.me", category: restaurant, updated_at: "2026-10-01T10:00:00+02:00"}]}}
+      expect:
+        world:
+          entities: 1
+          same: [[{source: "dir:a", id: "1"}, {source: "partner:b", id: "lipa"}]]
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: coordinates, value: {lat: 43.158, lon: 19.142}, source: "partner:b", conflicting: 1}]
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Restoran Lipa", lat: 43.1580, lon: 19.1420, phone: "069 444 555", website: "restoran-lipa.me", category: restaurant, updated_at: "2026-10-03T10:00:00+02:00"}]}}
+      expect:
+        world:
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: coordinates, conflicting: 0, state: resolved}]
+          changes: [field_changed]
+
+- name: adv_business_replaced_same_location
+  category: world
+  gate: true
+  description: An old restaurant closed; a new, unrelated one opened at exactly the same coordinates. Same spot is not identity.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Restoran Stari Most", lat: 43.1410, lon: 19.1410, phone: "069 100 200", category: restaurant, updated_at: "2025-03-01T10:00:00+01:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Restoran Plava Ruža", lat: 43.1410, lon: 19.1410, phone: "067 300 400", category: restaurant, updated_at: "2026-10-01T10:00:00+02:00"}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]}
+
+- name: adv_chain_same_town
+  category: world
+  gate: true
+  description: Same brand, website, category and central booking phone; two branches 600 m apart, both currently listed -> two Places.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Pizzeria Napoli", lat: 43.1400, lon: 19.1400, phone: "020 600 600", website: "napoli.me", category: restaurant, updated_at: "2026-10-01T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Pizzeria Napoli", lat: 43.1454, lon: 19.1400, phone: "020 600 600", website: "napoli.me", category: restaurant, updated_at: "2026-10-02T10:00:00+02:00"}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]}
+
+- name: adv_shared_phone
+  category: world
+  gate: true
+  description: Two galleries in one building share the building's booking phone - the phone alone does not merge them.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Luna", lat: 43.1420, lon: 19.1420, phone: "069 800 800", category: gallery}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Galerija Sunce", lat: 43.14202, lon: 19.14205, phone: "069 800 800", category: gallery}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]}
+
+- name: adv_recycled_phone
+  category: world
+  gate: true
+  description: A cafe listed three years ago and an unrelated new cafe nearby have the same phone (recycled) - the old contact is stale evidence.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Kafe Stari Most", lat: 43.1430, lon: 19.1430, phone: "069 900 100", category: cafe, updated_at: "2023-05-01T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Kafe Lipa", lat: 43.14320, lon: 19.14310, phone: "069 900 100", category: cafe, updated_at: "2026-10-01T10:00:00+02:00"}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]}
+
+- name: adv_popup_seasonal
+  category: world
+  gate: true
+  description: A seasonal pop-up with the same name appears at a different location each winter - not collapsed without source identity.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Ice Bar Polar", lat: 43.1440, lon: 19.1440, category: bar, updated_at: "2025-12-15T10:00:00+01:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Ice Bar Polar", lat: 43.1530, lon: 19.1500, category: bar, updated_at: "2026-10-01T10:00:00+02:00"}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]}
+
+- name: adv_transliteration_collision
+  category: world
+  gate: true
+  description: '"Kafe Šuma" and "Kafe Suma" fold to the same name but are different cafes 40 m apart with different phones.'
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Kafe Šuma", lat: 43.1450, lon: 19.1450, phone: "069 700 111", category: cafe}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Kafe Suma", lat: 43.14535, lon: 19.1450, phone: "068 222 333", category: cafe}]}}
+      expect:
+        world: {entities: 2, distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]}
+
+- name: adv_event_series_vs_duplicate
+  category: world
+  gate: true
+  description: '"Jazz Night" every Friday at one venue = separate instances; the same Friday from a second feed = the same event.'
+  clock_start: "2027-01-11T09:00:00+00:00"
+  world_sources:
+    - {source_id: "tour:me", source_class: tourism_feed}
+    - {source_id: "tix:demo", source_class: ticketing_partner}
+  steps:
+    - world: {sync: {source: "tour:me", records: [
+        {id: "j15", type: event, title: "Jazz Night", category: concert, start: "2027-01-15T21:00:00", lat: 43.1552, lon: 19.1214},
+        {id: "j22", type: event, title: "Jazz Night", category: concert, start: "2027-01-22T21:00:00", lat: 43.1552, lon: 19.1214},
+        {id: "j29", type: event, title: "Jazz Night", category: concert, start: "2027-01-29T21:00:00", lat: 43.1552, lon: 19.1214}]}}
+    - world: {sync: {source: "tix:demo", records: [{id: "TX-22", type: event, title: "Jazz Night", category: concert, start: "2027-01-22T21:00:00+01:00", lat: 43.15521, lon: 19.12141, price: 10, currency: EUR}]}}
+      expect:
+        world:
+          entities: 3
+          same: [[{source: "tour:me", id: "j22"}, {source: "tix:demo", id: "TX-22"}]]
+          distinct: [[{source: "tour:me", id: "j15"}, {source: "tour:me", id: "j22"}, {source: "tour:me", id: "j29"}]]
+
+- name: adv_event_time_change
+  category: world
+  gate: true
+  description: The organizer moves a concert from 20:00 to 21:00 - same event; the organizer's new time wins; the old assertion stays in history.
+  clock_start: "2027-01-11T09:00:00+00:00"
+  world_sources:
+    - {source_id: "tour:me", source_class: tourism_feed}
+    - {source_id: "org:kc", source_class: organizer}
+  steps:
+    - world: {sync: {source: "tour:me", records: [{id: "e1", type: event, title: "Winter Strings", category: concert, start: "2027-01-23T20:00:00", lat: 43.1555, lon: 19.1222}]}}
+    - world: {sync: {source: "org:kc", records: [{id: "ws", type: event, title: "Winter Strings", category: concert, start: "2027-01-23T20:00:00", lat: 43.1555, lon: 19.1222}]}}
+      expect:
+        world: {entities: 1}
+    - world: {sync: {source: "org:kc", records: [{id: "ws", type: event, title: "Winter Strings", category: concert, start: "2027-01-23T21:00:00", lat: 43.1555, lon: 19.1222}]}}
+      expect:
+        world:
+          entities: 1
+          resolution: [{entity: {source: "org:kc", id: "ws"}, field: start_at, value: "2027-01-23T20:00:00+00:00", source: "org:kc", conflicting: 1}]
+          changes: [field_changed]
+
+- name: adv_stale_authority_vs_fresh_weak_90d
+  category: world
+  description: Owner hours 90 days old (aging, not yet stale) vs directory verified today - policy (authority within SLA) decides, and says why.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "own:polar", source_class: provider_owned}
+  steps:
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-07-07T12:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-22:00", updated_at: "2026-10-05T09:00:00+02:00"}]}}
+      expect:
+        world:
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, source: "own:polar", state: contested, conflicting: 1, reason_contains: "authority"}]
+
+- name: adv_temporary_closure_precedence
+  category: world
+  gate: true
+  description: A fresh owner-reported temporary closure dominates otherwise valid opening hours for its interval.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "own:kamen", source_class: provider_owned}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Kamen", lat: 43.1460, lon: 19.1460, category: gallery, opening_hours: "Mo-Su 09:00-19:00"}]}}
+    - world: {sync: {source: "own:kamen", records: [{id: "k", name: "Galerija Kamen", lat: 43.14601, lon: 19.14601, category: gallery, temporary_closure: {from: "2026-10-04", to: "2026-10-08", reason: "staff training"}}]}}
+    - guest: "Is there a gallery open now?"
+      expect: {forbidden: ["Galerija Kamen (gallery) - open"]}
+    - guest: "Find a gallery"
+      expect: {reply_contains: ["Galerija Kamen", "temporarily closed (staff training)"]}
+
+- name: adv_wrong_merge_then_split
+  category: world
+  gate: true
+  description: An operator wrongly merges an unrelated cafe into a booked restaurant, then splits it - everything recovers; the booking is untouched.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+  steps:
+    - guest: "Find a local restaurant for dinner tonight at 20:00, we are 2"
+    - guest: "book 1"
+    - guest: "yes"
+      expect: {notifications_contain: ["has accepted your booking"]}
+    - world: {sync: {source: "dir:a", records: [{id: "lipa", name: "Kafe Lipa", lat: 43.1430, lon: 19.1430, category: cafe, opening_hours: "Mo-Su 08:00-20:00"}]}}
+    - world: {merge: {keep: {source: "synthetic:zabljak-demo", id: "restoran-demo-ponoc"}, other: {source: "dir:a", id: "lipa"}}}
+      expect: {world: {transactions_unchanged: true}}
+    - world: {split: {entity: {source: "dir:a", id: "lipa"}}}
+      expect:
+        world:
+          transactions_unchanged: true
+          distinct: [[{source: "dir:a", id: "lipa"}, {source: "synthetic:zabljak-demo", id: "restoran-demo-ponoc"}]]
+          places: [{entity: {source: "synthetic:zabljak-demo", id: "restoran-demo-ponoc"}, active: true, name: "Restoran Demo Ponoć"},
+                   {entity: {source: "dir:a", id: "lipa"}, active: true, name: "Kafe Lipa"}]
+          resolution: [{entity: {source: "synthetic:zabljak-demo", id: "restoran-demo-ponoc"}, field: name, conflicting: 0},
+                       {entity: {source: "dir:a", id: "lipa"}, field: opening_hours, conflicting: 0}]
+    - guest: "my plan"
+      expect: {reply_contains: ["Restoran Demo Ponoć", "CONFIRMED by provider"]}
+  final: {bookings: ["restaurant_reservation:accepted"]}
+
+- name: adv_source_license_change
+  category: world
+  gate: true
+  description: A source changes its terms (drops the attribution requirement). The change is recorded; data published under the old terms keeps its attribution.
+  world_sources:
+    - {source_id: "osm:test", source_class: directory, license: "ODbL-1.0", attribution_required: true, attribution_text: "© OpenStreetMap contributors (test)", redistribution: attribution}
+  steps:
+    - world: {sync: {source: "osm:test", records: [{id: "n1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert}]}}
+    - world: {sync: {source: "osm:test", descriptor: {license: "CC0-1.0", attribution_required: false, redistribution: allowed}, records: [{id: "n1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert}]}}
+      expect:
+        world:
+          changes: [source_terms_changed]
+          places: [{entity: {source: "osm:test", id: "n1"}, attribution: ["osm:test"]}]
+
+- name: adv_source_clock_skew
+  category: world
+  gate: true
+  description: A source stamps its record five months in the FUTURE - impossible freshness must not make it win.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-02:00", updated_at: "2027-03-01T10:00:00+01:00"}]}}
+      expect:
+        world:
+          resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, not_source: "dir:c"}]
+
+- name: adv_identifier_collision
+  category: world
+  gate: true
+  description: Two unrelated businesses 1.2 km apart wrongly carry the same external id - AMBIGUOUS and reviewed, not merged.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Kamen", lat: 43.1400, lon: 19.1400, phone: "069 111 000", category: gallery, ids: {tripdir: "T-555"}}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Restoran Vidikovac", lat: 43.1508, lon: 19.1400, phone: "067 222 000", category: restaurant, ids: {tripdir: "T-555"}}]}}
+      expect:
+        world:
+          entities: 2
+          distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]
+          reviews_open: 1

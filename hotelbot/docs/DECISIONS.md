@@ -965,3 +965,24 @@ Split, merge and revert-merge end and create links; they never delete records or
 - **Concierge split.** The 1238-line concierge is now `compose.py`, `commands.py`, `discovery_dialogue.py` and `planner.py`, with `Concierge` composed from them. There is no behaviour change; all evals are unchanged.
 - **24/7.** A place open 00:00-00:00 every day renders "open 24/7" (was "open until 00:00").
 - **Recorded, not fixed (second-order UX).** "Somewhere nice?" gets a generic fallback instead of a clarifying question.
+
+---
+
+## D-072 - Adversarial identity round: six real defects, fixed by class
+
+Fifteen adversarial cases were written as desired behaviour before running. The raw result was **9/15**. Every failure was a real defect, fixed by a rule for its class, not by a fixture threshold:
+
+| Case | Defect | Class rule now |
+|---|---|---|
+| relocation | no notion of "same business moved" | name + current phone + website, one location ≥ 90 days older, ≤ 50 km → MATCH; both locations current → chain |
+| shared phone | "same contact at the same spot → MATCH, any name" | needs a compatible name or two independent contacts; else AMBIGUOUS |
+| recycled phone | stale contact counted as identity | contact evidence counts only within 365 days of ours |
+| identifier collision | shared external id merged unconditionally | id merges only when nothing contradicts it; else AMBIGUOUS + review |
+| clock skew | a future `observed_at` won on recency | clamped to ingest time, skew recorded |
+| licence change | terms overwritten silently | terms history, change recorded, sticky attribution, re-projection |
+
+After the fixes, the shared-phone check exposed one more defect: kind words ("galerija") counted as name content. All taxonomy keywords are now type tokens.
+
+**One existing expectation was tightened.** `world_translated_name_corroborated` had merged a translated name on a single shared phone. It now needs phone and website, and a new `world_translated_name_one_phone` scenario expects AMBIGUOUS. The shared-phone class showed the old expectation was unsafe.
+
+**Metrics.** False merges stay the primary metric. Precision, recall, missed links and the ambiguous rate are reported together (tools/world_benchmark.py).

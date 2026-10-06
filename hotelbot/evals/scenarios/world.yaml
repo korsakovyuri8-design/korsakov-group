@@ -130,7 +130,22 @@
 
 - name: world_translated_name_corroborated
   category: world
-  description: '"Black Lake Café" and "Kafe Crno Jezero" with the same phone at the same spot -> one entity.'
+  description: >
+    "Black Lake Café" / "Kafe Crno Jezero" at one spot with the same phone
+    AND website -> one entity. (Iteration 5 adversarial round: one shared
+    phone alone is no longer enough - see world_translated_name_one_phone.)
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "partner:b", source_class: partner_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Black Lake Café", lat: 43.1440, lon: 19.1440, phone: "+382 69 700 700", website: "blacklake-cafe.me", category: cafe}]}}
+    - world: {sync: {source: "partner:b", records: [{id: "3", name: "Kafe Crno Jezero", lat: 43.14401, lon: 19.14402, phone: "069 700 700", website: "https://blacklake-cafe.me/", category: cafe}]}}
+      expect:
+        world: {entities: 1, same: [[{source: "dir:a", id: "1"}, {source: "partner:b", id: "3"}]]}
+
+- name: world_translated_name_one_phone
+  category: world
+  description: A translated name with ONE shared phone at the same spot is AMBIGUOUS (kept separate, reviewed) - a building's line can serve several businesses.
   world_sources:
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "tour:me", source_class: tourism_feed}
@@ -138,7 +153,7 @@
     - world: {sync: {source: "dir:a", records: [{id: "1", name: "Black Lake Café", lat: 43.1440, lon: 19.1440, phone: "+382 69 700 700", category: cafe}]}}
     - world: {sync: {source: "tour:me", records: [{id: "2", name: "Kafe Crno Jezero", lat: 43.14401, lon: 19.14402, phone: "069 700 700", category: cafe}]}}
       expect:
-        world: {entities: 1, same: [[{source: "dir:a", id: "1"}, {source: "tour:me", id: "2"}]]}
+        world: {entities: 2, reviews_open: 1}
 
 - name: world_translated_name_uncorroborated
   category: world
