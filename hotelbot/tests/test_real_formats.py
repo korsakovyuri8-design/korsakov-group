@@ -14,7 +14,6 @@ import sys
 from datetime import datetime, timezone
 
 import pytest
-import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
@@ -124,23 +123,49 @@ def test_pilot_tools_run_end_to_end_offline(tmp_path):
     pilot = tmp_path / "pilot"
     (pilot / "raw").mkdir(parents=True)
     shutil.copy(ROOT / "data" / "pilot" / "kotor_budva" / "pilot.yaml", pilot / "pilot.yaml")
-    cfg = yaml.safe_load((pilot / "pilot.yaml").read_text())
-    dumps = {"osm": {"format": "osm.overpass.v1", "fetched_at": NOW.isoformat(), "parts": [],
-                     "response": {"elements": [OSM_RESTAURANT, OSM_MUSEUM_WAY, OSM_UNMAPPED]}},
-             "wikidata": {"format": "wikidata.sparql.v1", "fetched_at": NOW.isoformat(), "parts": [],
-                          "response": {"results": {"bindings": _wd_rows("Q999001", {"sr-el": "Muzej Test"},
-                                                                        osm_way="2002")}}}}
-    for src in cfg["sources"]:
-        (pilot / src["dump"]).write_text(json.dumps(dumps[src["source_id"]]))
-    run = subprocess.run([sys.executable, str(ROOT / "tools" / "pilot_run.py"), "--pilot", str(pilot)],
-                         capture_output=True, text=True, cwd=ROOT)
+    tool = lambda name, *a: subprocess.run([sys.executable, str(ROOT / "tools" / name), "--pilot", str(pilot), *a],  # noqa: E731
+                                           capture_output=True, text=True, cwd=ROOT)
+    # option B: response bodies fetched elsewhere are imported byte for byte
+    osm_body = json.dumps({"version": 0.6, "elements": [OSM_RESTAURANT, OSM_MUSEUM_WAY, OSM_UNMAPPED]}).encode()
+    (tmp_path / "osm_kotor.json").write_bytes(osm_body)
+    wd_body = json.dumps({"head": {}, "results": {"bindings": _wd_rows("Q999001", {"sr-el": "Muzej Test"},
+                                                                       osm_way="2002")}}).encode()
+    (tmp_path / "wd_kotor.json").write_bytes(wd_body)
+    for source, body in (("osm", "osm_kotor.json"), ("wikidata", "wd_kotor.json")):
+        r = tool("pilot_fetch.py", "--import", source, f"kotor={tmp_path / body}", "--fetched-at", NOW.isoformat())
+        assert r.returncode == 0, r.stderr[-2000:]
+    import hashlib
+
+    sums = (pilot / "raw" / "SHA256SUMS").read_text()
+    assert hashlib.sha256(osm_body).hexdigest() in sums and hashlib.sha256(wd_body).hexdigest() in sums
+    again = tool("pilot_fetch.py", "--import", "osm", f"kotor={tmp_path / 'osm_kotor.json'}", "--fetched-at",
+                 NOW.isoformat())
+    assert again.returncode != 0                                    # a raw dump is frozen once written
+
+    run = tool("pilot_run.py")
     assert run.returncode == 0, run.stderr[-2000:]
-    metrics = json.loads((pilot / "out" / "metrics.json").read_text())
+    out = pilot / "out" / "raw_v1"
+    metrics = json.loads((out / "metrics.json").read_text())
     assert metrics["sources"]["osm"]["field_coverage"]["counts"]["records"] == 3
     assert metrics["world"]["source_entities"] == 4 and metrics["snapshot"]["content_hash"]
-    for name in ("audit_pairs.csv", "audit_pairs.jsonl", "same_source_lookalikes.csv", "hours_audit.csv",
-                 "discovery_sample.md", "snapshot.json"):
-        assert (pilot / "out" / name).exists(), name
-    labels = subprocess.run([sys.executable, str(ROOT / "tools" / "pilot_labels.py"), "--pilot", str(pilot)],
-                            capture_output=True, text=True, cwd=ROOT)
+    assert set(metrics["provenance"]["dumps"]) == {"osm", "wikidata"} and metrics["provenance"]["pilot_yaml_sha256"]
+    # an explicit OSM<->Wikidata link is reported by its chain, never as independent support
+    assert metrics["pairs"]["matches"]["id_link_direction"] == {"both_directions": 1}
+    assert metrics["pairs"]["matches"]["only_by_id_link_chain"] == 1
+    assert metrics["pairs"]["matches"]["with_independent_support"] == 0
+    pairs = [json.loads(line) for line in (out / "audit_pairs.jsonl").open()]
+    match = next(p for p in pairs if p["decision"] == "MATCH")
+    assert "identifier:ext:osm" in match["candidate_reason"] or "identifier:ext:wikidata" in match["candidate_reason"]
+    for name in ("audit_pairs.csv", "same_source_lookalikes.csv", "hours_audit.csv", "discovery_sample.md",
+                 "snapshot.json"):
+        assert (out / name).exists(), name
+    assert tool("pilot_run.py").returncode == 3                      # the raw report is write-once
+
+    # human labels: UNSURE is neither an error nor a success
+    (pilot / "labels_raw_v1.csv").write_text("pair_id,label,notes\n" + "\n".join(
+        f"{p['pair_id']},{'UNSURE' if p['decision'] == 'MATCH' else 'DIFFERENT_ENTITY'}," for p in pairs) + "\n")
+    labels = tool("pilot_labels.py")
     assert labels.returncode == 0, labels.stderr[-2000:]
+    scored = json.loads((out / "label_metrics.json").read_text())
+    assert scored["unsure_total"] == 1 and scored["false_merges"] == []
+    assert scored["precision_on_random_match_sample"] is None       # no SAME/DIFFERENT label on a MATCH yet

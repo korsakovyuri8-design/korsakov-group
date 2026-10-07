@@ -241,7 +241,8 @@ RELOCATION_MIN_GAP = timedelta(days=90)
 RELOCATION_MAX_KM = 50.0
 
 
-def _candidates(session: Session, ent: NormalizedEntity, source_id: str) -> list[CanonicalEntity]:
+def _candidates(session: Session, ent: NormalizedEntity, source_id: str,
+                reasons: dict[str, list[str]] | None = None) -> list[CanonicalEntity]:
     """Blocking: exact identifiers, then geo cells (places) / time window (events).
     Entities already holding a record of the SAME source are never candidates
     (a source's two records are two things as far as we can tell)."""
@@ -260,6 +261,12 @@ def _candidates(session: Session, ent: NormalizedEntity, source_id: str) -> list
                    CanonicalEntity.active, CanonicalEntity.id.not_in(same_source))).scalars()
         for c in rows:
             found[c.id] = c
+        if reasons is not None:                  # observer only: WHY each candidate was blocked in
+            for c_id, kind, value in session.execute(
+                    select(EntityLink.canonical_entity_id, EntityIdentifier.kind, EntityIdentifier.value)
+                    .join(EntityIdentifier, EntityIdentifier.source_entity_id == EntityLink.source_entity_id)
+                    .where(or_(*conds), EntityLink.active, EntityLink.canonical_entity_id.in_(list(found)))):
+                reasons.setdefault(c_id, []).append(f"identifier:{kind}")
     if ent.latitude is not None:
         cells = geohash.cells_for_radius(ent.latitude, ent.longitude, 0.3)
         conds = [and_(CanonicalEntity.geohash >= lo, CanonicalEntity.geohash < hi)
@@ -271,6 +278,8 @@ def _candidates(session: Session, ent: NormalizedEntity, source_id: str) -> list
             q = q.where(CanonicalEntity.starts_at.between(start - timedelta(days=1), start + timedelta(days=1)))
         for c in session.scalars(q):
             found[c.id] = c
+            if reasons is not None:
+                reasons.setdefault(c.id, []).append("geo:300m" if ent.entity_type != "EVENT" else "geo+time:1d")
     elif ent.entity_type == "EVENT" and ent.fields.get("start_at"):
         start = datetime.fromisoformat(ent.fields["start_at"])
         for c in session.scalars(select(CanonicalEntity).where(
@@ -278,6 +287,8 @@ def _candidates(session: Session, ent: NormalizedEntity, source_id: str) -> list
                 CanonicalEntity.id.not_in(same_source),
                 CanonicalEntity.starts_at.between(start - timedelta(hours=12), start + timedelta(hours=12)))):
             found[c.id] = c
+            if reasons is not None:
+                reasons.setdefault(c.id, []).append("time:12h")
     return list(found.values())
 
 
@@ -428,7 +439,8 @@ def resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: s
 
 def _resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: set[str] = frozenset()) -> Decision:
     matches, ambiguous = [], []
-    candidates = _candidates(session, ent, source_id)
+    reasons: dict[str, list[str]] | None = {} if PAIR_LOG is not None else None
+    candidates = _candidates(session, ent, source_id, reasons)
     if CANDIDATE_SIZES is not None:
         CANDIDATE_SIZES.append(len(candidates))
     for canonical in candidates:
@@ -439,7 +451,8 @@ def _resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: 
         row = {"canonical_entity_id": canonical.id, "score": score, "evidence": evidence}
         if PAIR_LOG is not None:
             PAIR_LOG.append({"source_id": source_id, "record_id": ent.record_id, "canonical_entity_id": canonical.id,
-                             "candidates": len(candidates), "outcome": outcome, **row})
+                             "candidates": len(candidates), "outcome": outcome,
+                             "candidate_reason": sorted(set((reasons or {}).get(canonical.id, []))), **row})
         if outcome == MATCH:
             matches.append(row)
         elif outcome == AMBIGUOUS:

@@ -5,7 +5,9 @@
 RAW FIRST: the frozen Iteration 5.1 rules are used as they are. This tool
 OBSERVES and reports; it changes nothing in ER, policies or thresholds.
 
-Outputs (in <pilot>/out/):
+Outputs (in <pilot>/out/<run>/, WRITE-ONCE - the first raw report is frozen
+before any change to category maps, normalizer, ER or policies; a later run
+gets a new --run name and records what changed in its provenance):
   metrics.json            every number in the report
   audit_pairs.csv         pairs for a human to label (SAME_ENTITY / DIFFERENT_ENTITY / UNSURE)
   audit_pairs.jsonl       the same pairs with the full raw source records
@@ -127,6 +129,26 @@ def record_view(se: SourceEntity) -> dict[str, Any]:
             "category": f.get("subcategory"), "raw": se.raw}
 
 
+def id_link_direction(evidence: dict[str, Any]) -> str | None:
+    """Which data chain an explicit OSM<->Wikidata id link came through.
+    NOT independent confirmation: an OSM `wikidata=Q..` tag and Wikidata's
+    OSM-id property are often maintained by the same editors, from the
+    same knowledge. Reported separately from phone / website / address."""
+    shared = evidence.get("shared_ids") or []
+    wd = any(x.startswith("ext:wikidata=") for x in shared)      # the OSM side carried wikidata=Q..
+    osm = any(x.startswith("ext:osm=") for x in shared)          # the Wikidata side carried an OSM id
+    if wd and osm:
+        return "both_directions"
+    return "osm_wikidata_tag_only" if wd else "wikidata_osm_property_only" if osm else (
+        "other_explicit_id" if shared else None)
+
+
+def independent_support(evidence: dict[str, Any]) -> list[str]:
+    """Positive identity evidence that does NOT come from the id-link chain."""
+    sig = evidence.get("signals") or {}
+    return sorted(k for k in ("phone", "domain", "address") if sig.get(k) == "SUPPORTS_MATCH")
+
+
 def audit(session, log: list[dict], out: Path, rng: random.Random) -> dict[str, Any]:  # noqa: ANN001
     by_outcome = defaultdict(list)
     for p in log:
@@ -154,20 +176,25 @@ def audit(session, log: list[dict], out: Path, rng: random.Random) -> dict[str, 
             b = entity_view(session, p["canonical_entity_id"])
             b["members"] = [m for m in b["members"] if (m["source"], m["record_id"]) != (a["source"], a["record_id"])]
             rows.append({"pair_id": f"P{len(rows) + 1:04d}", "group": group, "decision": p["outcome"],
-                         "rule": ev(p).get("rule"), "score": p["score"], "evidence": ev(p), "a": a, "b": b})
+                         "rule": ev(p).get("rule"), "score": p["score"], "evidence": ev(p),
+                         "candidate_reason": p.get("candidate_reason", []),
+                         "id_link_direction": id_link_direction(ev(p)),
+                         "independent_support": independent_support(ev(p)), "a": a, "b": b})
     with (out / "audit_pairs.jsonl").open("w") as fh:
         for r in rows:
             fh.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
     with (out / "audit_pairs.csv").open("w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["pair_id", "group", "decision", "rule", "distance_m", "name_similarity", "signals",
+        w.writerow(["pair_id", "group", "decision", "rule", "candidate_reason", "id_link_direction",
+                    "independent_support", "distance_m", "name_similarity", "signals",
                     "a_source", "a_id", "a_name", "a_address", "a_phone", "a_website", "a_ids", "a_category",
                     "b_records", "b_names", "b_addresses", "b_phones", "b_websites", "b_ids", "b_categories",
                     "label", "notes"])
         for r in rows:
             e, a, ms = r["evidence"], r["a"], r["b"]["members"]
             j = lambda k: " | ".join(str(m[k]) for m in ms if m[k])  # noqa: E731
-            w.writerow([r["pair_id"], r["group"], r["decision"], r["rule"], e.get("distance_m"),
+            w.writerow([r["pair_id"], r["group"], r["decision"], r["rule"], " ".join(r["candidate_reason"]),
+                        r["id_link_direction"] or "", " ".join(r["independent_support"]), e.get("distance_m"),
                         e.get("name_similarity"), json.dumps(e.get("signals")), a["source"], a["record_id"],
                         a["name"], a["address"], a["phone"], a["website"], " ".join(a["ids"]), a["category"],
                         " | ".join(f"{m['source']}:{m['record_id']}" for m in ms), j("name"), j("address"),
@@ -304,17 +331,42 @@ def discovery_sample(session, out: Path, now: datetime, region: str) -> list[dic
     return results
 
 
+# ------------------------------------------------------------- provenance
+def provenance(pilot: Path, cfg: dict) -> dict[str, Any]:
+    """What exactly produced this report: dump hashes, the config (category
+    maps) hash and the code version - so a later report can be compared
+    to this one knowing what changed."""
+    import hashlib
+    import subprocess
+
+    def sha(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    root = Path(__file__).resolve().parents[1]
+    git = lambda *a: subprocess.run(["git", *a], capture_output=True, text=True, cwd=root).stdout.strip()  # noqa: E731
+    return {"dumps": {src["source_id"]: sha(pilot / src["dump"]) for src in cfg["sources"]},
+            "pilot_yaml_sha256": sha(pilot / "pilot.yaml"),
+            "policies_sha256": sha(root / "data" / "world" / "policies.yaml"),
+            "code_commit": git("rev-parse", "HEAD") or None,
+            "code_dirty": bool(git("status", "--porcelain", "--", "app", "tools", "data/world"))}
+
+
 # ------------------------------------------------------------------- main
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pilot", default="data/pilot/kotor_budva")
     ap.add_argument("--db", default="sqlite://")
     ap.add_argument("--now", help="ISO time the pilot is evaluated at (default: the newest dump's fetch time)")
+    ap.add_argument("--run", default="raw_v1",
+                    help="report name; a report is WRITE-ONCE (the first raw report is frozen before any change)")
     args = ap.parse_args()
     pilot = Path(args.pilot)
     cfg = yaml.safe_load((pilot / "pilot.yaml").read_text())
-    out = pilot / "out"
-    out.mkdir(exist_ok=True)
+    out = pilot / "out" / args.run
+    if (out / "metrics.json").exists():
+        print(f"{out} already holds a frozen report - pick a new --run name (reports are never overwritten)")
+        return 3
+    out.mkdir(parents=True, exist_ok=True)
     dumps = {}
     for src in cfg["sources"]:
         path = pilot / src["dump"]
@@ -336,7 +388,8 @@ def main() -> int:
     for name, box in cfg["scope"].items():
         coverage.upsert_area(s, code=f"{cfg['region']}:{name}", kind="locality", name=name.title(),
                              country_code=cfg["country_code"], timezone=cfg["timezone"], bbox=tuple(box))
-    metrics: dict[str, Any] = {"now": now.isoformat(), "sources": {}, "ingest": {}}
+    metrics: dict[str, Any] = {"run": args.run, "now": now.isoformat(), "provenance": provenance(pilot, cfg),
+                               "sources": {}, "ingest": {}}
     matching.PAIR_LOG, matching.CANDIDATE_SIZES = [], []
     for src in cfg["sources"]:
         d = descriptor(src, cfg)
@@ -364,7 +417,17 @@ def main() -> int:
                         "by_rule": dict(Counter(p["evidence"].get("rule", "-") for p in log).most_common(25)),
                         "signal_states": {sig: dict(Counter((p["evidence"].get("signals") or {}).get(sig, "-")
                                                             for p in log))
-                                          for sig in ("phone", "domain", "address", "external_id")}}
+                                          for sig in ("phone", "domain", "address", "external_id")},
+                        "candidate_reasons": dict(Counter(" + ".join(p.get("candidate_reason") or ["-"])
+                                                          for p in log)),
+                        "matches": {
+                            "id_link_direction": dict(Counter(id_link_direction(p["evidence"]) or "none"
+                                                              for p in log if p["outcome"] == "MATCH")),
+                            "with_independent_support": sum(1 for p in log if p["outcome"] == "MATCH"
+                                                            and independent_support(p["evidence"])),
+                            "only_by_id_link_chain": sum(1 for p in log if p["outcome"] == "MATCH"
+                                                         and id_link_direction(p["evidence"])
+                                                         and not independent_support(p["evidence"]))}}
     metrics["world"] = {"source_entities": s.query(SourceEntity).count(),
                         "canonical_entities": s.query(CanonicalEntity).filter(CanonicalEntity.active).count(),
                         "multi_source_canonicals": sum(

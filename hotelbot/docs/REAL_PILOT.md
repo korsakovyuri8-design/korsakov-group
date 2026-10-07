@@ -17,7 +17,21 @@
 
 The proxy answers 403 to CONNECT, and the web-fetch tool is behind the same egress policy. Package registries are reachable.
 
-**To unblock:** add `overpass-api.de` and `query.wikidata.org` under Network access → Allowed domains in the environment settings (https://code.claude.com/docs/en/cloud-environments#network-access). Alternatively, run `tools/pilot_fetch.py` on any machine with internet access and commit the two dump files it writes. Everything after the fetch runs offline from the dumps.
+**To unblock, either:**
+
+- **A.** Allow only `overpass-api.de` and `query.wikidata.org` under Network access → Allowed domains (https://code.claude.com/docs/en/cloud-environments#network-access), then run `python tools/pilot_fetch.py`.
+- **B.** Fetch elsewhere and import the **original HTTP response bodies**, not a cleaned CSV:
+  1. `python tools/pilot_fetch.py --print-queries` prints the four exact queries (2 sources × 2 boxes) and their endpoints. Overpass takes a POST with `data=<query>`; Wikidata takes a GET with `format=json&query=<query>`.
+  2. Save each response body as-is and import it:
+
+     ```
+     python tools/pilot_fetch.py --import osm kotor=osm_kotor.json budva=osm_budva.json --fetched-at 2026-10-08T10:00:00+00:00
+     python tools/pilot_fetch.py --import wikidata kotor=wd_kotor.json budva=wd_budva.json --fetched-at 2026-10-08T10:05:00+00:00
+     ```
+
+     The import keeps the bodies byte for byte (sha256 in `raw/SHA256SUMS`) and marks the dump `fetched_outside_environment`.
+
+Everything after the fetch runs offline from the dumps.
 
 ## Sources
 
@@ -42,6 +56,8 @@ The two sources are structurally different. They are linked by *explicit* identi
 - **The Central Tourist Register of Montenegro** ([gov.me](https://gov.me/en/article/central-tourist-register)). It is the official register of tourism and catering businesses and would be the natural third, authoritative source. Its reuse licence is not confirmed, and the national open-data portal (data.gov.me, relaunched December 2024) could not be checked from here.
 - **TO Kotor / TO Budva event calendars.** No data licence was found, and scraping without permission is out. So there is **no legal event source yet**, and the event pilot (step 13) is not forced.
 
+**No architecture decision on mixing and redistribution is taken here.** ODbL is not just an attribution line. If the canonical world is ever distributed as a database or as a substantial extract, the derivative vs collective database question and share-alike need their own analysis. The World Fabric keeps per-source provenance, licence and redistribution terms on every assertion (`world_sources`, `_attribution`). A discovery service can therefore be designed to respect each source's limits rather than "mix everything and hand the result out".
+
 **Licence consequence to keep in mind.** OSM's share-alike applies to a *publicly distributed* derived database. Internal use and Produced Works (answers shown to a traveller, with attribution) are fine. Publishing the merged canonical world as a database would oblige us to share it under ODbL.
 
 ## Scope
@@ -52,6 +68,28 @@ The bounding boxes are in `data/pilot/kotor_budva/pilot.yaml`:
 - **Budva:** Budva, Bečići, Rafailovići, Sveti Stefan.
 
 The categories are those the product already supports. The category maps are data (OSM `key=value` and Wikidata P31 → existing subcategories). An unmapped tag becomes `unclassified` plus an issue. Examples are `tourism=attraction` and `shop=convenience`, and Wikidata types outside the list. Those counts are reported, not hidden. No category architecture was added.
+
+## Methodology locked BEFORE any real data (no retroactive changes)
+
+1. **An OSM↔Wikidata explicit-id link is not independent confirmation.** The OSM `wikidata=Q…` tag and Wikidata's OSM-id properties are often maintained by the same editors, from the same knowledge: one data chain, not two witnesses. ER still uses the link as it is frozen, but every MATCH reports the link's direction (`osm_wikidata_tag_only`, `wikidata_osm_property_only`, `both_directions`) and its **independent support** (phone / domain / address that SUPPORTS) separately. The report counts `only_by_id_link_chain` separately from `with_independent_support`.
+2. **Same-source look-alikes stay a separate report** (`same_source_lookalikes.csv`). ER is cross-source by design, so internal OSM duplicates never reach the main identity metrics. They are counted and labelled apart.
+3. **Every audited pair records why it was a candidate** (`candidate_reason`: `identifier:<kind>`, `geo:300m`, `time:*`) next to the decision rule. A bad pair can then be attributed to blocking or to the decision rule.
+4. **UNSURE is its own category.** It is neither an algorithm error nor a success: it is excluded from precision, false merges and false splits, and counted apart (`unsure_by_group`).
+5. **The first raw report is frozen** before any change to category maps, the normalizer, ER or policies. Even a taxonomy bug goes into the report first.
+   - Reports are write-once (`out/<run>/`; `--run raw_v1` is the first). Each carries its provenance: the dump sha256s, the `pilot.yaml` and `policies.yaml` sha256s, the code commit and a dirty flag.
+   - Raw dumps are write-once too. `raw/SHA256SUMS` records each response body's hash and the dump file's hash.
+
+**Fixed sequence:**
+
+1. Raw OSM + Wikidata dumps.
+2. sha256 freeze.
+3. Ingest with the frozen 5.1 rules.
+4. **RAW METRICS** (`raw_v1`).
+5. Audit sample export.
+6. HUMAN LABELS.
+7. Precision / false merges / ambiguity analysis.
+8. Classify the real defect classes.
+9. Only then any code change, after a regression fixture made from the real case. The full regression suite is run then, not before.
 
 ## Method (raw first, stricter than before)
 
@@ -85,9 +123,9 @@ The categories are those the product already supports. The category maps are dat
 
 ```
 python tools/pilot_fetch.py                    # needs network access to the two endpoints
-python tools/pilot_run.py [--db postgresql+psycopg://...] [--now ISO]
-# label out/audit_pairs.csv (label column) or write data/pilot/kotor_budva/labels.csv
-python tools/pilot_labels.py
+python tools/pilot_run.py [--db postgresql+psycopg://...] [--now ISO]       # writes out/raw_v1/ once
+# label out/raw_v1/audit_pairs.csv (label column) or write data/pilot/kotor_budva/labels_raw_v1.csv
+python tools/pilot_labels.py --run raw_v1
 ```
 
 ## Code changes in Iteration 6 so far (before any real data)
@@ -96,6 +134,6 @@ These are additions only. ER rules, thresholds, blocking and policies are unchan
 
 - `app/world/real_formats.py` and two formats in `normalize.py`: OSM and Wikidata field mapping.
 - `RawDumpAdapter`: a real source read from a saved dump.
-- `matching.PAIR_LOG`: an opt-in observer of every pairwise decision. It never changes an outcome.
+- `matching.PAIR_LOG`: an opt-in observer of every pairwise decision, with the candidate reason. It never changes an outcome.
 - `tools/pilot_fetch.py`, `tools/pilot_run.py`, `tools/pilot_labels.py`.
 - `tests/test_real_formats.py`: wire-format and tooling tests on hand-written records. These are format fixtures, not real places, and say nothing about ER quality.
