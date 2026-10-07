@@ -111,6 +111,25 @@ The categories are those the product already supports. The category maps are dat
      - `UNSURE`: the frozen evidence is not enough to decide. A high UNSURE rate is itself a product result: the sources do not carry enough identity evidence.
    - **External verification**, if needed, is a **separate, later stage** and a separate source of evidence. It goes into its own file (`labels_<run>_external.csv`: `pair_id, label, externally_verified=yes, evidence_url, checked_at, notes`). It never edits the primary labels, and it is reported apart from them.
 
+10. **External fetch protocol (procedural, fixed before data).**
+    1. **Checkout.** Use **9e802c4**, the pre-data code checkpoint. c19d0bd and later commits change documentation only and are equally safe, but 9e802c4 is the reference.
+    2. **Check the queries before any network access.** Generate the queries from the frozen `pilot.yaml` with `pilot_fetch.query_for`, never by copying from a chat. Check their SHA256 values; **on any mismatch, no fetch takes place**.
+
+       | query | sha256 (verified at 9e802c4) |
+       |---|---|
+       | osm / kotor | `72c74ecc4490e5030e61d747cde2a9f57dcd2b1f87e5a69c92058159f6912a01` |
+       | osm / budva | `0acccd58574f6242b635bd1c35f05ba6f194364a55cccef9b1b64c33c121493d` |
+       | wikidata / kotor | `b5fa9c15ad7837fbb70680c39a4398ea5b4e4410abe0877190d7ac4192322665` |
+       | wikidata / budva | `10da98b26c2a0062a2506d312da34fbe4cda98c8ec14d1fe108a395a2346d3f9` |
+
+    3. **Preferred path:** `python tools/pilot_fetch.py`. It writes the two source-level dumps and `raw/SHA256SUMS` in the format the pilot expects.
+    4. **Manual path (curl):**
+       - every response body is saved with no transformation at all;
+       - the real time of each of the four HTTP requests goes to `fetch_times.txt`, together with the method if Overpass was not queried by POST;
+       - on `--import`, the source-level `fetched_at` is the **later** of that source's two request times, matching the frozen implementation, which records one time per source.
+    5. **No viewing or editing of the JSON between fetch and freeze.** The order is fetch → raw bytes → SHA256 → `raw_v1`. Even obvious junk in the data goes into the first raw result.
+    6. **No re-fetch because a result looks small or odd.** A valid HTTP response to a query with the frozen hash *is* the experiment's data. A repeated fetch is a different time sample and counts as a **separate run** (`--run raw_v2`, own dumps); it never "corrects" the first one. A non-JSON or error response (rate limit, timeout, HTML error page) is not data: it is kept for the record and the fetch is reported as failed, not imported.
+
 **This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
