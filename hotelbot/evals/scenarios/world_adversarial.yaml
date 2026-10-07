@@ -153,8 +153,8 @@
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "own:polar", source_class: provider_owned}
   steps:
-    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-07-07T12:00:00+02:00"}]}}
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-22:00", updated_at: "2026-10-05T09:00:00+02:00"}]}}
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", phone: "+382 20 610 112", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-07-07T12:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", phone: "+382 20 610 112", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-22:00", updated_at: "2026-10-05T09:00:00+02:00"}]}}
       expect:
         world:
           resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, source: "own:polar", state: contested, conflicting: 1, reason_contains: "authority"}]
@@ -167,8 +167,8 @@
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "own:kamen", source_class: provider_owned}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Kamen", lat: 43.1460, lon: 19.1460, category: gallery, opening_hours: "Mo-Su 09:00-19:00"}]}}
-    - world: {sync: {source: "own:kamen", records: [{id: "k", name: "Galerija Kamen", lat: 43.14601, lon: 19.14601, category: gallery, temporary_closure: {from: "2026-10-04", to: "2026-10-08", reason: "staff training"}}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Kamen", phone: "+382 20 610 113", lat: 43.1460, lon: 19.1460, category: gallery, opening_hours: "Mo-Su 09:00-19:00"}]}}
+    - world: {sync: {source: "own:kamen", records: [{id: "k", name: "Galerija Kamen", phone: "+382 20 610 113", lat: 43.14601, lon: 19.14601, category: gallery, temporary_closure: {from: "2026-10-04", to: "2026-10-08", reason: "staff training"}}]}}
     - guest: "Is there a gallery open now?"
       expect: {forbidden: ["Galerija Kamen (gallery) - open"]}
     - guest: "Find a gallery"

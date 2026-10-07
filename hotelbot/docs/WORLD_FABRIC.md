@@ -83,6 +83,8 @@ Entities that already hold a record of the same source are never candidates.
 
 A translated name alone never matches.
 
+**Evidence states (Iteration 5.1, D-076).** Every identity signal is evaluated explicitly as SUPPORTS_MATCH, CONTRADICTS_MATCH or UNKNOWN. The signals are phone, website domain, a street address with a house number, and an explicit identifier. **A missing value is UNKNOWN, never "compatible".** Absence of contradiction is not positive evidence. Name similarity and geography *generate* candidates. On their own, even with a compatible category, they give AMBIGUOUS, never MATCH. Every link and review stores the per-signal states in its evidence (`signals`).
+
 **Place rules:**
 
 | Condition | Outcome |
@@ -92,7 +94,10 @@ A translated name alone never matches.
 | more than 300 m apart | NO_MATCH (chains: same brand elsewhere) |
 | more than 300 m apart, **relocation**: same name, same current phone AND website, one location's evidence ≥ 90 days older, ≤ 50 km | MATCH (both locations current = chain = NO_MATCH) |
 | different kind or category | NO_MATCH (AMBIGUOUS if they share a phone) |
-| name ≥ 0.85 and ≤ 100 m | MATCH, but a different phone downgrades to AMBIGUOUS unless the name is ≥ 0.95 and they are ≤ 30 m apart |
+| name ≥ 0.85 and ≤ 100 m, a signal SUPPORTS and none CONTRADICTS | MATCH |
+| name ≥ 0.85 and ≤ 100 m, SUPPORTS and CONTRADICTS (mixed) | AMBIGUOUS |
+| name ≥ 0.85 and ≤ 100 m, only CONTRADICTS (e.g. different current phones) | NO_MATCH: two businesses with one name |
+| name ≥ 0.85 and ≤ 100 m, only UNKNOWN (no contact on one side) | AMBIGUOUS |
 | same contact at the same spot (≤ 50 m) | MATCH only with a compatible name (≥ 0.5) or TWO independent contacts (phone and website); otherwise AMBIGUOUS (a building's booking line) |
 | same contact ≤ 200 m, name ≥ 0.5 | MATCH |
 | name ≥ 0.6, ≤ 300 m | AMBIGUOUS |
@@ -121,7 +126,8 @@ Two or more MATCH candidates → AMBIGUOUS.
 - **Ambiguous cases stay separate.** They get a review; `identity.resolve_review` merges only on a person's decision.
 - **Split, merge and revert.** `identity.split` (one record out into a new entity), `identity.merge` (the other entity stays with `merged_into_id`) and `identity.revert_merge` only end and create links and move assertions with their source entity. Source records and assertions are never destroyed. Plan items and offerings pointing at a merged-away place still resolve: the bridge follows `merged_into`.
 - **Measured.** The benchmark and the eval gates measure false merges against ground truth. The gates show 0, and so do the 500 and 10k runs. The 100k run shows **2 false merges out of 101,697 records**; that is the known residual class below.
-- **Known residual class (not fixed in Iteration 5).** The rule `same name, same place` merges when the name similarity is ≥ 0.85, the distance is ≤ 100 m and no phone *conflicts*. When one record has no contact at all, "no conflict" is only absence of evidence. Both 100k false merges are exactly this case: two different businesses with an identical name and kind, 64 m and 96 m apart, where the other record carried no phone. The proposed class rule, not applied, is that a name-only match counts only within ~30 m, and 30–100 m needs a shared contact or else becomes AMBIGUOUS. It should be decided on real data (Iteration 6), not on this generator.
+- **Fixed in Iteration 5.1 (D-076) by semantics, not by a threshold.** The 100k run below exposed the class. A missing contact is now UNKNOWN, and a name-plus-place match needs a positive signal. No distance threshold was added or changed. The 100k result below stays frozen as the run that exposed the defect.
+- **Class as exposed by Iteration 5 (kept for the record).** The rule `same name, same place` merges when the name similarity is ≥ 0.85, the distance is ≤ 100 m and no phone *conflicts*. When one record has no contact at all, "no conflict" is only absence of evidence. Both 100k false merges are exactly this case: two different businesses with an identical name and kind, 64 m and 96 m apart, where the other record carried no phone. A distance threshold (a name-only match within ~30 m) was considered and rejected. Two restaurants in one mall can be 5 m apart, and one business geocoded twice can be 60 m apart. Geography says "check this pair", never "this is one object".
 
 **Observation dates** reported in the future are clamped to the ingest time, and the skew is recorded (`future_observation_clamped`). A wrong clock never wins on recency.
 

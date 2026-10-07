@@ -15,12 +15,22 @@ Name comparison works on tokens after folding (case, diacritics, Cyrillic
 A translated name ("Black Lake Café" / "Kafe Crno Jezero") does NOT match by
 name; it needs corroboration (same phone, same domain, an explicit id).
 
+EVIDENCE STATES. Every identity signal (phone, website domain, address,
+explicit id) is SUPPORTS_MATCH, CONTRADICTS_MATCH or UNKNOWN - and a
+missing value is UNKNOWN, never "compatible". ABSENCE OF CONTRADICTION IS
+NOT POSITIVE EVIDENCE: name similarity and geography only GENERATE
+candidates; on their own (with a compatible category) they give AMBIGUOUS,
+never MATCH. An automatic MATCH needs at least one SUPPORTS signal.
+
 PLACE rules (d = distance, s = name similarity):
-  explicit shared id (ext:*, same_as)            MATCH  (AMBIGUOUS if d > 2 km)
+  explicit shared id (ext:*, same_as)            MATCH  (AMBIGUOUS if d > 2 km or contradicted)
   d > 300 m                                      NO_MATCH  (chains: same brand elsewhere)
   type/category conflict                         NO_MATCH  (AMBIGUOUS if phone also shared)
-  s >= 0.85 and d <= 100 m                       MATCH; a DIFFERENT phone downgrades to
-                                                 AMBIGUOUS unless s >= 0.95 and d <= 30 m
+  s >= 0.85 and d <= 100 m:
+      a signal SUPPORTS, none CONTRADICTS        MATCH
+      SUPPORTS and CONTRADICTS (mixed)           AMBIGUOUS
+      CONTRADICTS only (e.g. different phones)   NO_MATCH  (two businesses, same name)
+      only UNKNOWN (no contact on one side)      AMBIGUOUS
   shared phone or domain, d <= 50 m              MATCH  (any name: translations)
   shared phone or domain, d <= 200 m, s >= 0.5   MATCH
   s >= 0.6 and d <= 300 m                        AMBIGUOUS
@@ -55,6 +65,7 @@ from app.text import fold
 from app.world.normalize import NormalizedEntity
 
 MATCH, NO_MATCH, AMBIGUOUS = "MATCH", "NO_MATCH", "AMBIGUOUS"
+SUPPORTS, CONTRADICTS, UNKNOWN = "SUPPORTS_MATCH", "CONTRADICTS_MATCH", "UNKNOWN"
 
 TYPE_CLASSES: dict[str, tuple[str, ...]] = {
     "restaurant": ("restaurant", "restoran", "restorant", "ristorante", "konoba", "tavern", "taverna", "bistro",
@@ -155,6 +166,7 @@ class Profile:
     starts: list[datetime]
     venues: set[str]
     organizers: set[str]
+    addresses: set[str] = field(default_factory=set)                 # address keys (with a house number)
     phone_seen: dict[str, datetime] = field(default_factory=dict)    # newest observation of each phone
     coords_newest: datetime | None = None                             # newest observation of a location
 
@@ -187,6 +199,8 @@ def _profile(session: Session, canonical: CanonicalEntity) -> Profile:
                 prof.domains.add(value)
             elif kind.startswith("ext:") or kind == "ticket_url":
                 prof.ext_ids.add((kind, value))
+        if _address_key(f.get("address")):
+            prof.addresses.add(_address_key(f.get("address")))
         if f.get("subcategory"):
             prof.subcategories.add(f["subcategory"])
             prof.categories.add(category_of(f["subcategory"]))
@@ -199,6 +213,16 @@ def _profile(session: Session, canonical: CanonicalEntity) -> Profile:
     if not prof.points and canonical.latitude is not None:
         prof.points.append(Point(canonical.latitude, canonical.longitude))
     return prof
+
+
+def _address_key(address: Any) -> str | None:
+    """A street address strong enough to be identity evidence: folded tokens
+    that include a house number. "Savin Kuk lower station" is a place
+    description, not an address identity -> None (UNKNOWN)."""
+    if not isinstance(address, str):
+        return None
+    tokens = re.findall(r"[a-z0-9]+", fold(address))
+    return " ".join(tokens) if any(t[0].isdigit() for t in tokens) and len(tokens) >= 2 else None
 
 
 def _dt(value: Any) -> datetime | None:
@@ -291,10 +315,21 @@ def _decide_place(ent: NormalizedEntity, prof: Profile, locality: set[str], sour
     cat_conflict = bool(cat and prof.categories and cat not in prof.categories
                         and not any({cat} | prof.categories <= g for g in CATEGORY_GROUPS)
                         and "OTHER" not in prof.categories | {cat})
+    addr = _address_key(ent.fields.get("address"))
+    address_eq = bool(addr and addr in prof.addresses)
+    # explicit evidence states: a missing value is UNKNOWN - never support
+    signals = {
+        "phone": SUPPORTS if phone_eq else CONTRADICTS if phone_conflict else UNKNOWN,   # stale shared: UNKNOWN
+        "domain": SUPPORTS if domain_eq else UNKNOWN,
+        "address": SUPPORTS if address_eq else UNKNOWN,
+        "external_id": SUPPORTS if ext else UNKNOWN,
+    }
+    supports = sorted(k for k, v in signals.items() if v == SUPPORTS)
+    contradicts = sorted(k for k, v in signals.items() if v == CONTRADICTS)
     ev = {"distance_m": None if d is None else round(d * 1000), "name_similarity": round(s, 3),
           "phone_equal": phone_eq, "phone_shared_but_stale": phone_stale_shared, "phone_conflict": phone_conflict,
-          "domain_equal": domain_eq, "type_conflict": type_conflict, "category_conflict": cat_conflict,
-          "shared_ids": sorted(f"{k}={v}" for k, v in ext)}
+          "domain_equal": domain_eq, "address_equal": address_eq, "type_conflict": type_conflict,
+          "category_conflict": cat_conflict, "shared_ids": sorted(f"{k}={v}" for k, v in ext), "signals": signals}
     if ext:
         # an identifier can be wrong (copied, recycled, mis-keyed): it merges
         # only when nothing in the records contradicts it
@@ -304,7 +339,7 @@ def _decide_place(ent: NormalizedEntity, prof: Profile, locality: set[str], sour
             return AMBIGUOUS, 0.5, {**ev, "rule": "shared id but the records contradict each other"}
         return MATCH, 1.0, {**ev, "rule": "shared explicit identifier"}
     if d is None:
-        if (phone_eq or domain_eq) and s >= 0.9:
+        if (phone_eq or domain_eq or address_eq) and s >= 0.9 and not phone_conflict:
             return MATCH, 0.9, {**ev, "rule": "no coordinates: same contact and name"}
         return (AMBIGUOUS, 0.5, {**ev, "rule": "no coordinates: similar name"}) if s >= 0.9 else \
             (NO_MATCH, 0.0, ev)
@@ -322,9 +357,18 @@ def _decide_place(ent: NormalizedEntity, prof: Profile, locality: set[str], sour
             return AMBIGUOUS, 0.4, {**ev, "rule": "different kind of business but same phone"}
         return NO_MATCH, 0.0, {**ev, "rule": "different kind of business"}
     if s >= 0.85 and d <= 0.1:
-        if phone_conflict and not domain_eq and not (s >= 0.95 and d <= 0.03):
-            return AMBIGUOUS, 0.6, {**ev, "rule": "similar name nearby but different phone"}
-        return MATCH, round(0.7 + 0.3 * s, 3), {**ev, "rule": "same name, same place"}
+        # name + geography found the candidate; identity needs positive evidence
+        if supports and not contradicts:
+            return MATCH, round(0.7 + 0.3 * s, 3), {**ev, "rule": f"same name, same place, corroborated by "
+                                                                  f"{', '.join(supports)}"}
+        if supports:
+            return AMBIGUOUS, 0.6, {**ev, "rule": f"similar name nearby; {', '.join(supports)} agree but "
+                                                  f"{', '.join(contradicts)} contradict"}
+        if contradicts:
+            return NO_MATCH, 0.0, {**ev, "rule": f"same name nearby but {', '.join(contradicts)} contradict: "
+                                                 f"two businesses"}
+        return AMBIGUOUS, 0.5, {**ev, "rule": "similar name nearby; no positive identity evidence "
+                                              "(a missing contact is unknown, not support)"}
     if (phone_eq or domain_eq) and d <= 0.05:
         # one shared contact can be a building / agency number: names must
         # be compatible, or TWO independent contacts must agree

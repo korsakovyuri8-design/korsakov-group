@@ -122,7 +122,8 @@ def test_conservative_resolution_classes(s):
     _sync(s, "a", [{"id": "1", "name": "Konoba Stari Grad", "phone": "069 111 222", **base},
                    {"id": "2", "name": "Pizzeria Napoli", "website": "napoli.me", "lat": 43.1500, "lon": 19.14,
                     "category": "restaurant"}])
-    _sync(s, "b", [{"id": "x", "name": "Stari Grad Restaurant", **{**base, "lat": 43.14002}},       # match
+    _sync(s, "b", [{"id": "x", "name": "Stari Grad Restaurant", "phone": "+382 69 111 222",
+                    **{**base, "lat": 43.14002}},                                                     # match (phone corroborates)
                    {"id": "y", "name": "Pizzeria Napoli", "website": "https://napoli.me", "lat": 43.1680,
                     "lon": 19.14, "category": "restaurant"},                                          # chain: 2 km
                    {"id": "z", "name": "Konoba Stari Mlin", "phone": "069 333 444",
@@ -303,9 +304,9 @@ def test_geohash_index_matches_full_scan(s):
 # ================================================================ snapshots
 def test_snapshot_restores_the_same_world(s):
     _sync(s, "a", [{"id": "1", "name": "Sladoled Polar", "lat": 43.147, "lon": 19.147, "category": "dessert",
-                    "opening_hours": "Mo-Su 10:00-23:00"}])
+                    "phone": "069 222 333", "opening_hours": "Mo-Su 10:00-23:00"}])
     _sync(s, "own", [{"id": "p", "name": "Sladoled Polar", "lat": 43.14701, "lon": 19.14702, "category": "dessert",
-                      "opening_hours": "Mo-Su 10:00-00:00"}], cls="provider_owned")
+                      "phone": "069 222 333", "opening_hours": "Mo-Su 10:00-00:00"}], cls="provider_owned")
     snap = snapshots.create(s, "t", NOW)
     engine = make_engine("sqlite://")
     create_schema(engine)
@@ -442,3 +443,32 @@ def test_region_pack_ingest_uses_the_given_clock_not_the_wall_clock(s):
     ingest_region(s, pack, now=datetime(2027, 1, 11, 9, 0, tzinfo=timezone.utc))
     rooftop = s.scalar(select(Place).where(Place.slug == "rooftop-demo-lounge"))
     assert rooftop.verification["hours"] == "2027-01-04T23:00:00+00:00"     # 2027-01-05 local
+
+
+def test_missing_evidence_is_unknown_never_support(s):
+    """Iteration 5.1 (D-076): ABSENCE OF CONTRADICTION IS NOT POSITIVE EVIDENCE.
+    The two 100k false merges: same name and kind, ~90 m apart, the other
+    record has no phone -> phone is UNKNOWN, nothing SUPPORTS -> AMBIGUOUS."""
+    from app.db.models import MatchReview
+    from app.world.matching import CONTRADICTS, SUPPORTS, UNKNOWN
+
+    _sync(s, "a", [{"id": "d", "name": "Pekara Kamen Plava", "lat": 43.1460, "lon": 19.1460, "category": "bakery"}])
+    _sync(s, "p", [{"id": "x", "name": "Pekara Kamen Plava", "lat": 43.1452, "lon": 19.1459, "category": "bakery",
+                    "phone": "+382 69 962 198", "website": "kamen-plava.me"}], cls="partner_feed")
+    assert _cid(s, "a", "d") != _cid(s, "p", "x")
+    review = s.scalar(select(MatchReview).where(MatchReview.status == "open"))
+    signals = review.candidates[0]["evidence"]["signals"]
+    assert signals == {"phone": UNKNOWN, "domain": UNKNOWN, "address": UNKNOWN, "external_id": UNKNOWN}
+    # a shared current phone SUPPORTS; a different one CONTRADICTS (no merge either way without support)
+    _sync(s, "c", [{"id": "y", "name": "Pekara Kamen Plava", "lat": 43.14521, "lon": 19.1459, "category": "bakery",
+                    "phone": "069 962 198"}])
+    assert _cid(s, "c", "y") == _cid(s, "p", "x")
+    _sync(s, "e", [{"id": "z", "name": "Kafe Most", "lat": 43.1480, "lon": 19.1480, "category": "cafe",
+                    "phone": "067 111 222"}])
+    _sync(s, "f", [{"id": "w", "name": "Kafe Most", "lat": 43.14802, "lon": 19.14801, "category": "cafe",
+                    "phone": "068 333 444"}])
+    assert _cid(s, "e", "z") != _cid(s, "f", "w")
+    link = s.scalar(select(EntityLink).join(SourceEntity, EntityLink.source_entity_id == SourceEntity.id)
+                    .where(SourceEntity.source_record_id == "y", EntityLink.active))
+    assert link.evidence["signals"]["phone"] == SUPPORTS
+    assert CONTRADICTS != UNKNOWN != SUPPORTS

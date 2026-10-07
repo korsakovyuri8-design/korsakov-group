@@ -41,9 +41,9 @@
     - {source_id: "dir:c", source_class: directory}
     - {source_id: "partner:b", source_class: partner_feed}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Stari Grad", lat: 43.1400, lon: 19.1400, category: restaurant}]}}
-    - world: {sync: {source: "dir:c", records: [{id: "x9", name: "Stari Grad Restaurant", lat: 43.14004, lon: 19.14003, category: restaurant}]}}
-    - world: {sync: {source: "partner:b", records: [{id: "k", name: "Konoba Stari Grad Žabljak", lat: 43.13998, lon: 19.14001, category: restaurant}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Stari Grad", phone: "+382 20 610 101", lat: 43.1400, lon: 19.1400, category: restaurant}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "x9", name: "Stari Grad Restaurant", phone: "+382 20 610 101", lat: 43.14004, lon: 19.14003, category: restaurant}]}}
+    - world: {sync: {source: "partner:b", records: [{id: "k", name: "Konoba Stari Grad Žabljak", phone: "+382 20 610 101", lat: 43.13998, lon: 19.14001, category: restaurant}]}}
       expect:
         world:
           entities: 1
@@ -56,8 +56,8 @@
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "tour:me", source_class: tourism_feed}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Đurđevića Tara", lat: 43.1405, lon: 19.1405, category: konoba}]}}
-    - world: {sync: {source: "tour:me", records: [{id: "t-5", name: "Коноба Ђурђевића Тара", lat: 43.14052, lon: 19.14049, category: konoba}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Đurđevića Tara", phone: "+382 20 610 102", lat: 43.1405, lon: 19.1405, category: konoba}]}}
+    - world: {sync: {source: "tour:me", records: [{id: "t-5", name: "Коноба Ђурђевића Тара", phone: "+382 20 610 102", lat: 43.14052, lon: 19.14049, category: konoba}]}}
       expect:
         world: {entities: 1, same: [[{source: "dir:a", id: "1"}, {source: "tour:me", id: "t-5"}]]}
 
@@ -69,9 +69,9 @@
     - {source_id: "dir:c", source_class: directory}
     - {source_id: "tour:me", source_class: tourism_feed}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Žabljak Sjever", lat: 43.1410, lon: 19.1410, category: gallery}]}}
-    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Galerija Zabljak Sjever", lat: 43.14102, lon: 19.14099, category: gallery}]}}
-    - world: {sync: {source: "tour:me", records: [{id: "3", name: "Галерија Жабљак Сјевер", lat: 43.14099, lon: 19.14101, category: gallery}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Žabljak Sjever", phone: "+382 20 610 103", lat: 43.1410, lon: 19.1410, category: gallery}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Galerija Zabljak Sjever", phone: "+382 20 610 103", lat: 43.14102, lon: 19.14099, category: gallery}]}}
+    - world: {sync: {source: "tour:me", records: [{id: "3", name: "Галерија Жабљак Сјевер", phone: "+382 20 610 103", lat: 43.14099, lon: 19.14101, category: gallery}]}}
       expect:
         world: {entities: 1, same: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}, {source: "tour:me", id: "3"}]]}
 
@@ -116,7 +116,7 @@
 
 - name: world_same_spot_different_phone
   category: world
-  description: Same name at the same coordinates, different phones -> same restaurant; the phone disagreement is kept.
+  description: Same name at the same coordinates, different (current) phones -> the phones CONTRADICT and nothing supports the match, so two businesses (D-076; this used to merge on the name alone).
   world_sources:
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "dir:c", source_class: directory}
@@ -125,8 +125,9 @@
     - world: {sync: {source: "dir:c", records: [{id: "2", name: "Restoran Vidikovac Sunce", lat: 43.14301, lon: 19.14301, phone: "067 999 888", category: restaurant, updated_at: "2026-10-02T10:00:00+02:00"}]}}
       expect:
         world:
-          entities: 1
-          resolution: [{entity: {source: "dir:a", id: "1"}, field: phone, conflicting: 1}]
+          entities: 2
+          distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]
+          reviews_open: 0
 
 - name: world_translated_name_corroborated
   category: world
@@ -211,8 +212,8 @@
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "dir:c", source_class: directory}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00", updated_at: "2026-10-03T10:00:00+02:00"}]}}
-    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T09:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", phone: "+382 20 610 104", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00", updated_at: "2026-10-03T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Sladoled Polar", phone: "+382 20 610 104", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T09:00:00+02:00"}]}}
       expect:
         world:
           entities: 1
@@ -230,8 +231,8 @@
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "own:polar", source_class: provider_owned}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00", updated_at: "2026-10-03T10:00:00+02:00"}]}}
-    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", phone: "+382 20 610 105", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00", updated_at: "2026-10-03T10:00:00+02:00"}]}}
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", phone: "+382 20 610 105", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
       expect:
         world:
           entities: 1
@@ -269,8 +270,8 @@
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "own:polar", source_class: provider_owned}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Sa 10:00-00:00; Su off", updated_at: "2026-10-03T10:00:00+02:00"}]}}
-    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", phone: "+382 20 610 106", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Sa 10:00-00:00; Su off", updated_at: "2026-10-03T10:00:00+02:00"}]}}
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", phone: "+382 20 610 106", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
       expect:
         world:
           resolution: [{entity: {source: "dir:a", id: "1"}, field: opening_hours, source: "own:polar", state: contested, conflicting: 1}]
@@ -307,8 +308,8 @@
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "own:polar", source_class: provider_owned}
   steps:
-    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-05-01T10:00:00+02:00"}]}}
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-22:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", phone: "+382 20 610 107", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-00:00", updated_at: "2026-05-01T10:00:00+02:00"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", phone: "+382 20 610 107", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-22:00", updated_at: "2026-10-04T10:00:00+02:00"}]}}
       expect:
         world:
           entities: 1
@@ -322,9 +323,9 @@
     - {source_id: "dir:c", source_class: directory}
     - {source_id: "dir:d", source_class: directory}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Luna", lat: 43.1480, lon: 19.1480, category: gallery, website: "luna-gallery.me"}]}}
-    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Galerija Luna", lat: 43.14801, lon: 19.14801, category: gallery, website: "luna-gallery.me"}]}}
-    - world: {sync: {source: "dir:d", records: [{id: "3", name: "Galerija Luna", lat: 43.14799, lon: 19.14799, category: gallery, website: "galerijaluna.com"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Luna", phone: "+382 20 610 108", lat: 43.1480, lon: 19.1480, category: gallery, website: "luna-gallery.me"}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Galerija Luna", phone: "+382 20 610 108", lat: 43.14801, lon: 19.14801, category: gallery, website: "luna-gallery.me"}]}}
+    - world: {sync: {source: "dir:d", records: [{id: "3", name: "Galerija Luna", phone: "+382 20 610 108", lat: 43.14799, lon: 19.14799, category: gallery, website: "galerijaluna.com"}]}}
       expect:
         world:
           entities: 1
@@ -338,8 +339,8 @@
     - {source_id: "tour:me", source_class: tourism_feed}
     - {source_id: "own:kamen", source_class: provider_owned}
   steps:
-    - world: {sync: {source: "tour:me", records: [{id: "t1", name: "Galerija Kamen", lat: 43.1460, lon: 19.1460, category: gallery, opening_hours: "Mo-Su 09:00-19:00", temporary_closure: {from: "2026-10-01", to: "2026-10-30", reason: "renovation"}}]}}
-    - world: {sync: {source: "own:kamen", records: [{id: "k", name: "Galerija Kamen", lat: 43.14601, lon: 19.14601, category: gallery, opening_hours: "Mo-Su 09:00-19:00", temporary_closure: []}]}}
+    - world: {sync: {source: "tour:me", records: [{id: "t1", name: "Galerija Kamen", phone: "+382 20 610 109", lat: 43.1460, lon: 19.1460, category: gallery, opening_hours: "Mo-Su 09:00-19:00", temporary_closure: {from: "2026-10-01", to: "2026-10-30", reason: "renovation"}}]}}
+    - world: {sync: {source: "own:kamen", records: [{id: "k", name: "Galerija Kamen", phone: "+382 20 610 109", lat: 43.14601, lon: 19.14601, category: gallery, opening_hours: "Mo-Su 09:00-19:00", temporary_closure: []}]}}
       expect:
         world:
           entities: 1
@@ -417,10 +418,10 @@
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "gov:reg", source_class: official}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", lat: 43.1490, lon: 19.1490, category: gallery, permanently_closed: true}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Sjena", phone: "+382 20 610 110", lat: 43.1490, lon: 19.1490, category: gallery, permanently_closed: true}]}}
       expect:
         world: {places: [{entity: {source: "dir:a", id: "1"}, active: true}]}
-    - world: {sync: {source: "gov:reg", records: [{id: "R-1", name: "Galerija Sjena", lat: 43.14901, lon: 19.14901, category: gallery, permanently_closed: true}]}}
+    - world: {sync: {source: "gov:reg", records: [{id: "R-1", name: "Galerija Sjena", phone: "+382 20 610 110", lat: 43.14901, lon: 19.14901, category: gallery, permanently_closed: true}]}}
       expect:
         world:
           places: [{entity: {source: "dir:a", id: "1"}, active: false}]
@@ -622,7 +623,7 @@
       expect: {quote: {status: offered}}
     - guest: "yes"
       expect: {notifications_contain: ["has accepted your booking"]}
-    - world: {sync: {source: "dir:a", records: [{id: "ponoc", name: "Restoran Demo Ponoć", lat: 43.15381, lon: 19.12401, category: konoba, opening_hours: "Mo-Su 13:00-23:30"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "ponoc", name: "Restoran Demo Ponoć", address: "Demo square 4, Žabljak", lat: 43.15381, lon: 19.12401, category: konoba, opening_hours: "Mo-Su 13:00-23:30"}]}}
       expect:
         world:
           transactions_unchanged: true
@@ -684,8 +685,8 @@
     - {source_id: "dir:a", source_class: directory}
     - {source_id: "own:polar", source_class: provider_owned}
   steps:
-    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00"}]}}
-    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00"}]}}
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Sladoled Polar", phone: "+382 20 610 111", lat: 43.1470, lon: 19.1470, category: dessert, opening_hours: "Mo-Su 10:00-23:00"}]}}
+    - world: {sync: {source: "own:polar", records: [{id: "polar", name: "Sladoled Polar", phone: "+382 20 610 111", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-00:00"}]}}
     - world: {snapshot: {}}
       expect: {world: {entities: 1}}
 
@@ -700,3 +701,99 @@
     - world: {sync: {source: "partner:b", records: [{id: "p", name: "Sladoled Polar", lat: 43.14701, lon: 19.14702, category: dessert, opening_hours: "Mo-Su 10:00-21:00", attributes: {vegan_options: true}}]}}
     - guest: "Where can I get vegan ice cream?"
       expect: {reply_contains: ["Sladoled Polar", "open until 21:00", "vegan options"]}
+
+# ---------------------------------------------------------------- Iteration 5.1: ER evidence states (D-076)
+# ABSENCE OF CONTRADICTION IS NOT POSITIVE EVIDENCE. Name + geography generate
+# candidates; a MATCH needs at least one SUPPORTS signal.
+- name: world_er_name_only_10m_ambiguous
+  category: world
+  gate: true
+  description: Identical names 10 m apart, same kind, no contacts on either side - name and place only generate a candidate; with no positive identity evidence the pair is AMBIGUOUS (kept apart, reviewed), never merged.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Pekara Kamen Plava", lat: 43.1450, lon: 19.1450, category: bakery}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Pekara Kamen Plava", lat: 43.14509, lon: 19.1450, category: bakery}]}}
+      expect:
+        world:
+          entities: 2
+          distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]
+          reviews_open: 1
+
+- name: world_er_missing_phone_is_unknown
+  category: world
+  gate: true
+  description: The 100k false-merge shape - one record has a phone and a website, the other (a different business with the same name and kind, ~90 m away) has no contact at all. The missing phone is UNKNOWN, not "compatible" - AMBIGUOUS, not MATCH.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "partner:b", source_class: partner_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "d-1", name: "Restoran Ribar Breza", lat: 43.1460, lon: 19.1460, category: restaurant}]}}
+    - world: {sync: {source: "partner:b", records: [{id: "p-1", name: "Restoran Ribar Breza", lat: 43.14520, lon: 19.14590, phone: "+382 69 227 563", website: "ribar-breza.me", category: restaurant}]}}
+      expect:
+        world:
+          entities: 2
+          distinct: [[{source: "dir:a", id: "d-1"}, {source: "partner:b", id: "p-1"}]]
+          reviews_open: 1
+
+- name: world_er_shared_phone_80m_matches
+  category: world
+  gate: true
+  description: Identical names 80 m apart (a poor geocode) with the same current phone - the phone SUPPORTS the match and nothing contradicts it -> one entity.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "partner:b", source_class: partner_feed}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Konoba Lipa Zora", lat: 43.1470, lon: 19.1470, phone: "069 314 159", category: konoba}]}}
+    - world: {sync: {source: "partner:b", records: [{id: "k", name: "Konoba Lipa Zora", lat: 43.14772, lon: 19.1470, phone: "+382 69 314 159", category: konoba}]}}
+      expect:
+        world:
+          entities: 1
+          same: [[{source: "dir:a", id: "1"}, {source: "partner:b", id: "k"}]]
+
+- name: world_er_same_building_different_phones
+  category: world
+  gate: true
+  description: Identical names in the same building (3 m), different current phones and nothing shared - the phones CONTRADICT, nothing supports -> two businesses, no merge.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Kafe Most", lat: 43.1480, lon: 19.1480, phone: "067 111 222", category: cafe}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Kafe Most", lat: 43.14802, lon: 19.14801, phone: "068 333 444", category: cafe}]}}
+      expect:
+        world:
+          entities: 2
+          distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]
+
+- name: world_er_chain_different_addresses
+  category: world
+  gate: true
+  description: One brand, same website, two street addresses in two towns - a chain; the shared website does not merge separate locations.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Pekara Zlatna Orah", lat: 42.4250, lon: 18.7710, address: "Njegoševa 12, Kotor", website: "zlatna-orah.me", category: bakery}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Pekara Zlatna Orah", lat: 42.2880, lon: 18.8400, address: "Mediteranska 7, Budva", website: "zlatna-orah.me", category: bakery}]}}
+      expect:
+        world:
+          entities: 2
+          distinct: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]
+          reviews_open: 0
+
+- name: world_er_address_identity_supports
+  category: world
+  description: Identical names 60 m apart, no phones, but the same street address with a house number - a strong compatible address identity SUPPORTS the match -> one entity.
+  world_sources:
+    - {source_id: "dir:a", source_class: directory}
+    - {source_id: "dir:c", source_class: directory}
+  steps:
+    - world: {sync: {source: "dir:a", records: [{id: "1", name: "Galerija Bijela Kula", lat: 43.1490, lon: 19.1490, address: "Trg Slobode 3, Žabljak", category: gallery}]}}
+    - world: {sync: {source: "dir:c", records: [{id: "2", name: "Galerija Bijela Kula", lat: 43.14954, lon: 19.1490, address: "Trg slobode 3 Zabljak", category: gallery}]}}
+      expect:
+        world:
+          entities: 1
+          same: [[{source: "dir:a", id: "1"}, {source: "dir:c", id: "2"}]]
+
