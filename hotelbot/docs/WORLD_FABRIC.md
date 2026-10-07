@@ -298,6 +298,28 @@ How to read the fact rows:
 - "Hedged" means the traveller-facing output gives both claims and says it cannot confirm.
 - "Every source wrong" cannot be detected by resolution. It is the case for corrections and fresher sources.
 
+**Iteration 5.1, same 10k data, commit bb6a66c (ER evidence states, D-076).** The 100k column above is frozen; it is the run that exposed the defect, and 100k was not re-run.
+
+| Metric | 10k, Iteration 5 | 10k, Iteration 5.1 |
+|---|---|---|
+| canonical entities | 6,186 | 7,157 |
+| ingest records/sec | 15.5 | 16.6 |
+| ER candidates p50 / p95 / p99 / max | 0 / 15 / 19 / 26 | 0 / 17 / 21 / 27 |
+| identity precision | 1.0 | 1.0 |
+| identity recall | 0.984 | **0.725** |
+| false merges | 0 | 0 |
+| ambiguous rate (sent to review) | 0.70% | **10.4%** |
+| fact: resolved correctly / correctly conflicted / correctly unknown | 4,699 / 5 / 993 | 5,162 / 3 / 1,429 |
+| incorrect winner, uncontested (target 0) | 0 | **0** |
+| incorrect winner, contested | 76 | 59 |
+| contested-wrong claims stated definitively (target 0) | 0 / 170 | **0** / 132 |
+
+**This trade-off is deliberate.**
+
+- **Why recall fell.** True pairs whose only evidence is name and place now go to review instead of merging. In the generator the directory carries a phone only 70% of the time and the tourism feed has no website, so about 10% of records land in the review queue.
+- **Why the fact rows moved.** They are scored on clusters with one ground truth, and there are more, smaller clusters now.
+- **What was not done.** Nothing was tuned to win the recall back. How large the review queue is on real data, and which positive signals real sources carry, is a question for the real-data pilot.
+
 **Bottlenecks (honest, not fixed in Iteration 5).**
 
 - **Ingest throughput.** Ingest falls from 15.5 to 2.7 records/s because the synthetic density grows tenfold in the same 8 boxes (about 100 places per km² at 100k). The ER candidates per record grow with it (p95 15 → 126).

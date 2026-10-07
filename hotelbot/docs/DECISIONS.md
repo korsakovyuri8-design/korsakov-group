@@ -1026,3 +1026,43 @@ Everything below was measured on commit 7fdaba8, in this order: clean SQLite, th
 - **Throughput.** It degrades with density: 15.5 → 2.7 records/s, ER candidates p95 15 → 126. Radius p50 is 29 → 596 ms.
 
 Neither is fixed here. No threshold or rule was changed after the benchmark. The false-merge class should be decided on real data. Throughput is the first scaling bottleneck: blocking keys, batched matching, SQL-side spatial filtering.
+
+## D-076 - Iteration 5.1: absence of contradiction is not positive evidence
+
+**Defect.** The two 100k false merges (D-075) were not a threshold problem. They were a semantic one. `same name, same place` treated "no phone conflict" as support, even when one record had no phone at all.
+
+**Rule.**
+
+- **Evidence states.** Every identity signal is SUPPORTS_MATCH, CONTRADICTS_MATCH or UNKNOWN. The signals are phone, website domain, a street address with a house number, and an explicit identifier. A missing value is UNKNOWN, never "compatible".
+- **Candidates are not identity.** Name similarity and geography generate candidates; they are not identity.
+- **Name ≥ 0.85 within 100 m:**
+  - at least one signal SUPPORTS and none CONTRADICTS: MATCH;
+  - mixed support and contradiction: AMBIGUOUS;
+  - only CONTRADICTS (different current phones): NO_MATCH;
+  - only UNKNOWN: AMBIGUOUS.
+- **Every decision stores its per-signal states** in the link or review evidence (`signals`).
+
+**Not done.** No distance threshold was introduced or changed; a "≤ 30 m" rule was rejected as a fixture-derived threshold. Event matching (title + venue + time) is unchanged.
+
+**Raw first.** On the new rule the world scenarios were 41/56. Every failure was classified in EVAL_REPORT:
+
+- 13 scenarios had relied on name + place alone as their identity premise. They now carry an explicit shared phone or address; expectations are unchanged.
+- `world_same_spot_different_phone` now expects two businesses.
+
+Six regression scenarios and one unit test cover the false-merge shapes and the five cases from the review.
+
+**Results** on bb6a66c (EVAL_REPORT itself was committed after the benchmark):
+
+- **SQLite:** 749 passed, 2 skipped.
+- **PostgreSQL:** 751/751.
+- **Evals:** 256/260, gates 167/167, world 62/62. The only failures are the 4 frozen paraphrase cases.
+
+**10k benchmark:**
+
+- 0 false merges; precision 1.0;
+- recall 0.984 → 0.725; ambiguous rate 0.70% → 10.4%;
+- incorrect uncontested winner 0; contested-wrong claims stated definitively 0/132.
+
+**The recall drop is the price of the rule and is recorded, not tuned.** The 100k benchmark was not re-run: the 100k result in D-075 stays frozen as the run that exposed the defect.
+
+**The laboratory phase ends here.** The next evaluation is real data: Kotor + Budva, 2–3 legal sources, inspected by a person. Defects found there get a regression fixture first and a code fix second.
