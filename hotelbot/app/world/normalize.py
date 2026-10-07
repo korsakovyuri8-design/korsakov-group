@@ -445,4 +445,25 @@ def normalize(rec: SourceRecord, d: SourceDescriptor) -> NormalizedEntity:
         return _from_v1_event(rec, d) if rec.kind == "event" else _from_v1_place(rec, d)
     if d.format == "generic.v1":
         return _from_generic_event(rec, d) if rec.kind == "event" else _from_generic_place(rec, d)
+    if d.format in ("osm.overpass.v1", "wikidata.sparql.v1"):
+        return _from_real(rec, d)
     raise ValueError(f"no normalizer for format {d.format!r}")
+
+
+def _from_real(rec: SourceRecord, d: SourceDescriptor) -> NormalizedEntity:
+    """Real sources: the raw record (rec.payload) stays exactly as the source
+    sent it; the mapping to the generic shape happens here, per format."""
+    from dataclasses import replace
+
+    from app.world.real_formats import osm_to_generic, wikidata_to_generic
+
+    if d.format == "osm.overpass.v1":
+        payload = osm_to_generic(rec.payload)
+    else:
+        payload = wikidata_to_generic(rec.record_id, rec.payload["rows"])
+        known = d.config.get("category_map") or {}
+        payload["category"] = next((t for t in payload.get("types", []) if t in known), payload.get("category"))
+    ent = _from_generic_place(replace(rec, payload=payload), d)
+    ent.issues += payload.get("_issues", [])
+    return ent
+

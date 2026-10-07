@@ -1,0 +1,138 @@
+# Iteration 6 - real-data pilot: Kotor + Budva.
+# Sources are used only under the terms recorded here (verified: see
+# docs/REAL_PILOT.md). Category maps are DATA: a tag/type not listed stays
+# "unclassified" with an issue - we observe the gap, we do not hide it.
+
+region: kotor-budva
+timezone: Europe/Podgorica
+country_code: ME
+
+scope:            # min_lat, min_lon, max_lat, max_lon
+  kotor: [42.400, 18.690, 42.470, 18.790]        # Kotor old town, Dobrota, Škaljari, Muo
+  budva: [42.250, 18.810, 42.310, 18.900]        # Budva, Bečići, Rafailovići, Sveti Stefan
+
+sources:
+  - source_id: osm
+    name: OpenStreetMap (Overpass API)
+    source_type: api
+    source_class: directory           # crowd-sourced map; no authority class invented for it
+    format: osm.overpass.v1
+    license: ODbL-1.0
+    attribution_required: true
+    attribution_text: "© OpenStreetMap contributors, ODbL"
+    redistribution: attribution       # + share-alike for a publicly distributed derived database
+    default_confidence: 0.7
+    dump: raw/osm_overpass.json
+    category_map:
+      amenity=restaurant: restaurant
+      amenity=cafe: cafe
+      amenity=bar: bar
+      amenity=pub: pub
+      amenity=nightclub: nightclub
+      amenity=fast_food: fast_food
+      amenity=ice_cream: dessert
+      amenity=pharmacy: pharmacy
+      amenity=atm: atm
+      amenity=bank: bank
+      amenity=bureau_de_change: currency_exchange
+      amenity=parking: car_park
+      amenity=fuel: fuel_station
+      amenity=theatre: theater
+      amenity=cinema: cinema
+      amenity=place_of_worship: religious_site
+      amenity=toilets: public_toilet
+      amenity=post_office: post_office
+      amenity=police: police
+      amenity=hospital: hospital
+      amenity=clinic: clinic
+      amenity=doctors: clinic
+      amenity=dentist: dentist
+      amenity=bus_station: bus_station
+      amenity=ferry_terminal: ferry_terminal
+      amenity=car_rental: car_rental
+      amenity=bicycle_rental: bike_rental
+      amenity=marketplace: food_market
+      amenity=charging_station: ev_charger
+      tourism=museum: museum
+      tourism=gallery: gallery
+      tourism=viewpoint: viewpoint
+      tourism=information: tourist_info
+      shop=supermarket: supermarket
+      shop=bakery: bakery
+      shop=gift: souvenir_shop
+      shop=souvenir: souvenir_shop
+      shop=mall: shopping_center
+      historic=monument: monument
+      historic=memorial: monument
+      historic=castle: historic_site
+      historic=fort: historic_site
+      historic=archaeological_site: historic_site
+      historic=ruins: historic_site
+      leisure=beach_resort: beach
+      natural=beach: beach
+      leisure=park: park
+      leisure=fitness_centre: gym
+    query: |
+      [out:json][timeout:180];
+      (
+        nwr["amenity"~"^(restaurant|cafe|bar|pub|nightclub|fast_food|ice_cream|pharmacy|atm|bank|bureau_de_change|parking|fuel|theatre|cinema|place_of_worship|toilets|post_office|police|hospital|clinic|doctors|dentist|bus_station|ferry_terminal|car_rental|bicycle_rental|boat_rental|marketplace|charging_station)$"]({bbox});
+        nwr["tourism"~"^(museum|gallery|attraction|viewpoint|information|artwork)$"]({bbox});
+        nwr["shop"~"^(supermarket|convenience|bakery|gift|souvenir|mall)$"]({bbox});
+        nwr["historic"]({bbox});
+        nwr["leisure"~"^(beach_resort|park|fitness_centre)$"]({bbox});
+        nwr["natural"="beach"]({bbox});
+      );
+      out meta center;
+
+  - source_id: wikidata
+    name: Wikidata (SPARQL query service)
+    source_type: api
+    source_class: directory
+    format: wikidata.sparql.v1
+    license: CC0-1.0
+    attribution_required: false
+    redistribution: allowed
+    default_confidence: 0.7
+    dump: raw/wikidata_sparql.json
+    category_map:
+      Q33506: museum            # museum
+      Q207694: museum           # art museum
+      Q1007870: gallery         # art gallery
+      Q16970: religious_site    # church building
+      Q2977: religious_site     # cathedral
+      Q44613: religious_site    # monastery
+      Q24398318: religious_site # religious building
+      Q57821: historic_site     # fortification
+      Q1785071: historic_site   # fort
+      Q23413: historic_site     # castle
+      Q16560: historic_site     # palace
+      Q839954: historic_site    # archaeological site
+      Q4989906: monument        # monument
+      Q575759: monument         # war memorial
+      Q179700: monument         # statue
+      Q40080: beach             # beach
+      Q22698: park              # park
+      Q1107656: park            # garden
+      Q24354: theater           # theatre building
+    query: |
+      SELECT ?item ?label ?coord ?type ?website ?phone ?address ?osmNode ?osmWay ?osmRel WHERE {
+        VALUES ?type { {types} }
+        SERVICE wikibase:box {
+          ?item wdt:P625 ?coord .
+          bd:serviceParam wikibase:cornerSouthWest "Point({min_lon} {min_lat})"^^geo:wktLiteral .
+          bd:serviceParam wikibase:cornerNorthEast "Point({max_lon} {max_lat})"^^geo:wktLiteral .
+        }
+        ?item wdt:P31 ?type .
+        OPTIONAL { ?item rdfs:label ?label . FILTER(LANG(?label) IN ("sr", "sr-el", "sh", "hr", "en", "de", "ru", "it")) }
+        OPTIONAL { ?item wdt:P856 ?website }
+        OPTIONAL { ?item wdt:P1329 ?phone }
+        OPTIONAL { ?item wdt:P6375 ?address }
+        OPTIONAL { ?item wdt:P11693 ?osmNode }
+        OPTIONAL { ?item wdt:P10689 ?osmWay }
+        OPTIONAL { ?item wdt:P402 ?osmRel }
+      }
+
+# Not used until their terms are verified (docs/REAL_PILOT.md):
+#  - Central Tourist Register of Montenegro (gov.me) - official register of
+#    tourism/catering businesses; licence for reuse not confirmed.
+#  - TO Kotor / TO Budva event calendars - no data licence found.

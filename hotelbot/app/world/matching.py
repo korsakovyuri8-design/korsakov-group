@@ -414,6 +414,9 @@ def _decide_event(ent: NormalizedEntity, prof: Profile, locality: set[str], sour
 STATS = {"decisions": 0, "candidates_evaluated": 0, "match": 0, "no_match": 0, "ambiguous": 0}
 # Opt-in: a list to record the candidate-set size of every decision (benchmarks).
 CANDIDATE_SIZES: list[int] | None = None
+# Opt-in: a list to record EVERY pairwise decision (record x candidate) - the
+# real-data audit samples pairs from it. Observes only; never changes an outcome.
+PAIR_LOG: list[dict[str, Any]] | None = None
 
 
 def resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: set[str] = frozenset()) -> Decision:
@@ -434,6 +437,9 @@ def _resolve(session: Session, ent: NormalizedEntity, source_id: str, locality: 
         decide = _decide_event if ent.entity_type == "EVENT" else _decide_place
         outcome, score, evidence = decide(ent, prof, locality, source_id)
         row = {"canonical_entity_id": canonical.id, "score": score, "evidence": evidence}
+        if PAIR_LOG is not None:
+            PAIR_LOG.append({"source_id": source_id, "record_id": ent.record_id, "canonical_entity_id": canonical.id,
+                             "candidates": len(candidates), "outcome": outcome, **row})
         if outcome == MATCH:
             matches.append(row)
         elif outcome == AMBIGUOUS:

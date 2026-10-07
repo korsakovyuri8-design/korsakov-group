@@ -251,3 +251,59 @@ class FixtureAdapter:
 
     def health(self) -> dict[str, Any]:
         return {"status": "failing" if self.fail_after is not None else "ok"}
+
+
+class RawDumpAdapter:
+    """A REAL source read from a saved raw dump (Iteration 6): the exact
+    response bytes of an Overpass or Wikidata SPARQL query, saved by
+    tools/pilot_fetch.py with the query, the fetch time and a sha256. Ingest
+    is offline and reproducible; the dump IS the evidence.
+
+    Dump file: {"format": "osm.overpass.v1" | "wikidata.sparql.v1",
+                "fetched_at": iso, "query": str, "sha256": str, "response": {...}}"""
+
+    def __init__(self, descriptor: SourceDescriptor, dump: dict[str, Any], page_size: int = 200) -> None:
+        if dump.get("format") != descriptor.format:
+            raise SourceError(f"{descriptor.source_id}: dump format {dump.get('format')!r} != {descriptor.format!r}")
+        self.descriptor, self.dump, self.page_size = descriptor, dump, page_size
+        fetched = dump.get("fetched_at")
+        self.fetched_at = datetime.fromisoformat(fetched) if isinstance(fetched, str) else None
+
+    def _records(self) -> list[SourceRecord]:
+        resp = self.dump["response"]
+        if self.descriptor.format == "osm.overpass.v1":
+            return [SourceRecord(f"{el['type']}/{el['id']}", "place", el,
+                                 observed_at=_iso_or(el.get("timestamp"), self.fetched_at),
+                                 url=f"https://www.openstreetmap.org/{el['type']}/{el['id']}")
+                    for el in resp.get("elements", []) if el.get("tags")]
+        from app.world.real_formats import wikidata_group
+
+        return [SourceRecord(qid, "place", {"rows": rows}, observed_at=self.fetched_at,
+                             url=f"https://www.wikidata.org/wiki/{qid}")
+                for qid, rows in wikidata_group(resp.get("results", {}).get("bindings", [])).items()]
+
+    def discover_scope(self, scope: Scope) -> dict[str, Any]:
+        return {"records": len(self._records())}
+
+    def sync_full(self, scope: Scope, cursor: dict[str, Any] | None = None) -> Iterator[SyncPage]:
+        recs = self._records()
+        start = int((cursor or {}).get("offset", 0))
+        for i in range(start, max(len(recs), 1), self.page_size):
+            nxt = i + self.page_size
+            yield SyncPage(recs[i:nxt], {"offset": nxt, "sha256": self.dump.get("sha256")}, last=nxt >= len(recs))
+
+    def sync_incremental(self, scope: Scope, cursor: dict[str, Any]) -> Iterator[SyncPage]:
+        yield from self.sync_full(scope)          # a dump is a full snapshot
+
+    def fetch_record(self, record_id: str) -> SourceRecord | None:
+        return next((r for r in self._records() if r.record_id == record_id), None)
+
+    def health(self) -> dict[str, Any]:
+        return {"ok": True, "fetched_at": self.dump.get("fetched_at")}
+
+
+def _iso_or(value: Any, default: datetime | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")) if value else default
+    except ValueError:
+        return default
