@@ -126,11 +126,16 @@ def test_pilot_tools_run_end_to_end_offline(tmp_path):
     tool = lambda name, *a: subprocess.run([sys.executable, str(ROOT / "tools" / name), "--pilot", str(pilot), *a],  # noqa: E731
                                            capture_output=True, text=True, cwd=ROOT)
     # option B: response bodies fetched elsewhere are imported byte for byte
-    osm_body = json.dumps({"version": 0.6, "elements": [OSM_RESTAURANT, OSM_MUSEUM_WAY, OSM_UNMAPPED]}).encode()
+    osm_body = json.dumps({"version": 0.6, "osm3s": {"timestamp_osm_base": "2026-10-07T11:59:00Z"},
+                           "elements": [OSM_RESTAURANT, OSM_MUSEUM_WAY, OSM_UNMAPPED]}).encode()
     (tmp_path / "osm_kotor.json").write_bytes(osm_body)
     wd_body = json.dumps({"head": {}, "results": {"bindings": _wd_rows("Q999001", {"sr-el": "Muzej Test"},
                                                                        osm_way="2002")}}).encode()
     (tmp_path / "wd_kotor.json").write_bytes(wd_body)
+    # fetched_at is the time of the HTTP request: not in the future, not before the data's own timestamp
+    for bad in ("2099-01-01T00:00:00+00:00", "2026-10-07T11:00:00+00:00", "2026-10-07T12:00:00"):
+        r = tool("pilot_fetch.py", "--import", "osm", f"kotor={tmp_path / 'osm_kotor.json'}", "--fetched-at", bad)
+        assert r.returncode != 0 and not (pilot / "raw" / "osm_overpass.json").exists(), bad
     for source, body in (("osm", "osm_kotor.json"), ("wikidata", "wd_kotor.json")):
         r = tool("pilot_fetch.py", "--import", source, f"kotor={tmp_path / body}", "--fetched-at", NOW.isoformat())
         assert r.returncode == 0, r.stderr[-2000:]
@@ -160,6 +165,14 @@ def test_pilot_tools_run_end_to_end_offline(tmp_path):
                  "snapshot.json"):
         assert (out / name).exists(), name
     assert tool("pilot_run.py").returncode == 3                      # the raw report is write-once
+    # the audit sample is pre-registered and reproducible
+    sample = json.loads((out / "audit_sample.json").read_text())
+    assert sample["audit_sample_version"] == "1" and sample["random_seed"] and sample["selection_algorithm"]
+    assert sample["source_dump_hashes"] == metrics["provenance"]["dumps"] and "code_commit" in sample
+    assert sample["strata"]["match:explicit_id_only"] == {"population": 1, "sampled": 1}
+    assert tool("pilot_run.py", "--run", "repro_check").returncode == 0
+    again = json.loads((pilot / "out" / "repro_check" / "audit_sample.json").read_text())
+    assert again["pairs"] == sample["pairs"] and again["strata"] == sample["strata"]
 
     # human labels: UNSURE is neither an error nor a success
     (pilot / "labels_raw_v1.csv").write_text("pair_id,label,notes\n" + "\n".join(
@@ -168,4 +181,9 @@ def test_pilot_tools_run_end_to_end_offline(tmp_path):
     assert labels.returncode == 0, labels.stderr[-2000:]
     scored = json.loads((out / "label_metrics.json").read_text())
     assert scored["unsure_total"] == 1 and scored["false_merges"] == []
-    assert scored["precision_on_random_match_sample"] is None       # no SAME/DIFFERENT label on a MATCH yet
+    assert scored["precision_population_weighted"] is None          # UNSURE is not a decided label
+    (pilot / "labels_raw_v1.csv").write_text("pair_id,label,notes\n" + "\n".join(
+        f"{p['pair_id']},{'SAME_ENTITY' if p['decision'] == 'MATCH' else 'DIFFERENT_ENTITY'}," for p in pairs) + "\n")
+    scored = json.loads(tool("pilot_labels.py").stdout)
+    assert scored["precision_by_match_stratum"]["match:explicit_id_only"]["precision"] == 1.0
+    assert scored["precision_population_weighted"] == 1.0

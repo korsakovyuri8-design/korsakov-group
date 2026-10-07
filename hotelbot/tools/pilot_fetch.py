@@ -58,6 +58,22 @@ def fetch(src: dict, boxes: dict[str, list[float]], client: httpx.Client) -> dic
             "fetched_at": datetime.now(timezone.utc).isoformat(), "parts": parts, "response": merge(src["format"], parts)}
 
 
+def validate_fetched_at(fetched_at: str, parts: list[dict]) -> None:
+    """`fetched_at` is the moment of the actual HTTP request - not of the
+    import. It must carry a UTC offset, lie in the past, and not precede the
+    data it claims to have received (Overpass reports its data timestamp)."""
+    when = datetime.fromisoformat(fetched_at)
+    if when.tzinfo is None:
+        raise SystemExit("--fetched-at needs a UTC offset (the time of the HTTP request)")
+    if when > datetime.now(timezone.utc):
+        raise SystemExit("--fetched-at is in the future")
+    for p in parts:
+        base = ((p["body"].get("osm3s") or {}).get("timestamp_osm_base") if isinstance(p["body"], dict) else None)
+        if base and datetime.fromisoformat(base.replace("Z", "+00:00")) > when:
+            raise SystemExit(f"{p['box']}: --fetched-at {fetched_at} precedes the data's own timestamp {base} - "
+                             "it must be the time of the HTTP request")
+
+
 def import_bodies(src: dict, files: dict[str, Path], fetched_at: str, boxes: dict[str, list[float]]) -> dict:
     parts = []
     for box, path in files.items():
@@ -66,7 +82,7 @@ def import_bodies(src: dict, files: dict[str, Path], fetched_at: str, boxes: dic
         body = path.read_bytes()
         parts.append({"box": box, "query": query_for(src, boxes[box]), "sha256": hashlib.sha256(body).hexdigest(),
                       "imported_from": path.name, "body": json.loads(body)})
-    datetime.fromisoformat(fetched_at)                     # must be a real time, with offset
+    validate_fetched_at(fetched_at, parts)
     return {"format": src["format"], "source_id": src["source_id"], "fetched_at": fetched_at, "parts": parts,
             "response": merge(src["format"], parts), "fetched_outside_environment": True}
 

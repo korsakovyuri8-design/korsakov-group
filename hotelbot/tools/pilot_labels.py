@@ -15,8 +15,12 @@ Reported on the reviewed sample only (it is a sample, not the population):
   false splits   NO_MATCH labelled SAME_ENTITY
   precision      SAME among labelled MATCH
   ambiguous      how AMBIGUOUS pairs split under human review (usefulness)
-Sample groups are reported separately: the 50 random MATCH pairs estimate
-precision; the targeted groups (unusual, contradictory, difficult) do not.
+Strata are reported separately (out/<run>/audit_sample.json defines them,
+pre-registered). Precision is given PER MATCH STRATUM (explicit id only, id +
+independent support, contact-based, address-based, other rule), and as a
+population-weighted estimate over the strata that have labels. The census
+groups (unusual, contradictory) and the difficult NO_MATCH stratum are
+targeted, not random: they find errors, they do not estimate rates.
 """
 
 from __future__ import annotations
@@ -44,7 +48,7 @@ def load_labels(pilot: Path, run: Path, labels: Path | None) -> dict[str, tuple[
     return out
 
 
-def score(pairs: list[dict], labels: dict[str, tuple[str, str]]) -> dict:
+def score(pairs: list[dict], labels: dict[str, tuple[str, str]], strata: dict[str, dict]) -> dict:
     by_group: dict[str, Counter] = defaultdict(Counter)
     overall = Counter()
     false_merges, false_splits = [], []
@@ -56,19 +60,29 @@ def score(pairs: list[dict], labels: dict[str, tuple[str, str]]) -> dict:
         by_group[p["group"]][key] += 1
         overall[key] += 1
         if p["decision"] == "MATCH" and label == "DIFFERENT_ENTITY":
-            false_merges.append({"pair_id": p["pair_id"], "rule": p["rule"], "notes": notes})
+            false_merges.append({"pair_id": p["pair_id"], "group": p["group"], "rule": p["rule"], "notes": notes})
         if p["decision"] == "NO_MATCH" and label == "SAME_ENTITY":
-            false_splits.append({"pair_id": p["pair_id"], "rule": p["rule"], "notes": notes})
-    rs = by_group.get("match_sample", Counter())
-    labelled_match = rs["MATCH->SAME_ENTITY"] + rs["MATCH->DIFFERENT_ENTITY"]
-    amb = Counter({k.split("->")[1]: v for k, v in overall.items() if k.startswith("AMBIGUOUS->")})
+            false_splits.append({"pair_id": p["pair_id"], "group": p["group"], "rule": p["rule"], "notes": notes})
+    per_stratum, weighted, weight = {}, 0.0, 0
+    for g, c in sorted(by_group.items()):
+        if not g.startswith("match:"):
+            continue
+        decided = c["MATCH->SAME_ENTITY"] + c["MATCH->DIFFERENT_ENTITY"]       # UNSURE excluded
+        if decided:
+            prec = c["MATCH->SAME_ENTITY"] / decided
+            pop = (strata.get(g) or {}).get("population", 0)
+            per_stratum[g] = {"precision": round(prec, 4), "labelled_decided": decided,
+                              "unsure": c["MATCH->UNSURE"], "population": pop}
+            weighted, weight = weighted + prec * pop, weight + pop
+    ambiguous = {g: {k.split("->")[1]: v for k, v in c.items()} for g, c in sorted(by_group.items())
+                 if g.startswith("ambiguous:")}
     unsure = {g: sum(v for k, v in c.items() if k.endswith("->UNSURE")) for g, c in by_group.items()}
     return {"labelled": sum(overall.values()), "of_pairs": len(pairs),
             "unsure_by_group": unsure, "unsure_total": sum(unsure.values()),
-            "precision_on_random_match_sample": round(rs["MATCH->SAME_ENTITY"] / labelled_match, 4)
-            if labelled_match else None,
+            "precision_by_match_stratum": per_stratum,
+            "precision_population_weighted": round(weighted / weight, 4) if weight else None,
             "false_merges": false_merges, "false_splits": false_splits,
-            "ambiguous_under_review": dict(amb),
+            "ambiguous_by_stratum_under_review": ambiguous,
             "by_group": {g: dict(c) for g, c in by_group.items()}, "overall": dict(overall)}
 
 
@@ -81,7 +95,9 @@ def main() -> int:
     pilot = Path(args.pilot)
     run = pilot / "out" / args.run
     pairs = [json.loads(line) for line in (run / "audit_pairs.jsonl").open()]
-    result = score(pairs, load_labels(pilot, run, Path(args.labels) if args.labels else None))
+    sample = json.loads((run / "audit_sample.json").read_text())
+    result = score(pairs, load_labels(pilot, run, Path(args.labels) if args.labels else None), sample["strata"])
+    result["audit_sample_version"] = sample["audit_sample_version"]
     (run / "label_metrics.json").write_text(json.dumps(result, indent=1, ensure_ascii=False))
     print(json.dumps(result, indent=1, ensure_ascii=False))
     return 0

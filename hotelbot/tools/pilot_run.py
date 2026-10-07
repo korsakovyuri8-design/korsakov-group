@@ -149,20 +149,114 @@ def independent_support(evidence: dict[str, Any]) -> list[str]:
     return sorted(k for k in ("phone", "domain", "address") if sig.get(k) == "SUPPORTS_MATCH")
 
 
-def audit(session, log: list[dict], out: Path, rng: random.Random) -> dict[str, Any]:  # noqa: ANN001
-    by_outcome = defaultdict(list)
+# ------------------------------------------------------- audit sample (pre-registered)
+AUDIT_SAMPLE_VERSION = "1"
+AUDIT_SEED = 20261007
+QUOTA = {"MATCH": 50, "AMBIGUOUS": 50, "NO_MATCH_DIFFICULT": 30}
+MIN_PER_STRATUM = 10
+SELECTION_ALGORITHM = """\
+Pairs = every (record x candidate canonical) decision in matching.PAIR_LOG.
+Deterministic order: pairs sorted by (outcome, stratum, source_id, record_id,
+stable key of the candidate = its smallest (source_id, record_id) member).
+Strata (assigned from the logged evidence, in this precedence):
+  MATCH:  explicit_id_only        external_id SUPPORTS, no phone/domain/address SUPPORTS
+          explicit_id_plus_independent  external_id SUPPORTS and phone/domain/address SUPPORTS
+          contact_based           no external_id; phone or domain SUPPORTS
+          address_based           no external_id, no contact; address SUPPORTS
+          other_rule              anything else (relocation, event rules, ...)
+  AMBIGUOUS: multiple_candidates  the record had >= 2 non-NO_MATCH candidates
+          support_and_contradiction  a signal SUPPORTS and another CONTRADICTS
+          name_geo_only           no signal SUPPORTS or CONTRADICTS
+          other
+  NO_MATCH_DIFFICULT (machine criterion, fixed before data): NO_MATCH with
+          name_similarity >= 0.6, or distance <= 50 m, or any SUPPORTS signal,
+          or any CONTRADICTS signal.
+Per-stratum sample size: min(stratum size, max(MIN_PER_STRATUM, ceil(QUOTA x stratum share))).
+Each stratum is sampled with random.Random(sha256(f"{seed}:{outcome}:{stratum}")), without replacement.
+Census (all pairs, no sampling): unusual MATCH (name_similarity < 0.5 or distance > 150 m) and every pair
+with a CONTRADICTS signal.
+A pair that falls in several groups is audited once, under the first group in this order:
+MATCH strata, AMBIGUOUS strata, NO_MATCH_DIFFICULT, unusual_match_all, contradictory_signals_all.
+"""
+
+
+def _states(p: dict) -> dict[str, str]:
+    return p["evidence"].get("signals") or {}
+
+
+def stratum(p: dict, multi: set[tuple[str, str]]) -> str | None:
+    sig = _states(p)
+    supports = {k for k, v in sig.items() if v == "SUPPORTS_MATCH"}
+    contradicts = {k for k, v in sig.items() if v == "CONTRADICTS_MATCH"}
+    if p["outcome"] == "MATCH":
+        if "external_id" in supports:
+            return "explicit_id_plus_independent" if supports - {"external_id"} else "explicit_id_only"
+        if supports & {"phone", "domain"}:
+            return "contact_based"
+        if "address" in supports:
+            return "address_based"
+        return "other_rule"
+    if p["outcome"] == "AMBIGUOUS":
+        if (p["source_id"], p["record_id"]) in multi:
+            return "multiple_candidates"
+        if supports and contradicts:
+            return "support_and_contradiction"
+        if not supports and not contradicts:
+            return "name_geo_only"
+        return "other"
+    e = p["evidence"]
+    if e.get("name_similarity", 0) >= 0.6 or (e.get("distance_m") if e.get("distance_m") is not None else 1e9) <= 50 \
+            or supports or contradicts:
+        return "difficult"
+    return None
+
+
+def stratified_sample(log: list[dict], stable_key, seed: int = AUDIT_SEED) -> tuple[dict, dict]:  # noqa: ANN001
+    import hashlib
+    import math
+
+    live = Counter((p["source_id"], p["record_id"]) for p in log if p["outcome"] != "NO_MATCH")
+    multi = {k for k, n in live.items() if n >= 2}
+    strata: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for p in log:
-        by_outcome[p["outcome"]].append(p)
+        st = stratum(p, multi)
+        if st is not None:
+            strata[("NO_MATCH_DIFFICULT" if p["outcome"] == "NO_MATCH" else p["outcome"], st)].append(p)
+    groups, manifest = {}, {}
+    for outcome in ("MATCH", "AMBIGUOUS", "NO_MATCH_DIFFICULT"):
+        total = sum(len(v) for (o, _), v in strata.items() if o == outcome)
+        for (o, st), pairs in sorted(strata.items()):
+            if o != outcome:
+                continue
+            pairs.sort(key=lambda p: (p["source_id"], p["record_id"], stable_key(p["canonical_entity_id"])))
+            k = min(len(pairs), max(MIN_PER_STRATUM, math.ceil(QUOTA[outcome] * len(pairs) / max(total, 1))))
+            rng = random.Random(hashlib.sha256(f"{seed}:{outcome}:{st}".encode()).hexdigest())
+            groups[f"{outcome.lower()}:{st}"] = rng.sample(pairs, k)
+            manifest[f"{outcome.lower()}:{st}"] = {"population": len(pairs), "sampled": k}
     ev = lambda p: p["evidence"]  # noqa: E731
-    difficult_no = [p for p in by_outcome["NO_MATCH"]
-                    if ev(p).get("name_similarity", 0) >= 0.6 or (ev(p).get("distance_m") or 1e9) <= 50]
-    contradictory = [p for p in log if "CONTRADICTS_MATCH" in (ev(p).get("signals") or {}).values()]
-    unusual = [p for p in by_outcome["MATCH"]
-               if ev(p).get("name_similarity", 1) < 0.5 or (ev(p).get("distance_m") or 0) > 150]
-    groups = {"match_sample": rng.sample(by_outcome["MATCH"], min(50, len(by_outcome["MATCH"]))),
-              "ambiguous_sample": rng.sample(by_outcome["AMBIGUOUS"], min(50, len(by_outcome["AMBIGUOUS"]))),
-              "difficult_no_match_sample": rng.sample(difficult_no, min(30, len(difficult_no))),
-              "unusual_match_all": unusual, "contradictory_signals_all": contradictory}
+    order = lambda ps: sorted(ps, key=lambda p: (p["source_id"], p["record_id"],  # noqa: E731
+                                                 stable_key(p["canonical_entity_id"])))
+    groups["unusual_match_all"] = order([p for p in log if p["outcome"] == "MATCH" and (
+        ev(p).get("name_similarity", 1) < 0.5 or (ev(p).get("distance_m") or 0) > 150)])
+    groups["contradictory_signals_all"] = order([p for p in log if "CONTRADICTS_MATCH" in _states(p).values()])
+    for g in ("unusual_match_all", "contradictory_signals_all"):
+        manifest[g] = {"population": len(groups[g]), "sampled": len(groups[g])}
+    return groups, manifest
+
+
+def audit(session, log: list[dict], out: Path, header: dict[str, Any]) -> dict[str, Any]:  # noqa: ANN001
+    ev = lambda p: p["evidence"]  # noqa: E731
+    keys: dict[str, str] = {}
+
+    def stable_key(canonical_id: str) -> str:
+        if canonical_id not in keys:
+            members = session.execute(select(SourceEntity.source_id, SourceEntity.source_record_id)
+                                      .join(EntityLink, EntityLink.source_entity_id == SourceEntity.id)
+                                      .where(EntityLink.canonical_entity_id == canonical_id)).all()
+            keys[canonical_id] = min((f"{a}:{b}" for a, b in members), default=canonical_id)
+        return keys[canonical_id]
+
+    groups, manifest = stratified_sample(log, stable_key)
     rows, seen = [], set()
     for group, pairs in groups.items():
         for p in pairs:
@@ -175,7 +269,8 @@ def audit(session, log: list[dict], out: Path, rng: random.Random) -> dict[str, 
             a = record_view(se)
             b = entity_view(session, p["canonical_entity_id"])
             b["members"] = [m for m in b["members"] if (m["source"], m["record_id"]) != (a["source"], a["record_id"])]
-            rows.append({"pair_id": f"P{len(rows) + 1:04d}", "group": group, "decision": p["outcome"],
+            rows.append({"pair_id": f"P{len(rows) + 1:04d}", "group": group,
+                         "stratum": group.split(":", 1)[1] if ":" in group else group, "decision": p["outcome"],
                          "rule": ev(p).get("rule"), "score": p["score"], "evidence": ev(p),
                          "candidate_reason": p.get("candidate_reason", []),
                          "id_link_direction": id_link_direction(ev(p)),
@@ -199,7 +294,13 @@ def audit(session, log: list[dict], out: Path, rng: random.Random) -> dict[str, 
                         a["name"], a["address"], a["phone"], a["website"], " ".join(a["ids"]), a["category"],
                         " | ".join(f"{m['source']}:{m['record_id']}" for m in ms), j("name"), j("address"),
                         j("phone"), j("website"), " | ".join(" ".join(m["ids"]) for m in ms), j("category"), "", ""])
-    return {k: len(v) for k, v in groups.items()} | {"rows_written": len(rows)}
+    sample = {"audit_sample_version": AUDIT_SAMPLE_VERSION, "selection_algorithm": SELECTION_ALGORITHM,
+              "random_seed": AUDIT_SEED, "quota": QUOTA, "min_per_stratum": MIN_PER_STRATUM, **header,
+              "strata": manifest, "rows_written": len(rows),
+              "pairs": [{"pair_id": r["pair_id"], "group": r["group"], "a": f"{r['a']['source']}:{r['a']['record_id']}",
+                         "b": stable_key(r["b"]["canonical_entity_id"])} for r in rows]}
+    (out / "audit_sample.json").write_text(json.dumps(sample, indent=1, ensure_ascii=False))
+    return {"strata": manifest, "rows_written": len(rows)}
 
 
 def same_source_lookalikes(session, out: Path) -> int:  # noqa: ANN001
@@ -436,7 +537,9 @@ def main() -> int:
                                                           EntityLink.active).count() > 1),
                         "reviews_open": s.query(MatchReview).filter(MatchReview.status == "open").count()}
     rng = random.Random(6)
-    metrics["audit"] = audit(s, log, out, rng)
+    metrics["audit"] = audit(s, log, out, {"source_dump_hashes": metrics["provenance"]["dumps"],
+                                           "code_commit": metrics["provenance"]["code_commit"],
+                                           "code_dirty": metrics["provenance"]["code_dirty"]})
     metrics["same_source_lookalikes"] = same_source_lookalikes(s, out)
     metrics["facts"] = fact_conflicts(s)
     metrics["opening_hours"] = hours_audit(s, out)

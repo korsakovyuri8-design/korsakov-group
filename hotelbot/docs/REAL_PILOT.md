@@ -79,9 +79,31 @@ The categories are those the product already supports. The category maps are dat
    - Reports are write-once (`out/<run>/`; `--run raw_v1` is the first). Each carries its provenance: the dump sha256s, the `pilot.yaml` and `policies.yaml` sha256s, the code commit and a dirty flag.
    - Raw dumps are write-once too. `raw/SHA256SUMS` records each response body's hash and the dump file's hash.
 
+6. **The human-audit sample is pre-registered and reproducible.** It is defined in `tools/pilot_run.py` (`SELECTION_ALGORITHM`), and `out/<run>/audit_sample.json` records `audit_sample_version`, the selection algorithm text, `random_seed`, `source_dump_hashes`, `code_commit` and per-stratum population and sample sizes.
+   - **Order.** Pairs are put in a deterministic order: by record, then by a stable key of the candidate (its smallest member record).
+   - **MATCH strata:**
+     - explicit id only;
+     - explicit id + independent support;
+     - contact-based;
+     - address-based;
+     - other rule.
+   - **AMBIGUOUS strata:**
+     - multiple candidates;
+     - support + contradiction;
+     - name + geo only;
+     - other.
+   - **Difficult NO_MATCH** is a machine criterion fixed now: name similarity ≥ 0.6, or ≤ 50 m, or any SUPPORTS or CONTRADICTS signal.
+   - **Sample size.** Each stratum gets min(size, max(10, ⌈quota × share⌉)), with quotas 50 / 50 / 30. Easy explicit-id matches therefore cannot crowd out contact or fuzzy merges.
+   - **Census.** Unusual merges and every pair with a contradicting signal are audited in full.
+   - **Scoring.** `pilot_labels.py` reports precision **per MATCH stratum** and a population-weighted estimate, and how each AMBIGUOUS stratum splits under review. Census and difficult groups find errors; they do not estimate rates.
+   - **Reproducibility check.** Two independent runs on the same dumps and code produce the same sample (tested).
+7. **`fetched_at` is the moment of the actual HTTP request**, not of the import. It must carry a UTC offset, lie in the past, and not precede the data's own timestamp (Overpass `timestamp_osm_base`). Otherwise the import is refused.
+
+**This is the pre-data checkpoint.** Methodology is frozen at the commit that adds this section, on top of db5c12c. No further backend code before the four response bodies exist.
+
 **Fixed sequence:**
 
-1. Raw OSM + Wikidata dumps.
+1. Four untouched response bodies (OSM and Wikidata × Kotor and Budva).
 2. sha256 freeze.
 3. Ingest with the frozen 5.1 rules.
 4. **RAW METRICS** (`raw_v1`).
