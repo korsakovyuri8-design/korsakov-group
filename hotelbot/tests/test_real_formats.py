@@ -174,16 +174,50 @@ def test_pilot_tools_run_end_to_end_offline(tmp_path):
     again = json.loads((pilot / "out" / "repro_check" / "audit_sample.json").read_text())
     assert again["pairs"] == sample["pairs"] and again["strata"] == sample["strata"]
 
-    # human labels: UNSURE is neither an error nor a success
-    (pilot / "labels_raw_v1.csv").write_text("pair_id,label,notes\n" + "\n".join(
-        f"{p['pair_id']},{'UNSURE' if p['decision'] == 'MATCH' else 'DIFFERENT_ENTITY'}," for p in pairs) + "\n")
+    assert sample["target_allocation"] == {"MATCH": 50, "AMBIGUOUS": 50, "NO_MATCH_DIFFICULT": 30}
+    assert sample["minimum_per_nonempty_stratum"] == 10 and sample["actual_sample_size"]["total"] == len(pairs)
+
+    # BLIND labelling view: source values only - never the algorithm's class
+    import csv
+
+    with (out / "audit_blind.csv").open() as fh:
+        blind = list(csv.DictReader(fh))
+    header = set(blind[0])
+    for leak in ("decision", "group", "stratum", "rule", "candidate_reason", "signals", "evidence",
+                 "id_link_direction", "independent_support", "score", "name_similarity"):
+        assert not any(leak in col for col in header), leak
+    text = (out / "audit_blind.csv").read_text()
+    for leak in ("MATCH", "AMBIGUOUS", "SUPPORTS", "CONTRADICTS", "explicit_id", "match:", "shared explicit"):
+        assert leak not in text, leak
+    assert all(r["pair_id"].startswith("X") and len(r["pair_id"]) == 11 for r in blind)   # opaque, unordered ids
+    assert {r["pair_id"] for r in blind} == {p["pair_id"] for p in pairs}
+
+    # labels come from the blind view; UNSURE is neither an error nor a success
+    def label_blind(fn) -> None:  # noqa: ANN001
+        by_id = {p["pair_id"]: p for p in pairs}
+        with (out / "audit_blind.csv").open("w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(blind[0]))
+            w.writeheader()
+            for r in blind:
+                w.writerow({**r, "human_label": fn(by_id[r["pair_id"]])})
+
+    label_blind(lambda p: "UNSURE" if p["decision"] == "MATCH" else "DIFFERENT_ENTITY")
     labels = tool("pilot_labels.py")
     assert labels.returncode == 0, labels.stderr[-2000:]
     scored = json.loads((out / "label_metrics.json").read_text())
+    assert scored["labels_file"] == "audit_blind.csv" and scored["labels_sha256"]
     assert scored["unsure_total"] == 1 and scored["false_merges"] == []
     assert scored["precision_population_weighted"] is None          # UNSURE is not a decided label
-    (pilot / "labels_raw_v1.csv").write_text("pair_id,label,notes\n" + "\n".join(
-        f"{p['pair_id']},{'SAME_ENTITY' if p['decision'] == 'MATCH' else 'DIFFERENT_ENTITY'}," for p in pairs) + "\n")
-    scored = json.loads(tool("pilot_labels.py").stdout)
-    assert scored["precision_by_match_stratum"]["match:explicit_id_only"]["precision"] == 1.0
-    assert scored["precision_population_weighted"] == 1.0
+    st = scored["strata"]["match:explicit_id_only"]
+    assert st == {"population_size": 1, "n_sampled": 1, "n_labeled": 1, "n_same": 0, "n_different": 0,
+                  "n_unsure": 1}
+    # a different labels file never overwrites the frozen result
+    label_blind(lambda p: "SAME_ENTITY" if p["decision"] == "MATCH" else "DIFFERENT_ENTITY")
+    tool("pilot_labels.py")
+    assert json.loads((out / "label_metrics.json").read_text())["unsure_total"] == 1
+    rescored = json.loads(next(out.glob("label_metrics_*.json")).read_text())
+    assert rescored["strata"]["match:explicit_id_only"]["precision"] == 1.0
+    assert rescored["precision_population_weighted"] == 1.0
+    # the technical audit (which shows the decision) is refused as a label source
+    refused = tool("pilot_labels.py", "--labels", str(out / "audit_pairs.csv"))
+    assert refused.returncode != 0 and "blind" in (refused.stderr + refused.stdout)

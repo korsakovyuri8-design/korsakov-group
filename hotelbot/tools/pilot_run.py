@@ -9,8 +9,11 @@ Outputs (in <pilot>/out/<run>/, WRITE-ONCE - the first raw report is frozen
 before any change to category maps, normalizer, ER or policies; a later run
 gets a new --run name and records what changed in its provenance):
   metrics.json            every number in the report
-  audit_pairs.csv         pairs for a human to label (SAME_ENTITY / DIFFERENT_ENTITY / UNSURE)
+  audit_blind.csv         THE labelling view: source values only, no algorithm output, opaque pair ids
+  audit_pairs.csv         technical audit (decision, stratum, rule, candidate reason, evidence states) -
+                          for diagnosis AFTER the labels are frozen; never for labelling
   audit_pairs.jsonl       the same pairs with the full raw source records
+  audit_sample.json       the pre-registered sample manifest
   same_source_lookalikes.csv  look-alike pairs inside ONE source (ER never compares those)
   hours_audit.csv         every opening_hours conflict + every unparsed opening_hours string
   discovery_sample.md     real discovery queries and what came back
@@ -171,7 +174,9 @@ Strata (assigned from the logged evidence, in this precedence):
   NO_MATCH_DIFFICULT (machine criterion, fixed before data): NO_MATCH with
           name_similarity >= 0.6, or distance <= 50 m, or any SUPPORTS signal,
           or any CONTRADICTS signal.
-Per-stratum sample size: min(stratum size, max(MIN_PER_STRATUM, ceil(QUOTA x stratum share))).
+Per-stratum sample size: min(stratum size, max(MIN_PER_STRATUM, ceil(TARGET x stratum share))).
+TARGET (50 / 50 / 30) is a target allocation, not a cap: the per-stratum minimum can raise the
+actual sample above it; the manifest records the actual sample size.
 Each stratum is sampled with random.Random(sha256(f"{seed}:{outcome}:{stratum}")), without replacement.
 Census (all pairs, no sampling): unusual MATCH (name_similarity < 0.5 or distance > 150 m) and every pair
 with a CONTRADICTS signal.
@@ -269,7 +274,7 @@ def audit(session, log: list[dict], out: Path, header: dict[str, Any]) -> dict[s
             a = record_view(se)
             b = entity_view(session, p["canonical_entity_id"])
             b["members"] = [m for m in b["members"] if (m["source"], m["record_id"]) != (a["source"], a["record_id"])]
-            rows.append({"pair_id": f"P{len(rows) + 1:04d}", "group": group,
+            rows.append({"pair_id": opaque_pair_id(a, stable_key(p["canonical_entity_id"])), "group": group,
                          "stratum": group.split(":", 1)[1] if ":" in group else group, "decision": p["outcome"],
                          "rule": ev(p).get("rule"), "score": p["score"], "evidence": ev(p),
                          "candidate_reason": p.get("candidate_reason", []),
@@ -283,8 +288,7 @@ def audit(session, log: list[dict], out: Path, header: dict[str, Any]) -> dict[s
         w.writerow(["pair_id", "group", "decision", "rule", "candidate_reason", "id_link_direction",
                     "independent_support", "distance_m", "name_similarity", "signals",
                     "a_source", "a_id", "a_name", "a_address", "a_phone", "a_website", "a_ids", "a_category",
-                    "b_records", "b_names", "b_addresses", "b_phones", "b_websites", "b_ids", "b_categories",
-                    "label", "notes"])
+                    "b_records", "b_names", "b_addresses", "b_phones", "b_websites", "b_ids", "b_categories"])
         for r in rows:
             e, a, ms = r["evidence"], r["a"], r["b"]["members"]
             j = lambda k: " | ".join(str(m[k]) for m in ms if m[k])  # noqa: E731
@@ -293,14 +297,68 @@ def audit(session, log: list[dict], out: Path, header: dict[str, Any]) -> dict[s
                         e.get("name_similarity"), json.dumps(e.get("signals")), a["source"], a["record_id"],
                         a["name"], a["address"], a["phone"], a["website"], " ".join(a["ids"]), a["category"],
                         " | ".join(f"{m['source']}:{m['record_id']}" for m in ms), j("name"), j("address"),
-                        j("phone"), j("website"), " | ".join(" ".join(m["ids"]) for m in ms), j("category"), "", ""])
+                        j("phone"), j("website"), " | ".join(" ".join(m["ids"]) for m in ms), j("category")])
+    write_blind(rows, out)
+    actual = Counter(r["group"].split(":")[0] for r in rows)
     sample = {"audit_sample_version": AUDIT_SAMPLE_VERSION, "selection_algorithm": SELECTION_ALGORITHM,
-              "random_seed": AUDIT_SEED, "quota": QUOTA, "min_per_stratum": MIN_PER_STRATUM, **header,
+              "random_seed": AUDIT_SEED,
+              # target_allocation is NOT a cap: the per-stratum minimum can raise the actual size above it
+              "target_allocation": QUOTA, "minimum_per_nonempty_stratum": MIN_PER_STRATUM,
+              "actual_sample_size": {"by_outcome": dict(actual), "total": len(rows)}, **header,
               "strata": manifest, "rows_written": len(rows),
               "pairs": [{"pair_id": r["pair_id"], "group": r["group"], "a": f"{r['a']['source']}:{r['a']['record_id']}",
                          "b": stable_key(r["b"]["canonical_entity_id"])} for r in rows]}
     (out / "audit_sample.json").write_text(json.dumps(sample, indent=1, ensure_ascii=False))
     return {"strata": manifest, "rows_written": len(rows)}
+
+
+def opaque_pair_id(a: dict[str, Any], b_key: str) -> str:
+    """A pair id that says nothing about the algorithm's class or the sample
+    group (sequential ids would: the groups are written in order)."""
+    import hashlib
+
+    return "X" + hashlib.sha256(f"{AUDIT_SEED}:{a['source']}:{a['record_id']}|{b_key}".encode()).hexdigest()[:10]
+
+
+BLIND_COLUMNS = ["pair_id", "source_a", "source_b", "raw_name_a", "raw_name_b", "other_names_a", "other_names_b",
+                 "address_a", "address_b", "coordinates_a", "coordinates_b", "distance_m", "phone_a", "phone_b",
+                 "website_a", "website_b", "external_ids_a", "external_ids_b", "category_a", "category_b",
+                 "url_a", "url_b", "human_label", "human_note"]
+
+
+def write_blind(rows: list[dict[str, Any]], out: Path) -> None:
+    """HARD RULE: human ground-truth labelling never sees the algorithm's
+    predicted class. This view carries only what the sources say - no
+    decision, stratum, rule, candidate reason or evidence state - in an
+    order (sorted by opaque id) that does not follow the sample groups.
+    Labels typed here (or in labels_<run>.csv) are joined to the technical
+    audit by pair_id only after the labels file is frozen."""
+    def side(members: list[dict[str, Any]], key: str) -> str:
+        return " | ".join(str(m[key]) for m in members if m.get(key) not in (None, "", []))
+
+    def coords(m: dict[str, Any]) -> str:
+        return f"{m['lat']:.6f},{m['lon']:.6f}" if m.get("lat") is not None else ""
+
+    def url(m: dict[str, Any]) -> str:
+        rid = m["record_id"]
+        return f"https://www.openstreetmap.org/{rid}" if m["source"] == "osm" else (
+            f"https://www.wikidata.org/wiki/{rid}" if m["source"] == "wikidata" else "")
+
+    with (out / "audit_blind.csv").open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(BLIND_COLUMNS)
+        for r in sorted(rows, key=lambda r: r["pair_id"]):
+            a, ms = r["a"], r["b"]["members"]
+            dist = min((distance_km(Point(a["lat"], a["lon"]), Point(m["lat"], m["lon"])) * 1000 for m in ms
+                        if a.get("lat") is not None and m.get("lat") is not None), default=None)
+            names_b = [x for m in ms for x in m["aliases"] if x != m["name"]]
+            w.writerow([r["pair_id"], a["source"], side(ms, "source"), a["name"], side(ms, "name"),
+                        " | ".join(x for x in a["aliases"] if x != a["name"]), " | ".join(dict.fromkeys(names_b)),
+                        a["address"] or "", side(ms, "address"), coords(a), " | ".join(coords(m) for m in ms),
+                        "" if dist is None else round(dist), a["phone"] or "", side(ms, "phone"),
+                        a["website"] or "", side(ms, "website"), " ".join(a["ids"]),
+                        " | ".join(" ".join(m["ids"]) for m in ms), a["category"] or "", side(ms, "category"),
+                        url(a), " | ".join(url(m) for m in ms), "", ""])
 
 
 def same_source_lookalikes(session, out: Path) -> int:  # noqa: ANN001

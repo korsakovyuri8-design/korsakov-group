@@ -93,13 +93,18 @@ The categories are those the product already supports. The category maps are dat
      - name + geo only;
      - other.
    - **Difficult NO_MATCH** is a machine criterion fixed now: name similarity ≥ 0.6, or ≤ 50 m, or any SUPPORTS or CONTRADICTS signal.
-   - **Sample size.** Each stratum gets min(size, max(10, ⌈quota × share⌉)), with quotas 50 / 50 / 30. Easy explicit-id matches therefore cannot crowd out contact or fuzzy merges.
+   - **Sample size.** Each stratum gets min(size, max(10, ⌈target × share⌉)). The manifest records `target_allocation` (50 / 50 / 30), `minimum_per_nonempty_stratum` (10) and `actual_sample_size`. The target is **not a cap**: the per-stratum minimum can raise the actual sample above it. Easy explicit-id matches therefore cannot crowd out contact or fuzzy merges.
    - **Census.** Unusual merges and every pair with a contradicting signal are audited in full.
-   - **Scoring.** `pilot_labels.py` reports precision **per MATCH stratum** and a population-weighted estimate, and how each AMBIGUOUS stratum splits under review. Census and difficult groups find errors; they do not estimate rates.
+   - **Scoring.** `pilot_labels.py` reports, for every stratum, `population_size`, `n_sampled`, `n_labeled`, `n_same`, `n_different` and `n_unsure`, plus precision per MATCH stratum. The overall precision is weighted by **population** sizes, not by labelled rows. Census and difficult groups find errors; they do not estimate rates. Confidence intervals are deferred and do not hold up the pilot.
    - **Reproducibility check.** Two independent runs on the same dumps and code produce the same sample (tested).
 7. **`fetched_at` is the moment of the actual HTTP request**, not of the import. It must carry a UTC offset, lie in the past, and not precede the data's own timestamp (Overpass `timestamp_osm_base`). Otherwise the import is refused.
 
-**This is the pre-data checkpoint.** Methodology is frozen at the commit that adds this section, on top of db5c12c. No further backend code before the four response bodies exist.
+8. **Blind labelling (hard rule): human ground-truth labelling must not expose the algorithm's predicted class.**
+   - **The view.** Labels are made in `out/<run>/audit_blind.csv`, generated from the same frozen sample. It shows only source values: source, name, other names, address, coordinates, distance, phone, website, external ids, category and the source URL for each side, plus empty `human_label` and `human_note`. It carries **no** decision, stratum, rule, candidate reason or evidence state. Pair ids are opaque hashes, and rows are ordered by them, so neither the id nor the row order reveals the sample group.
+   - **What is refused.** The technical audit (`audit_pairs.csv` / `.jsonl`) is for diagnosis after labelling, and `pilot_labels.py` refuses it as a label source.
+   - **Labels freeze.** The labels file's sha256 is recorded with the result. A result from one labels file is never overwritten by another; a new `label_metrics_<hash8>.json` is written instead. Only then are the labels joined to the algorithm's output by pair id.
+
+**This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
 
@@ -107,9 +112,9 @@ The categories are those the product already supports. The category maps are dat
 2. sha256 freeze.
 3. Ingest with the frozen 5.1 rules.
 4. **RAW METRICS** (`raw_v1`).
-5. Audit sample export.
-6. HUMAN LABELS.
-7. Precision / false merges / ambiguity analysis.
+5. Deterministic audit sample → technical audit (kept aside) + **blind view**.
+6. HUMAN LABELS on the blind view → **labels file frozen** (sha256).
+7. Technical audit + labels → precision per stratum / false merges / false splits / ambiguity analysis.
 8. Classify the real defect classes.
 9. Only then any code change, after a regression fixture made from the real case. The full regression suite is run then, not before.
 
@@ -146,7 +151,7 @@ The categories are those the product already supports. The category maps are dat
 ```
 python tools/pilot_fetch.py                    # needs network access to the two endpoints
 python tools/pilot_run.py [--db postgresql+psycopg://...] [--now ISO]       # writes out/raw_v1/ once
-# label out/raw_v1/audit_pairs.csv (label column) or write data/pilot/kotor_budva/labels_raw_v1.csv
+# label out/raw_v1/audit_blind.csv (human_label column) or write data/pilot/kotor_budva/labels_raw_v1.csv
 python tools/pilot_labels.py --run raw_v1
 ```
 
