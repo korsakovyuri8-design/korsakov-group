@@ -1,8 +1,8 @@
 # HOTELBOT evaluation report
 
-Generated 2026-10-06 13:14 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
+Generated 2026-10-07 14:51 UTC by `python -m evals`. Deterministic: no LLM unless a scenario scripts one; synthetic property packs.
 
-**TOTAL 254 · PASS 250 · FAIL 4**
+**TOTAL 260 · PASS 256 · FAIL 4**
 
 | Category | Pass |
 |---|---|
@@ -18,7 +18,7 @@ Generated 2026-10-06 13:14 UTC by `python -m evals`. Deterministic: no LLM unles
 | local | 23/23 |
 | marketplace | 28/28 |
 | discovery | 44/44 |
-| world | 56/56 |
+| world | 62/62 |
 
 ## Iteration 4 - raw first run of the discovery scenarios
 
@@ -81,6 +81,27 @@ No entity-resolution threshold was changed after the benchmark.
 
 - On dd6e0f1 the clean run found one regression, `disc_fresh_not_flagged`: the region pack was ingested on the wall clock, so its verification dates were clamped as "future" (D-074, fixed in 7fdaba8, regression test added).
 - This report is the clean run on **7fdaba8**: 250/254, gates 162/162, world 56/56 (41 world scenarios, 3 of them new for the contested-claim gate, + 15 adversarial). The only failures are the 4 frozen grounding paraphrase cases.
+
+## Iteration 5.1 - ER evidence states (raw first)
+
+The rule was changed first: absence of contradiction is not positive evidence, and a name-plus-place match needs a SUPPORTS signal. Then the world scenarios were run once, before any fixture change: **41/56** (29/37 gates). Discovery, local and marketplace stayed green. The 15 failures fall into three classes, and no rule was changed in response:
+
+| Class | Scenarios | Why they failed | What changed |
+|---|---|---|---|
+| Identity premise was name + place only | 10 fact-resolution scenarios: hours conflict, authoritative wins, contested elsewhere, old authority, majority, temporary closure, permanent closure, no transaction mutation, snapshot, plus 2 adversarial ones | the records had no contact, so they are now (correctly) AMBIGUOUS | a shared phone (one case: the pack's street address) makes the identity premise explicit; every expectation is unchanged |
+| Name-normalisation identity scenarios | type word, transliterated name, multilingual aliases | same reason | a shared phone was added; they still test that the normalised names agree, and the no-contact shape is now a separate regression gate |
+| Old exception | `world_same_spot_different_phone` | identical names ≤ 30 m with *different* current phones used to merge | the expectation is now two businesses (phone CONTRADICTS, nothing SUPPORTS) |
+
+Six new regression scenarios were added:
+
+- name only at 10 m → AMBIGUOUS;
+- the 100k false-merge shape with the phone missing on one side → AMBIGUOUS;
+- shared phone at 80 m → MATCH;
+- same building, different phones → NO_MATCH;
+- a chain with the same website at different addresses → separate;
+- a street address with a house number SUPPORTS.
+
+After the change: world 62/62, gates 167/167.
 
 ## Scenarios
 
@@ -325,6 +346,12 @@ No entity-resolution threshold was changed after the benchmark.
 | ✅ | `world_traveler_data_boundary` | world | yes |
 | ✅ | `world_snapshot_reproducible` | world | yes |
 | ✅ | `world_discovery_uses_resolved_value` | world |  |
+| ✅ | `world_er_name_only_10m_ambiguous` | world | yes |
+| ✅ | `world_er_missing_phone_is_unknown` | world | yes |
+| ✅ | `world_er_shared_phone_80m_matches` | world | yes |
+| ✅ | `world_er_same_building_different_phones` | world | yes |
+| ✅ | `world_er_chain_different_addresses` | world | yes |
+| ✅ | `world_er_address_identity_supports` | world |  |
 | ✅ | `adv_business_relocation` | world |  |
 | ✅ | `adv_business_replaced_same_location` | world | yes |
 | ✅ | `adv_chain_same_town` | world | yes |
