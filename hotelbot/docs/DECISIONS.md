@@ -1005,3 +1005,24 @@ The resolver may pick a winner for a high-dynamic fact (opening hours, kitchen h
 ## D-074 - The region pack is ingested on the container's clock
 
 The clean full-eval run on the D-073 code found one regression, `disc_fresh_not_flagged`: hours verified 6 days earlier were shown as "last verified 96 days ago". The clock-skew rule from D-072 (a future `observed_at` is clamped to the ingest time) was correct. The defect was that `ingest_region` synced the pack on the **wall clock** instead of the container's clock, so the pack's verification dates were "in the future" and got clamped. `ingest_region(..., now=)` now takes the container's clock (`build_container` passes `clock.now()`). Regression test: `test_region_pack_ingest_uses_the_given_clock_not_the_wall_clock`. No expectation was changed.
+
+## D-075 - Iteration 5 frozen: clean runs and the benchmark, unchanged after measuring
+
+Everything below was measured on commit 7fdaba8, in this order: clean SQLite, then clean PostgreSQL, then the full eval, then the 10k and 100k benchmarks on PostgreSQL 16.
+
+- **SQLite:** 742 passed, 2 skipped (PostgreSQL-only).
+- **PostgreSQL:** 744/744.
+- **Evals:** 250/254, gates 162/162, discovery 44/44, world 56/56. The only failures are the 4 frozen grounding paraphrase cases.
+- **Benchmark:** see the WORLD_FABRIC benchmark table; the raw outputs are in `docs/benchmarks/`.
+
+**Hard requirements met at both sizes.**
+
+- `incorrect_winner_uncontested` = 0.
+- Contested-wrong claims stated definitively = 0 (170 checked at 10k, 1,792 at 100k), and every one was hedged.
+
+**What was not met, and is left as measured.**
+
+- **False merges.** 2 at 100k (0 at 10k). One class: `same name, same place` treats a missing phone as "no conflict" at up to 100 m (WORLD_FABRIC, false-merge safety).
+- **Throughput.** It degrades with density: 15.5 → 2.7 records/s, ER candidates p95 15 → 126. Radius p50 is 29 → 596 ms.
+
+Neither is fixed here. No threshold or rule was changed after the benchmark. The false-merge class should be decided on real data. Throughput is the first scaling bottleneck: blocking keys, batched matching, SQL-side spatial filtering.

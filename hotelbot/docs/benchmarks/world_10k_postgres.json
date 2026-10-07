@@ -1,0 +1,70 @@
+{
+  "db": "postgresql+psycopg",
+  "truth_seed_entities": 6000,
+  "truth_businesses": 6420,
+  "ingest_dir": {
+    "records": 5759,
+    "seconds": 365.2,
+    "records_per_s": 15.8
+  },
+  "ingest_tour": {
+    "records": 1735,
+    "seconds": 107.2,
+    "records_per_s": 16.2
+  },
+  "ingest_partner": {
+    "records": 2488,
+    "seconds": 171.8,
+    "records_per_s": 14.5
+  },
+  "ingest_total": {
+    "source_records": 9982,
+    "seconds": 644.1,
+    "records_per_s": 15.5,
+    "canonical_entities": 6186,
+    "source_entities": 9982,
+    "assertions": 46438,
+    "er_decisions": 9982,
+    "er_candidates_evaluated": 45341,
+    "er_candidates_per_decision": 4.54,
+    "page_500_p50_ms": 27463.85,
+    "page_500_p95_ms": 42469.74,
+    "projection_p50_ms": 4.89,
+    "projection_p95_ms": 7.34
+  },
+  "blocking_candidates_per_record": {
+    "p50": 0.0,
+    "p95": 15.0,
+    "p99": 19.0,
+    "max": 26,
+    "mean": 4.54
+  },
+  "entity_resolution": {
+    "precision": 1.0,
+    "recall": 0.984,
+    "false_merges_entities": 0,
+    "false_merge_pairs": 0,
+    "missed_links_pairs": 71,
+    "ambiguous_rate": 0.007,
+    "match_rate": 0.3803
+  },
+  "fact_resolution_opening_hours": {
+    "correctly_conflicted": 5,
+    "correctly_unknown": 993,
+    "gate_contested_wrong_claim_stated_definitively": 0,
+    "gate_wrong_claims_checked": 170,
+    "incorrect_winner_contested": 76,
+    "incorrect_winner_uncontested": 0,
+    "resolved_correctly": 4699,
+    "wrong_everywhere_no_true_claim": 413
+  },
+  "spatial": {
+    "places": 6186,
+    "radius_1km_p50_ms": 29.23,
+    "radius_1km_p95_ms": 90.48,
+    "nearest_5_p50_ms": 5.67,
+    "nearest_5_p95_ms": 93.54,
+    "full_scan_p50_ms": 1015.44,
+    "index_vs_scan_mismatches": 0
+  }
+}

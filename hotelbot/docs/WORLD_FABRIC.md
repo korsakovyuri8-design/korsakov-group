@@ -120,7 +120,8 @@ Two or more MATCH candidates → AMBIGUOUS.
 
 - **Ambiguous cases stay separate.** They get a review; `identity.resolve_review` merges only on a person's decision.
 - **Split, merge and revert.** `identity.split` (one record out into a new entity), `identity.merge` (the other entity stays with `merged_into_id`) and `identity.revert_merge` only end and create links and move assertions with their source entity. Source records and assertions are never destroyed. Plan items and offerings pointing at a merged-away place still resolve: the bridge follows `merged_into`.
-- **Measured.** The benchmark and the eval gates measure false merges against ground truth: 0.
+- **Measured.** The benchmark and the eval gates measure false merges against ground truth. The gates show 0, and so do the 500 and 10k runs. The 100k run shows **2 false merges out of 101,697 records**; that is the known residual class below.
+- **Known residual class (not fixed in Iteration 5).** The rule `same name, same place` merges when the name similarity is ≥ 0.85, the distance is ≤ 100 m and no phone *conflicts*. When one record has no contact at all, "no conflict" is only absence of evidence. Both 100k false merges are exactly this case: two different businesses with an identical name and kind, 64 m and 96 m apart, where the other record carried no phone. The proposed class rule, not applied, is that a name-only match counts only within ~30 m, and 30–100 m needs a shared contact or else becomes AMBIGUOUS. It should be decided on real data (Iteration 6), not on this generator.
 
 **Observation dates** reported in the future are clamped to the ingest time, and the skew is recorded (`future_observation_clamped`). A wrong clock never wins on recency.
 
@@ -247,6 +248,57 @@ It is reactivated when a source lists it again.
 - existence.
 
 The `tier` (high, medium, low) is derived from them transparently. Discovery's reliability rank uses freshness, conflicts and existence, and `Candidate.components["quality"]` carries the tier.
+
+## Benchmark (frozen, PostgreSQL 16, commit 7fdaba8)
+
+`python tools/world_benchmark.py --entities N --db postgresql+psycopg://...` (10k = `--entities 6000`, 100k = `--entities 60000`). The raw outputs are in `docs/benchmarks/`. The data is synthetic, with a known ground truth:
+
+- 8 city boxes of about 11 × 11 km;
+- 3 sources: a directory, a partner feed and a tourism feed;
+- distractors with similar names 40–150 m away, and chains;
+- hours that are wrong per source at a known rate.
+
+Single process, no parallelism. No threshold was changed after these runs.
+
+| Metric | 10k | 100k |
+|---|---|---|
+| source records | 9,982 | 101,697 |
+| canonical entities | 6,186 | 61,939 |
+| assertions | 46,438 | 473,031 |
+| ingest records/sec | 15.5 | 2.7 |
+| page (500 records) ingest p50 / p95 | 27.5 s / 42.5 s | 182 s / 310 s |
+| projection p50 / p95 | 4.9 / 7.3 ms | 4.4 / 6.2 ms |
+| radius 1 km p50 / p95 | 29 / 90 ms | 596 / 922 ms |
+| nearest-5 p50 / p95 | 5.7 / 94 ms | 26 / 212 ms |
+| full scan (reference) p50 | 1,015 ms | 12,087 ms |
+| index vs scan mismatches | 0 | 0 |
+| ER candidates per record p50 / p95 / p99 / max | 0 / 15 / 19 / 26 | 0 / 126 / 140 / 172 |
+| identity precision (pairwise) | 1.0 | 0.99996 (2 of ~46,280 predicted pairs wrong) |
+| identity recall (pairwise) | 0.984 | 0.9876 |
+| false merges | **0** | **2** (see the residual class above) |
+| ambiguous rate | 0.70% | 0.67% |
+| fact (opening hours): resolved correctly | 4,699 | 46,952 |
+| correctly conflicted (needs_verification on real disagreement) | 5 | 77 |
+| correctly unknown | 993 | 10,223 |
+| **incorrect winner, uncontested** (target 0) | **0** | **0** |
+| incorrect winner, contested | 76 | 786 |
+| **contested-wrong claims stated definitively** (target 0) | **0** / 170 checked | **0** / 1,792 checked |
+| contested-wrong claims hedged | 170 | 1,792 |
+| every source wrong (undetectable) | 413 | 3,899 |
+
+How to read the fact rows:
+
+- "Checked" counts (place, moment) pairs at three sample moments where the contested winner's claim differs from the truth.
+- "Hedged" means the traveller-facing output gives both claims and says it cannot confirm.
+- "Every source wrong" cannot be detected by resolution. It is the case for corrections and fresher sources.
+
+**Bottlenecks (honest, not fixed in Iteration 5).**
+
+- **Ingest throughput.** Ingest falls from 15.5 to 2.7 records/s because the synthetic density grows tenfold in the same 8 boxes (about 100 places per km² at 100k). The ER candidates per record grow with it (p95 15 → 126).
+- **Where the time goes.** The cost is CPU in Python matching (about 90% CPU in Python, about 10% in PostgreSQL), so per-record work is O(candidates).
+- **Radius queries.** These grow with points per cell, because geohash cells are scanned in Python with haversine.
+- **What scaling needs.** Tighter blocking (name-token or phonetic keys, not only geohash cells), batched or parallel matching per area, and PostGIS / SQL-side distance filtering.
+- **What stays flat.** Projection and nearest-N stay roughly flat.
 
 ## What is now required to add a new country
 
