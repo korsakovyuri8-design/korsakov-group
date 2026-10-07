@@ -1,0 +1,183 @@
+# TEMPORARY operational workflow - Iteration 6 real-data fetch (Kotor + Budva).
+#
+# A GitHub-hosted runner is used purely as the external fetch machine. It
+# runs the FROZEN pre-data code (commit 9e802c4) - not this branch's code -
+# and changes nothing: no ER, normalization, taxonomy, methodology, query or
+# product code. Its only output is the RAW FETCH ARTIFACT.
+#
+#   1. checkout 9e802c4 exactly
+#   2. regenerate the four queries from the frozen pilot.yaml with
+#      pilot_fetch.query_for() and verify their SHA256 - any mismatch fails
+#      the run BEFORE any request to Overpass / Wikidata
+#   3. run the existing tools/pilot_fetch.py (its HTTP logic is not
+#      reproduced). An observe-only httpx event hook additionally saves the
+#      exact response bytes pilot_fetch hashes (it stores parsed JSON in its
+#      dump, so its SHA256SUMS could not otherwise be re-verified), with the
+#      request / response times. Bodies are never parsed or inspected here.
+#   4. upload data/pilot/kotor_budva/raw/ + an execution manifest as an artifact
+#
+# Not done here: pilot_run, raw_v1, any look at the data, any commit.
+# Triggered only by a change to this file on the pilot branch, or manually.
+# Delete this workflow once the artifact is taken.
+
+name: pilot-fetch (temporary)
+
+on:
+  push:
+    branches: [ccr-b496a55d-mr7ho5]
+    paths: [.github/workflows/pilot-fetch.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-fetch
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PILOT_COMMIT: 9e802c4dd8fa9a6ecabbd4279f936f8959970daf
+    steps:
+      - name: Record start time
+        id: start
+        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the pre-data checkpoint (9e802c4) exactly
+        uses: actions/checkout@v4
+        with:
+          ref: 9e802c4dd8fa9a6ecabbd4279f936f8959970daf
+          persist-credentials: false
+
+      - name: Confirm the checked-out commit
+        run: test "$(git rev-parse HEAD)" = "$PILOT_COMMIT"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the fetch dependencies (PyPI only; no request to the data sources yet)
+        run: pip install httpx==0.28.1 PyYAML==6.0.1
+
+      - name: Verify the four frozen query hashes (FAIL = no fetch)
+        id: verify
+        working-directory: hotelbot
+        run: |
+          python - <<'EOF'
+          import hashlib, json, os, sys
+          import yaml
+          sys.path.insert(0, "tools")
+          from pilot_fetch import query_for
+          expected = {
+              "osm_kotor.query": "72c74ecc4490e5030e61d747cde2a9f57dcd2b1f87e5a69c92058159f6912a01",
+              "osm_budva.query": "0acccd58574f6242b635bd1c35f05ba6f194364a55cccef9b1b64c33c121493d",
+              "wd_kotor.query": "b5fa9c15ad7837fbb70680c39a4398ea5b4e4410abe0877190d7ac4192322665",
+              "wd_budva.query": "10da98b26c2a0062a2506d312da34fbe4cda98c8ec14d1fe108a395a2346d3f9",
+          }
+          cfg = yaml.safe_load(open("data/pilot/kotor_budva/pilot.yaml"))
+          got = {}
+          for src in cfg["sources"]:
+              for box, bounds in cfg["scope"].items():
+                  name = {"osm": "osm", "wikidata": "wd"}[src["source_id"]] + f"_{box}.query"
+                  got[name] = hashlib.sha256(query_for(src, bounds).encode()).hexdigest()
+          for name in sorted(expected):
+              print(f"{name}: expected {expected[name]} got {got.get(name)}")
+          json.dump(got, open(os.environ["RUNNER_TEMP"] + "/query_hashes.json", "w"), indent=1, sort_keys=True)
+          if got != expected:
+              sys.exit("QUERY HASH MISMATCH - the fetch is not performed")
+          print("all four query hashes verified")
+          EOF
+
+      - name: Fetch with the frozen tools/pilot_fetch.py
+        id: fetch
+        working-directory: hotelbot
+        run: |
+          set +e
+          python - <<'EOF'
+          # Runs the frozen pilot_fetch.main() unchanged. The only addition is an
+          # observe-only httpx event hook: it saves each response's exact bytes
+          # (the same bytes pilot_fetch hashes) and the request/response times.
+          import hashlib, json, sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+          sys.path.insert(0, "tools")
+          import httpx
+          import pilot_fetch
+
+          bodies = Path("data/pilot/kotor_budva/raw/http_bodies")
+          bodies.mkdir(parents=True, exist_ok=True)
+          log, sent = [], {}
+          now = lambda: datetime.now(timezone.utc).isoformat()
+
+          def on_request(request):
+              sent[id(request)] = now()
+
+          def on_response(response):
+              response.read()                       # the body pilot_fetch will hash - read once, kept verbatim
+              n = len(log) + 1
+              name = f"{n:02d}.body"
+              (bodies / name).write_bytes(response.content)
+              req = response.request
+              log.append({"n": n, "body_file": name, "method": req.method, "url": str(req.url.copy_with(query=None)),
+                          "request_sha256": hashlib.sha256(req.content or req.url.query).hexdigest(),
+                          "request_sent_at": sent.get(id(req)), "response_received_at": now(),
+                          "status": response.status_code, "content_type": response.headers.get("content-type"),
+                          "body_bytes": len(response.content),
+                          "body_sha256": hashlib.sha256(response.content).hexdigest()})
+              (bodies / "requests.json").write_text(json.dumps(log, indent=1))
+
+          _Client = httpx.Client
+
+          def Client(*args, **kwargs):
+              kwargs["event_hooks"] = {"request": [on_request], "response": [on_response]}
+              return _Client(*args, **kwargs)
+
+          pilot_fetch.httpx.Client = Client
+          sys.argv = ["pilot_fetch.py"]
+          sys.exit(pilot_fetch.main())
+          EOF
+          code=$?
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Write the execution manifest (no algorithm results)
+        if: always() && steps.verify.outcome == 'success'
+        working-directory: hotelbot
+        env:
+          STARTED: ${{ steps.start.outputs.at }}
+          FETCH_EXIT: ${{ steps.fetch.outputs.exit }}
+          FETCH_OUTCOME: ${{ steps.fetch.outcome }}
+        run: |
+          python - <<'EOF'
+          import json, os
+          from datetime import datetime, timezone
+          manifest = {
+              "purpose": "Iteration 6 raw fetch (Kotor + Budva) - untouched source data, not a result",
+              "pilot_code_commit": os.environ["PILOT_COMMIT"],
+              "workflow_commit": os.environ["GITHUB_SHA"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "workflow_run_url": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              "runner": {"os": os.environ.get("RUNNER_OS"), "arch": os.environ.get("RUNNER_ARCH")},
+              "workflow_started_at": os.environ["STARTED"],
+              "workflow_ended_at": datetime.now(timezone.utc).isoformat(),
+              "verified_query_sha256": json.load(open(os.environ["RUNNER_TEMP"] + "/query_hashes.json")),
+              "pilot_fetch_exit_status": os.environ.get("FETCH_EXIT") or None,
+              "pilot_fetch_step_outcome": os.environ.get("FETCH_OUTCOME"),
+          }
+          open("data/pilot/kotor_budva/fetch_manifest.json", "w").write(json.dumps(manifest, indent=1))
+          EOF
+
+      - name: Upload the RAW FETCH ARTIFACT
+        if: always() && steps.verify.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-raw-fetch-${{ github.run_id }}
+          path: |
+            hotelbot/data/pilot/kotor_budva/raw/
+            hotelbot/data/pilot/kotor_budva/fetch_manifest.json
+          if-no-files-found: warn
+          retention-days: 90
