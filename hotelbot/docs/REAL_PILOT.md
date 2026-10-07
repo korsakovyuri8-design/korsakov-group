@@ -104,6 +104,13 @@ The categories are those the product already supports. The category maps are dat
    - **What is refused.** The technical audit (`audit_pairs.csv` / `.jsonl`) is for diagnosis after labelling, and `pilot_labels.py` refuses it as a label source.
    - **Labels freeze.** The labels file's sha256 is recorded with the result. A result from one labels file is never overwritten by another; a new `label_metrics_<hash8>.json` is written instead. Only then are the labels joined to the algorithm's output by pair id.
 
+9. **Labelling procedure (procedural rule, no code).** The primary label is set **only from the content of `audit_blind.csv`**, which comes from the frozen dumps.
+   - **Do not open the external links before the first label.** The `url_*` columns are there for a later stage. Opening them first would quietly add live external information, which the frozen evidence does not contain, to the ground truth.
+   - **The labels mean:**
+     - `SAME_ENTITY` / `DIFFERENT_ENTITY`: provable from the frozen audit evidence;
+     - `UNSURE`: the frozen evidence is not enough to decide. A high UNSURE rate is itself a product result: the sources do not carry enough identity evidence.
+   - **External verification**, if needed, is a **separate, later stage** and a separate source of evidence. It goes into its own file (`labels_<run>_external.csv`: `pair_id, label, externally_verified=yes, evidence_url, checked_at, notes`). It never edits the primary labels, and it is reported apart from them.
+
 **This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
