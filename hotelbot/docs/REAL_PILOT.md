@@ -210,8 +210,17 @@ The categories are those the product already supports. The category maps are dat
     |---|---|---|---|---|---|---|
     | wikidata / kotor | **frozen** | [37751323718](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37751323718) / 11537783193 | 2026-10-08 08:40:03.950155 → 08:40:04.647614 | 200 `application/sparql-results+json` | 22,904 | `68ea566c548b4829b9f98f4829ad081373809f45a0eeb0207a782f509b571947` |
     | wikidata / budva | **frozen** | [37751323718](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37751323718) / 11538206827 | 2026-10-08 08:40:15.201942 → 08:40:15.500087 | 200 `application/sparql-results+json` | 16,522 | `3c15df8cfe34231dc2f5cab084c81d97232cbb9713266f982555fee34a7653c7` |
-    | osm / kotor | pending (A1) | - | - | - | - | - |
-    | osm / budva | pending (A1) | - | - | - | - | - |
+    | osm / kotor | pending | - | - | - | - | - |
+    | osm / budva | pending | - | - | - | - | - |
+
+    **Failed OSM attempts under A3** (`overpass.private.coffee`, [run 37754244471](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37754244471), workflow `e6cff47`; failure evidence, not data):
+
+    | Observation | Sent → received (UTC) | HTTP | Body | Artifact |
+    |---|---|---|---|---|
+    | osm / kotor | 2026-10-08 09:05:47.234097 → 09:05:48.192692 | 500 `text/html; charset=iso-8859-1` | 646 B, `37b2ff87b09dfe5a169c16650a4d67451afa5e9b734b27c42379bfbdb024e542` | 11539721294 |
+    | osm / budva | 2026-10-08 09:05:57.480669 → 09:06:00.932283 | 500 `text/html; charset=iso-8859-1` | 646 B, same SHA256 | 11538769302 |
+
+    Per A3, automatic activity stopped and the endpoint is not changed again without a new decision.
 
     The two Wikidata observations were made with workflow commit `64c828f` and pilot commit `9e802c4`, with the A2 User-Agent and the pre-registered query hashes. The bodies were not inspected beyond the HTTP status, content type, size, hash and the JSON-validity check.
 
