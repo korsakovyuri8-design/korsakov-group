@@ -1,0 +1,3018 @@
+{
+ "format": "wikidata.sparql.v1",
+ "source_id": "wikidata",
+ "fetched_at": "2026-10-08T08:40:15.201942+00:00",
+ "parts": [
+  {
+   "box": "kotor",
+   "query": "SELECT ?item ?label ?coord ?type ?website ?phone ?address ?osmNode ?osmWay ?osmRel WHERE {\n  VALUES ?type { wd:Q33506 wd:Q207694 wd:Q1007870 wd:Q16970 wd:Q2977 wd:Q44613 wd:Q24398318 wd:Q57821 wd:Q1785071 wd:Q23413 wd:Q16560 wd:Q839954 wd:Q4989906 wd:Q575759 wd:Q179700 wd:Q40080 wd:Q22698 wd:Q1107656 wd:Q24354 }\n  SERVICE wikibase:box {\n    ?item wdt:P625 ?coord .\n    bd:serviceParam wikibase:cornerSouthWest \"Point(18.69 42.4)\"^^geo:wktLiteral .\n    bd:serviceParam wikibase:cornerNorthEast \"Point(18.79 42.47)\"^^geo:wktLiteral .\n  }\n  ?item wdt:P31 ?type .\n  OPTIONAL { ?item rdfs:label ?label . FILTER(LANG(?label) IN (\"sr\", \"sr-el\", \"sh\", \"hr\", \"en\", \"de\", \"ru\", \"it\")) }\n  OPTIONAL { ?item wdt:P856 ?website }\n  OPTIONAL { ?item wdt:P1329 ?phone }\n  OPTIONAL { ?item wdt:P6375 ?address }\n  OPTIONAL { ?item wdt:P11693 ?osmNode }\n  OPTIONAL { ?item wdt:P10689 ?osmWay }\n  OPTIONAL { ?item wdt:P402 ?osmRel }\n}\n",
+   "sha256": "68ea566c548b4829b9f98f4829ad081373809f45a0eeb0207a782f509b571947",
+   "imported_from": "wikidata_kotor.body",
+   "body": {
+    "head": {
+     "vars": [
+      "item",
+      "label",
+      "coord",
+      "type",
+      "website",
+      "phone",
+      "address",
+      "osmNode",
+      "osmWay",
+      "osmRel"
+     ]
+    },
+    "results": {
+     "bindings": [
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q966429"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "St.-Tryphon-Kathedrale"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q2977"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771416666 42.424311111)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "https://www.kotorskabiskupija.me"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q966429"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Kotor Cathedral"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q2977"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771416666 42.424311111)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "https://www.kotorskabiskupija.me"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q966429"
+       },
+       "label": {
+        "xml:lang": "hr",
+        "type": "literal",
+        "value": "Kotorska katedrala"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q2977"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771416666 42.424311111)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "https://www.kotorskabiskupija.me"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q966429"
+       },
+       "label": {
+        "xml:lang": "it",
+        "type": "literal",
+        "value": "cattedrale di San Trifone"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q2977"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771416666 42.424311111)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "https://www.kotorskabiskupija.me"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q966429"
+       },
+       "label": {
+        "xml:lang": "ru",
+        "type": "literal",
+        "value": "Собор Святого Трифона"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q2977"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771416666 42.424311111)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "https://www.kotorskabiskupija.me"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q966429"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Катедрала Светог Трипуна"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q2977"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771416666 42.424311111)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "https://www.kotorskabiskupija.me"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4981066"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Kirche Mariä Hilfe"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.7731 42.4242)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4981066"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Church of Our Lady of Remedy"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.7731 42.4242)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Festung von Kotor"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4989906"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Fortifications of Kotor"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4989906"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "it",
+        "type": "literal",
+        "value": "Fortificazioni di Cattaro"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4989906"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "ru",
+        "type": "literal",
+        "value": "Оборонительные сооружения города Котор"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4989906"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Котор (тврђава)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4989906"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "sh",
+        "type": "literal",
+        "value": "Kotorska tvrđava"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4989906"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Festung von Kotor"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q57821"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Fortifications of Kotor"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q57821"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "it",
+        "type": "literal",
+        "value": "Fortificazioni di Cattaro"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q57821"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "ru",
+        "type": "literal",
+        "value": "Оборонительные сооружения города Котор"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q57821"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Котор (тврђава)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q57821"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12907852"
+       },
+       "label": {
+        "xml:lang": "sh",
+        "type": "literal",
+        "value": "Kotorska tvrđava"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q57821"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771043 42.424886)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q19828108"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Werk Vermac"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q1785071"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.749236 42.421053)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q19828108"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Vrmac Fortress"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q1785071"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.749236 42.421053)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q19828108"
+       },
+       "label": {
+        "xml:lang": "ru",
+        "type": "literal",
+        "value": "Крепость Врмац"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q1785071"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.749236 42.421053)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q19828108"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Тврђава Врмац"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q1785071"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.749236 42.421053)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q25464652"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Saint Sava Church"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.698279719 42.432669732)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q25464652"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Kirche Hl. Sava (Tivat)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.698279719 42.432669732)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q25464652"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Црква Светог Саве у Тивту"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.698279719 42.432669732)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q45270231"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Naval Heritage Collection"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q33506"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.693834 42.437579)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "https://www.portomontenegro.com/ru/village/museum"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q45270231"
+       },
+       "label": {
+        "xml:lang": "ru",
+        "type": "literal",
+        "value": "Музей морского наследия"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q33506"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.693834 42.437579)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "https://www.portomontenegro.com/ru/village/museum"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q107232433"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "St. Mary Church"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.772 42.42597)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q107232433"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Kirche St. Maria"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.772 42.42597)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q107232433"
+       },
+       "label": {
+        "xml:lang": "ru",
+        "type": "literal",
+        "value": "Церковь Святой Марии от реки"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.772 42.42597)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q107232433"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Svete Marije Koleđate"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.772 42.42597)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q131085324"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "St Elijah Church"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.763650655 42.436045893)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q136236545"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Saint Anne (Kotor)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.771909 42.425229)"
+       },
+       "osmWay": {
+        "type": "literal",
+        "value": "305641942"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q136243191"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Saint Clare (Kotor)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.770249 42.425698)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q136243274"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "St. Michael church in Kotor"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.770697 42.425072)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q136243283"
+       },
+       "label": {
+        "xml:lang": "it",
+        "type": "literal",
+        "value": "chiesa di San Paolo"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.772014 42.424288)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q136243283"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Saint Paul (Kotor)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.772014 42.424288)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q136243291"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Pima Palace"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16560"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.770835 42.42423)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q136243291"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Pima-Palast"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16560"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.770835 42.42423)"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "box": "budva",
+   "query": "SELECT ?item ?label ?coord ?type ?website ?phone ?address ?osmNode ?osmWay ?osmRel WHERE {\n  VALUES ?type { wd:Q33506 wd:Q207694 wd:Q1007870 wd:Q16970 wd:Q2977 wd:Q44613 wd:Q24398318 wd:Q57821 wd:Q1785071 wd:Q23413 wd:Q16560 wd:Q839954 wd:Q4989906 wd:Q575759 wd:Q179700 wd:Q40080 wd:Q22698 wd:Q1107656 wd:Q24354 }\n  SERVICE wikibase:box {\n    ?item wdt:P625 ?coord .\n    bd:serviceParam wikibase:cornerSouthWest \"Point(18.81 42.25)\"^^geo:wktLiteral .\n    bd:serviceParam wikibase:cornerNorthEast \"Point(18.9 42.31)\"^^geo:wktLiteral .\n  }\n  ?item wdt:P31 ?type .\n  OPTIONAL { ?item rdfs:label ?label . FILTER(LANG(?label) IN (\"sr\", \"sr-el\", \"sh\", \"hr\", \"en\", \"de\", \"ru\", \"it\")) }\n  OPTIONAL { ?item wdt:P856 ?website }\n  OPTIONAL { ?item wdt:P1329 ?phone }\n  OPTIONAL { ?item wdt:P6375 ?address }\n  OPTIONAL { ?item wdt:P11693 ?osmNode }\n  OPTIONAL { ?item wdt:P10689 ?osmWay }\n  OPTIONAL { ?item wdt:P402 ?osmRel }\n}\n",
+   "sha256": "3c15df8cfe34231dc2f5cab084c81d97232cbb9713266f982555fee34a7653c7",
+   "imported_from": "wikidata_budva.body",
+   "body": {
+    "head": {
+     "vars": [
+      "item",
+      "label",
+      "coord",
+      "type",
+      "website",
+      "phone",
+      "address",
+      "osmNode",
+      "osmWay",
+      "osmRel"
+     ]
+    },
+    "results": {
+     "bindings": [
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4301501"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Podmaine Monastery"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q44613"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.844555555 42.297944444)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "http://www.manastirpodmaine.rs/"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4301501"
+       },
+       "label": {
+        "xml:lang": "ru",
+        "type": "literal",
+        "value": "Монастырь Подмаине"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q44613"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.844555555 42.297944444)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "http://www.manastirpodmaine.rs/"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4301501"
+       },
+       "label": {
+        "xml:lang": "sh",
+        "type": "literal",
+        "value": "Manastir Podmaine"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q44613"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.844555555 42.297944444)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "http://www.manastirpodmaine.rs/"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q4301501"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Манастир Подмаине"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q44613"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.844555555 42.297944444)"
+       },
+       "website": {
+        "type": "uri",
+        "value": "http://www.manastirpodmaine.rs/"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q11742529"
+       },
+       "label": {
+        "xml:lang": "ru",
+        "type": "literal",
+        "value": "Собор Святого Иоанна Крестителя"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8382 42.2775)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q11742529"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Kirche Johannes der Täufer (Budva)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8382 42.2775)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q11742529"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Church of St. Ivan"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8382 42.2775)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12754203"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Kraljičina"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.89233 42.2634)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12754203"
+       },
+       "label": {
+        "xml:lang": "sh",
+        "type": "literal",
+        "value": "Kraljičina plaža"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.89233 42.2634)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q12754203"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Краљичина плажа"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.89233 42.2634)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q13436034"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Kloster Praskvica"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q44613"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8975 42.2625)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q13436034"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Praskvica Monastery"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q44613"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8975 42.2625)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q13436034"
+       },
+       "label": {
+        "xml:lang": "hr",
+        "type": "literal",
+        "value": "Samostan Praskvica"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q44613"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8975 42.2625)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q13436034"
+       },
+       "label": {
+        "xml:lang": "sh",
+        "type": "literal",
+        "value": "Manastir Praskvica"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q44613"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8975 42.2625)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q13436034"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Манастир Прасквица"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q44613"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8975 42.2625)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q65055390"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Sveti Stefan private beach"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.891125185 42.255129357)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q65133681"
+       },
+       "label": {
+        "xml:lang": "hr",
+        "type": "literal",
+        "value": "Crkva sv. Ivana Krstitelja u Budvi"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.838778 42.277361)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q65133681"
+       },
+       "label": {
+        "xml:lang": "ru",
+        "type": "literal",
+        "value": "Собор Святого Иоанна Крестителя (Будва)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.838778 42.277361)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q65133683"
+       },
+       "label": {
+        "xml:lang": "hr",
+        "type": "literal",
+        "value": "Crkva sv. Mihovila u Budvi"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q16970"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.828888888 42.274444444)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q92158398"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Mogren"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.83274 42.27714)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q92158398"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Плажа Могрен"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.83274 42.27714)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q116287103"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Stadtstrand Budva"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8367539 42.2778425)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q116287103"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "City beach (Budva)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8367539 42.2778425)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q116287499"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Slovenska Plaža"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.846325 42.2848122)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q116287499"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Slovenska Beach"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.846325 42.2848122)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q116290165"
+       },
+       "label": {
+        "xml:lang": "de",
+        "type": "literal",
+        "value": "Crvena glavica (Strand)"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8966781 42.2519531)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q116290165"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Crvena glavica"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8966781 42.2519531)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q130272053"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Queen's beach"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q40080"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.892461 42.263448)"
+       },
+       "osmWay": {
+        "type": "literal",
+        "value": "156809757"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q131345135"
+       },
+       "label": {
+        "xml:lang": "en",
+        "type": "literal",
+        "value": "Budva Dancer"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q179700"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8351587 42.2775433)"
+       }
+      },
+      {
+       "item": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q131345135"
+       },
+       "label": {
+        "xml:lang": "sr",
+        "type": "literal",
+        "value": "Балерина"
+       },
+       "type": {
+        "type": "uri",
+        "value": "http://www.wikidata.org/entity/Q179700"
+       },
+       "coord": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+        "type": "literal",
+        "value": "Point(18.8351587 42.2775433)"
+       }
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "response": {
+  "results": {
+   "bindings": [
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q966429"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "St.-Tryphon-Kathedrale"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q2977"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771416666 42.424311111)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "https://www.kotorskabiskupija.me"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q966429"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Kotor Cathedral"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q2977"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771416666 42.424311111)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "https://www.kotorskabiskupija.me"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q966429"
+     },
+     "label": {
+      "xml:lang": "hr",
+      "type": "literal",
+      "value": "Kotorska katedrala"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q2977"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771416666 42.424311111)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "https://www.kotorskabiskupija.me"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q966429"
+     },
+     "label": {
+      "xml:lang": "it",
+      "type": "literal",
+      "value": "cattedrale di San Trifone"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q2977"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771416666 42.424311111)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "https://www.kotorskabiskupija.me"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q966429"
+     },
+     "label": {
+      "xml:lang": "ru",
+      "type": "literal",
+      "value": "Собор Святого Трифона"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q2977"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771416666 42.424311111)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "https://www.kotorskabiskupija.me"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q966429"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Катедрала Светог Трипуна"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q2977"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771416666 42.424311111)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "https://www.kotorskabiskupija.me"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4981066"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Kirche Mariä Hilfe"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.7731 42.4242)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4981066"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Church of Our Lady of Remedy"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.7731 42.4242)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Festung von Kotor"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4989906"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Fortifications of Kotor"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4989906"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "it",
+      "type": "literal",
+      "value": "Fortificazioni di Cattaro"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4989906"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "ru",
+      "type": "literal",
+      "value": "Оборонительные сооружения города Котор"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4989906"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Котор (тврђава)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4989906"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "sh",
+      "type": "literal",
+      "value": "Kotorska tvrđava"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4989906"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Festung von Kotor"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q57821"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Fortifications of Kotor"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q57821"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "it",
+      "type": "literal",
+      "value": "Fortificazioni di Cattaro"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q57821"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "ru",
+      "type": "literal",
+      "value": "Оборонительные сооружения города Котор"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q57821"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Котор (тврђава)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q57821"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12907852"
+     },
+     "label": {
+      "xml:lang": "sh",
+      "type": "literal",
+      "value": "Kotorska tvrđava"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q57821"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771043 42.424886)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q19828108"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Werk Vermac"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q1785071"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.749236 42.421053)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q19828108"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Vrmac Fortress"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q1785071"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.749236 42.421053)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q19828108"
+     },
+     "label": {
+      "xml:lang": "ru",
+      "type": "literal",
+      "value": "Крепость Врмац"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q1785071"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.749236 42.421053)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q19828108"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Тврђава Врмац"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q1785071"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.749236 42.421053)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q25464652"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Saint Sava Church"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.698279719 42.432669732)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q25464652"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Kirche Hl. Sava (Tivat)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.698279719 42.432669732)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q25464652"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Црква Светог Саве у Тивту"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.698279719 42.432669732)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q45270231"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Naval Heritage Collection"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q33506"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.693834 42.437579)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "https://www.portomontenegro.com/ru/village/museum"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q45270231"
+     },
+     "label": {
+      "xml:lang": "ru",
+      "type": "literal",
+      "value": "Музей морского наследия"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q33506"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.693834 42.437579)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "https://www.portomontenegro.com/ru/village/museum"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q107232433"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "St. Mary Church"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.772 42.42597)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q107232433"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Kirche St. Maria"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.772 42.42597)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q107232433"
+     },
+     "label": {
+      "xml:lang": "ru",
+      "type": "literal",
+      "value": "Церковь Святой Марии от реки"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.772 42.42597)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q107232433"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Svete Marije Koleđate"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.772 42.42597)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q131085324"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "St Elijah Church"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.763650655 42.436045893)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q136236545"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Saint Anne (Kotor)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.771909 42.425229)"
+     },
+     "osmWay": {
+      "type": "literal",
+      "value": "305641942"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q136243191"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Saint Clare (Kotor)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.770249 42.425698)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q136243274"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "St. Michael church in Kotor"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.770697 42.425072)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q136243283"
+     },
+     "label": {
+      "xml:lang": "it",
+      "type": "literal",
+      "value": "chiesa di San Paolo"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.772014 42.424288)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q136243283"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Saint Paul (Kotor)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.772014 42.424288)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q136243291"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Pima Palace"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16560"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.770835 42.42423)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q136243291"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Pima-Palast"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16560"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.770835 42.42423)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4301501"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Podmaine Monastery"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q44613"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.844555555 42.297944444)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "http://www.manastirpodmaine.rs/"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4301501"
+     },
+     "label": {
+      "xml:lang": "ru",
+      "type": "literal",
+      "value": "Монастырь Подмаине"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q44613"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.844555555 42.297944444)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "http://www.manastirpodmaine.rs/"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4301501"
+     },
+     "label": {
+      "xml:lang": "sh",
+      "type": "literal",
+      "value": "Manastir Podmaine"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q44613"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.844555555 42.297944444)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "http://www.manastirpodmaine.rs/"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4301501"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Манастир Подмаине"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q44613"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.844555555 42.297944444)"
+     },
+     "website": {
+      "type": "uri",
+      "value": "http://www.manastirpodmaine.rs/"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q11742529"
+     },
+     "label": {
+      "xml:lang": "ru",
+      "type": "literal",
+      "value": "Собор Святого Иоанна Крестителя"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8382 42.2775)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q11742529"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Kirche Johannes der Täufer (Budva)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8382 42.2775)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q11742529"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Church of St. Ivan"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8382 42.2775)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12754203"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Kraljičina"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.89233 42.2634)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12754203"
+     },
+     "label": {
+      "xml:lang": "sh",
+      "type": "literal",
+      "value": "Kraljičina plaža"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.89233 42.2634)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q12754203"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Краљичина плажа"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.89233 42.2634)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q13436034"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Kloster Praskvica"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q44613"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8975 42.2625)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q13436034"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Praskvica Monastery"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q44613"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8975 42.2625)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q13436034"
+     },
+     "label": {
+      "xml:lang": "hr",
+      "type": "literal",
+      "value": "Samostan Praskvica"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q44613"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8975 42.2625)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q13436034"
+     },
+     "label": {
+      "xml:lang": "sh",
+      "type": "literal",
+      "value": "Manastir Praskvica"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q44613"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8975 42.2625)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q13436034"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Манастир Прасквица"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q44613"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8975 42.2625)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q65055390"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Sveti Stefan private beach"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.891125185 42.255129357)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q65133681"
+     },
+     "label": {
+      "xml:lang": "hr",
+      "type": "literal",
+      "value": "Crkva sv. Ivana Krstitelja u Budvi"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.838778 42.277361)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q65133681"
+     },
+     "label": {
+      "xml:lang": "ru",
+      "type": "literal",
+      "value": "Собор Святого Иоанна Крестителя (Будва)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.838778 42.277361)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q65133683"
+     },
+     "label": {
+      "xml:lang": "hr",
+      "type": "literal",
+      "value": "Crkva sv. Mihovila u Budvi"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q16970"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.828888888 42.274444444)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q92158398"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Mogren"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.83274 42.27714)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q92158398"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Плажа Могрен"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.83274 42.27714)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q116287103"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Stadtstrand Budva"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8367539 42.2778425)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q116287103"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "City beach (Budva)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8367539 42.2778425)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q116287499"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Slovenska Plaža"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.846325 42.2848122)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q116287499"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Slovenska Beach"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.846325 42.2848122)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q116290165"
+     },
+     "label": {
+      "xml:lang": "de",
+      "type": "literal",
+      "value": "Crvena glavica (Strand)"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8966781 42.2519531)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q116290165"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Crvena glavica"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8966781 42.2519531)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q130272053"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Queen's beach"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q40080"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.892461 42.263448)"
+     },
+     "osmWay": {
+      "type": "literal",
+      "value": "156809757"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q131345135"
+     },
+     "label": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Budva Dancer"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q179700"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8351587 42.2775433)"
+     }
+    },
+    {
+     "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q131345135"
+     },
+     "label": {
+      "xml:lang": "sr",
+      "type": "literal",
+      "value": "Балерина"
+     },
+     "type": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q179700"
+     },
+     "coord": {
+      "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+      "type": "literal",
+      "value": "Point(18.8351587 42.2775433)"
+     }
+    }
+   ]
+  }
+ },
+ "fetched_outside_environment": true
+}

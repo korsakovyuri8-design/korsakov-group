@@ -1,0 +1,9 @@
+# Actual HTTP request times per observation (UTC). The frozen dump format keeps one fetched_at per
+# source: the later of its two request times (pre-registered rule). Values are as recorded, to the microsecond.
+# source  box    request_sent_at                    response_received_at               run          artifact
+wikidata kotor  2026-10-08T08:40:03.950155+00:00  2026-10-08T08:40:04.647614+00:00  37751323718  11537783193
+wikidata budva  2026-10-08T08:40:15.201942+00:00  2026-10-08T08:40:15.500087+00:00  37751323718  11538206827
+osm      kotor  2026-10-08T09:17:07.025410+00:00  2026-10-08T09:17:25.854499+00:00  37755558600  11539898139
+osm      budva  2026-10-08T09:17:38.827835+00:00  2026-10-08T09:17:56.370897+00:00  37755558600  11539932655
+# source fetched_at: wikidata = 2026-10-08T08:40:15.201942+00:00
+# source fetched_at: osm = 2026-10-08T09:17:38.827835+00:00
