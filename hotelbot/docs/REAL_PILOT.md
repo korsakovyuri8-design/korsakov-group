@@ -204,6 +204,17 @@ The categories are those the product already supports. The category maps are dat
     - If either returns 403 again, acquisition stops and the result is reported. No alternative headers, authentication, endpoints or repeated requests without a new decision; the next step would be another machine or another official access route.
     - The two OSM observations stay pending under A1 for a separate later attempt, with the same endpoint.
 
+13. **Acquisition ledger for `raw_v1` (observations frozen under A1 + A2).** A successful observation is never fetched again.
+
+    | Observation | Status | Run / artifact | Sent → received (UTC) | HTTP | Bytes | Body SHA256 |
+    |---|---|---|---|---|---|---|
+    | wikidata / kotor | **frozen** | [37751323718](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37751323718) / 11537783193 | 2026-10-08 08:40:03.950155 → 08:40:04.647614 | 200 `application/sparql-results+json` | 22,904 | `68ea566c548b4829b9f98f4829ad081373809f45a0eeb0207a782f509b571947` |
+    | wikidata / budva | **frozen** | [37751323718](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37751323718) / 11538206827 | 2026-10-08 08:40:15.201942 → 08:40:15.500087 | 200 `application/sparql-results+json` | 16,522 | `3c15df8cfe34231dc2f5cab084c81d97232cbb9713266f982555fee34a7653c7` |
+    | osm / kotor | pending (A1) | - | - | - | - | - |
+    | osm / budva | pending (A1) | - | - | - | - | - |
+
+    The two Wikidata observations were made with workflow commit `64c828f` and pilot commit `9e802c4`, with the A2 User-Agent and the pre-registered query hashes. The bodies were not inspected beyond the HTTP status, content type, size, hash and the JSON-validity check.
+
 **This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
