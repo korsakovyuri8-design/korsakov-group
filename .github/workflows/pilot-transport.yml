@@ -1,0 +1,118 @@
+# TEMPORARY - Iteration 6, raw_v1 input transport (no request to any data source).
+#
+# The four frozen observations live in GitHub Actions artifacts; the development
+# environment cannot download artifacts (their storage host is blocked there).
+# This job moves them, unchanged, into the repository:
+#   1. download the four artifacts by id through the GitHub API;
+#   2. for each: body SHA256 == observation.json body_sha256, HTTP 2xx, valid JSON,
+#      query SHA256 == the pre-registered hash, success == true - any failure STOPS
+#      (nothing is repaired, nothing is committed);
+#   3. copy body + observation.json byte for byte to
+#      hotelbot/data/pilot/kotor_budva/raw/acquisition/ (refusing to overwrite) and
+#      commit them to the pilot branch.
+# Assembly (frozen pilot_fetch.py --import), SHA256SUMS and raw_v1 happen afterwards,
+# outside this job. Runs once on the push of this file (or manually); the step that
+# copies into raw/acquisition refuses to run again once that directory exists.
+
+name: pilot-transport (raw_v1 input, temporary)
+
+on:
+  push:
+    branches: [ccr-b496a55d-mr7ho5]
+    paths: [.github/workflows/pilot-transport.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: pilot-transport
+  cancel-in-progress: false
+
+jobs:
+  transport:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the pilot branch
+        uses: actions/checkout@v4
+        with:
+          ref: ccr-b496a55d-mr7ho5
+
+      - name: Download the four frozen observation artifacts (GitHub API only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/obs"
+          for pair in wikidata_kotor:11537783193 wikidata_budva:11538206827 osm_kotor:11539898139 osm_budva:11539932655; do
+            name=${pair%%:*}; id=${pair##*:}
+            mkdir -p "$RUNNER_TEMP/obs/$name"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/$id/zip" > "$RUNNER_TEMP/obs/$name/artifact.zip"
+            (cd "$RUNNER_TEMP/obs/$name" && unzip -q artifact.zip && rm artifact.zip && ls -la)
+          done
+
+      - name: Verify every observation (any failure stops - nothing is repaired)
+        run: |
+          python3 - <<'EOF'
+          import hashlib, json, os, sys
+          from pathlib import Path
+          expected = {
+              "osm_kotor": ("11539898139", "72c74ecc4490e5030e61d747cde2a9f57dcd2b1f87e5a69c92058159f6912a01", "37755558600"),
+              "osm_budva": ("11539932655", "0acccd58574f6242b635bd1c35f05ba6f194364a55cccef9b1b64c33c121493d", "37755558600"),
+              "wikidata_kotor": ("11537783193", "b5fa9c15ad7837fbb70680c39a4398ea5b4e4410abe0877190d7ac4192322665", "37751323718"),
+              "wikidata_budva": ("11538206827", "10da98b26c2a0062a2506d312da34fbe4cda98c8ec14d1fe108a395a2346d3f9", "37751323718"),
+          }
+          root = Path(os.environ["RUNNER_TEMP"]) / "obs"
+          problems = []
+          for name, (artifact, query_sha, run_id) in expected.items():
+              d = root / name
+              files = sorted(p.name for p in d.iterdir())
+              if files != sorted(["observation.json", f"{name}.body"]):
+                  problems.append(f"{name}: unexpected files {files}"); continue
+              obs = json.loads((d / "observation.json").read_text())
+              body = (d / f"{name}.body").read_bytes()
+              checks = {
+                  "body sha256 == observation.body_sha256": hashlib.sha256(body).hexdigest() == obs.get("body_sha256"),
+                  "byte count == observation.body_bytes": len(body) == obs.get("body_bytes"),
+                  "HTTP 2xx": isinstance(obs.get("http_status"), int) and 200 <= obs["http_status"] < 300,
+                  "observation.success": obs.get("success") is True,
+                  "query sha256 == pre-registered": obs.get("query_sha256") == query_sha,
+                  "workflow run": obs.get("workflow_run_id") == run_id,
+              }
+              try:
+                  json.loads(body)
+                  checks["valid JSON"] = True
+              except ValueError:
+                  checks["valid JSON"] = False
+              for check, ok in checks.items():
+                  print(f"{name} [{artifact}] {check}: {'ok' if ok else 'FAILED'}")
+                  if not ok:
+                      problems.append(f"{name}: {check}")
+          if problems:
+              sys.exit("STOP - verification failed: " + "; ".join(problems))
+          print("all four observations verified")
+          EOF
+
+      - name: Commit the verified bodies and observation records unchanged
+        run: |
+          set -euo pipefail
+          dest=hotelbot/data/pilot/kotor_budva/raw/acquisition
+          if [ -e "$dest" ]; then echo "STOP - $dest already exists (frozen inputs are never overwritten)"; exit 1; fi
+          mkdir -p "$dest"
+          for name in wikidata_kotor wikidata_budva osm_kotor osm_budva; do
+            cp "$RUNNER_TEMP/obs/$name/$name.body" "$dest/$name.body"
+            cp "$RUNNER_TEMP/obs/$name/observation.json" "$dest/$name.observation.json"
+          done
+          (cd "$dest" && sha256sum *.body)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$dest"
+          git commit -m "Iteration 6: raw_v1 input - the four frozen observations, transported unchanged
+
+          Bodies and observation.json copied byte for byte from artifacts
+          11537783193, 11538206827 (run 37751323718) and 11539898139, 11539932655
+          (run 37755558600), after verifying body SHA256, byte count, HTTP 2xx,
+          valid JSON and the pre-registered query SHA256 (workflow run ${GITHUB_RUN_ID})."
+          git push origin HEAD:ccr-b496a55d-mr7ho5
