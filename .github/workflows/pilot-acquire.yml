@@ -1,0 +1,191 @@
+# TEMPORARY acquisition-only workflow - Iteration 6, amendment A1
+# (docs/REAL_PILOT.md section 11, pre-registered in 86b56d0 before any request).
+#
+# Each {source, box} is ONE independent, immutable HTTP observation:
+#   osm/kotor, osm/budva, wikidata/kotor, wikidata/budva
+# One job per observation, run one at a time (the two Overpass calls are never
+# simultaneous); a failed observation does not stop the others.
+#
+# Per observation, on the frozen pilot commit 9e802c4:
+#   1. the query is generated from the frozen pilot.yaml with query_for() and its
+#      pre-registered SHA256 is verified BEFORE any network access;
+#   2. exactly ONE request, with the frozen endpoint / method / headers (the
+#      User-Agent and the endpoints come from the frozen pilot_fetch.py); no retries;
+#   3. the response bytes are saved byte for byte before anything parses them;
+#   4. observation.json records the request and response metadata;
+#   5. success = HTTP 2xx + valid JSON; anything else is failure evidence, not data.
+# Each observation uploads its own artifact. No assembly, no pilot_run, no commit.
+#
+# Push of this file (the first campaign) attempts all four. A later manual run may
+# attempt ONLY the missing / failed observations (input `observations`); a
+# successful observation is never requested again for raw_v1.
+
+name: pilot-acquire (A1, temporary)
+
+on:
+  push:
+    branches: [ccr-b496a55d-mr7ho5]
+    paths: [.github/workflows/pilot-acquire.yml]
+  workflow_dispatch:
+    inputs:
+      observations:
+        description: "Comma-separated observations to attempt - ONLY missing/failed ones (e.g. osm/budva)"
+        required: true
+        default: "osm/kotor,osm/budva,wikidata/kotor,wikidata/budva"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-acquire
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Choose the observations of this campaign
+        id: plan
+        env:
+          OBS: ${{ github.event.inputs.observations || 'osm/kotor,osm/budva,wikidata/kotor,wikidata/budva' }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+          allowed = ["osm/kotor", "osm/budva", "wikidata/kotor", "wikidata/budva"]
+          wanted = [o.strip() for o in os.environ["OBS"].split(",") if o.strip()]
+          bad = [o for o in wanted if o not in allowed]
+          if bad or not wanted or len(set(wanted)) != len(wanted):
+              raise SystemExit(f"invalid observations {wanted!r}; allowed: {allowed}")
+          matrix = [{"source": o.split("/")[0], "box": o.split("/")[1]} for o in allowed if o in wanted]
+          print("this campaign:", [f"{m['source']}/{m['box']}" for m in matrix])
+          open(os.environ["GITHUB_OUTPUT"], "a").write(f"matrix={json.dumps(matrix)}\n")
+          EOF
+
+  observe:
+    needs: plan
+    name: observe ${{ matrix.obs.source }}/${{ matrix.obs.box }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        obs: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      PILOT_COMMIT: 9e802c4dd8fa9a6ecabbd4279f936f8959970daf
+      OBS_SOURCE: ${{ matrix.obs.source }}
+      OBS_BOX: ${{ matrix.obs.box }}
+    steps:
+      - name: Checkout the pre-data checkpoint (9e802c4) exactly
+        uses: actions/checkout@v4
+        with:
+          ref: 9e802c4dd8fa9a6ecabbd4279f936f8959970daf
+          persist-credentials: false
+
+      - name: Confirm the checked-out commit
+        run: test "$(git rev-parse HEAD)" = "$PILOT_COMMIT"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (PyPI only; no request to the data sources yet)
+        run: pip install httpx==0.28.1 PyYAML==6.0.1
+
+      - name: One observation - verify the query hash, then exactly one request
+        working-directory: hotelbot
+        run: |
+          python - <<'EOF'
+          import hashlib, json, os, sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import httpx
+          import yaml
+          sys.path.insert(0, "tools")
+          from pilot_fetch import ENDPOINTS, USER_AGENT, query_for     # frozen constants and query builder
+
+          EXPECTED = {
+              "osm/kotor": "72c74ecc4490e5030e61d747cde2a9f57dcd2b1f87e5a69c92058159f6912a01",
+              "osm/budva": "0acccd58574f6242b635bd1c35f05ba6f194364a55cccef9b1b64c33c121493d",
+              "wikidata/kotor": "b5fa9c15ad7837fbb70680c39a4398ea5b4e4410abe0877190d7ac4192322665",
+              "wikidata/budva": "10da98b26c2a0062a2506d312da34fbe4cda98c8ec14d1fe108a395a2346d3f9",
+          }
+          source, box = os.environ["OBS_SOURCE"], os.environ["OBS_BOX"]
+          obs = f"{source}/{box}"
+          out = Path(os.environ["RUNNER_TEMP"]) / "observation"
+          out.mkdir(parents=True, exist_ok=True)
+          now = lambda: datetime.now(timezone.utc).isoformat()
+          cfg = yaml.safe_load(open("data/pilot/kotor_budva/pilot.yaml"))
+          src = next(s for s in cfg["sources"] if s["source_id"] == source)
+          query = query_for(src, cfg["scope"][box])
+          query_sha = hashlib.sha256(query.encode()).hexdigest()
+          record = {
+              "amendment": "A1 (docs/REAL_PILOT.md section 11, commit 86b56d0)",
+              "observation": obs, "source": source, "box": box,
+              "pilot_code_commit": os.environ["PILOT_COMMIT"], "workflow_commit": os.environ["GITHUB_SHA"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"], "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "query_sha256": query_sha, "query_sha256_expected": EXPECTED[obs],
+          }
+
+          def finish(success: bool, code: int) -> None:
+              record["success"] = success
+              (out / "observation.json").write_text(json.dumps(record, indent=1))
+              print(json.dumps({k: v for k, v in record.items() if k != "error"}, indent=1))
+              if record.get("error"):
+                  print("error:", record["error"])
+              sys.exit(code)
+
+          if query_sha != EXPECTED[obs]:
+              record["error"] = "query hash mismatch - no request made"
+              finish(False, 2)
+
+          endpoint = ENDPOINTS[src["format"]]
+          sent = {}
+          client = httpx.Client(timeout=240, headers={"User-Agent": USER_AGENT},
+                                event_hooks={"request": [lambda request: sent.setdefault("at", now())]})
+          record |= {"endpoint": endpoint, "method": "POST" if source == "osm" else "GET"}
+          body = None
+          try:
+              if src["format"] == "osm.overpass.v1":
+                  r = client.post(endpoint, data={"data": query})
+              else:
+                  r = client.get(endpoint, params={"query": query, "format": "json"},
+                                 headers={"Accept": "application/sparql-results+json"})
+              body = r.content                                    # exact bytes, read once
+              record |= {"response_received_at": now(), "http_status": r.status_code,
+                         "content_type": r.headers.get("content-type")}
+          except httpx.HTTPError as exc:                          # no response at all: failure evidence
+              record |= {"response_received_at": now(), "http_status": None, "error": repr(exc)}
+          finally:
+              client.close()
+          record["request_sent_at"] = sent.get("at")
+          if body is not None:
+              name = f"{source}_{box}.body"
+              (out / name).write_bytes(body)                      # saved BEFORE any parsing
+              record |= {"body_file": name, "body_bytes": len(body),
+                         "body_sha256": hashlib.sha256(body).hexdigest()}
+          valid_json = False
+          if body is not None:
+              try:
+                  parsed = json.loads(body)
+                  valid_json = True
+                  if isinstance(parsed, dict) and "remark" in parsed:   # recorded only; not a success criterion
+                      record["overpass_remark"] = parsed["remark"]
+              except ValueError:
+                  pass
+          record["valid_json"] = valid_json
+          status = record.get("http_status")
+          ok = status is not None and 200 <= status < 300 and valid_json
+          finish(ok, 0 if ok else 1)
+          EOF
+
+      - name: Upload this observation's artifact (success or failure evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-obs-${{ matrix.obs.source }}-${{ matrix.obs.box }}-run${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/observation/
+          if-no-files-found: warn
+          retention-days: 90
