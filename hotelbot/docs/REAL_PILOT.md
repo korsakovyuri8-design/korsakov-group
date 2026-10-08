@@ -130,6 +130,52 @@ The categories are those the product already supports. The category maps are dat
     5. **No viewing or editing of the JSON between fetch and freeze.** The order is fetch → raw bytes → SHA256 → `raw_v1`. Even obvious junk in the data goes into the first raw result.
     6. **No re-fetch because a result looks small or odd.** A valid HTTP response to a query with the frozen hash *is* the experiment's data. A repeated fetch is a different time sample and counts as a **separate run** (`--run raw_v2`, own dumps); it never "corrects" the first one. A non-JSON or error response (rate limit, timeout, HTML error page) is not data: it is kept for the record and the fetch is reported as failed, not imported.
 
+11. **Acquisition-protocol amendment A1 (approved by Yuri; recorded here BEFORE any post-amendment HTTP request).** Three unchanged attempts under the original all-or-nothing source fetch each failed on a transient Overpass `504 Gateway Timeout`:
+
+    | Run | Time (UTC) | Outcome |
+    |---|---|---|
+    | [37662574988](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37662574988) | 17:53 | osm / kotor 504 |
+    | [37663247953](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37663247953) | 17:58 | osm / kotor 200, osm / budva 504 (`Dispatcher_Client::request_read_and_idx::timeout`) |
+    | [37690001192](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37690001192) | 21:31 | osm / kotor 504 (a single request, sent 21:31:28.35, answered 21:31:36.80, 695-byte body) |
+
+    These three runs belong to the **old** protocol. They are kept as historical failed attempts and are **excluded from `raw_v1`**. **The HTTP 200 osm / kotor body from run 2 is not reused**: every observation used by `raw_v1` must be obtained after this amendment is committed. That rules out any selection among bodies seen before the rule existed.
+
+    **What changes: only the atomicity of acquisition.** Each `{source, box}` is an independent, immutable HTTP observation:
+    - `osm / kotor`
+    - `osm / budva`
+    - `wikidata / kotor`
+    - `wikidata / budva`
+
+    A failed observation does not invalidate the successful observations of the same campaign. Only missing or failed observations may be attempted again, and only by an explicit later request for those observations alone. A successful observation is frozen and is **never fetched again** for `raw_v1`.
+
+    **What does not change.** Queries, query hashes, endpoints, HTTP methods, category maps, normalization, ER, field policies, sampling, labelling, Discovery and transaction / product code. The frozen `pilot_fetch.py` is not modified; its network path is not used for A1, and its frozen `--import` path assembles the result.
+
+    **Per observation:**
+    1. Check out pilot commit `9e802c4dd8fa9a6ecabbd4279f936f8959970daf`.
+    2. Generate the query from the frozen `pilot.yaml` with `query_for`, and verify its pre-registered SHA256 (table in §10) **before** any network access.
+    3. Make **exactly one** HTTP request with the frozen endpoint, method and headers (the `User-Agent` and `Accept` values come from the frozen `pilot_fetch.py`). There are no automatic retries.
+       - OSM: `POST https://overpass-api.de/api/interpreter`, form field `data=<exact query>`.
+       - Wikidata: `GET https://query.wikidata.org/sparql` with `query=<exact query>`, `format=json`, `Accept: application/sparql-results+json`.
+    4. Save the response bytes byte for byte **before** any parsing.
+    5. Record: source, box, query SHA256, endpoint, method, `request_sent_at`, `response_received_at`, HTTP status, content type, byte count, body SHA256, workflow run id and workflow commit.
+    6. **Success = HTTP 2xx and valid JSON.** Anything else (a non-2xx status or invalid JSON) is kept as failure evidence and is **not** data.
+
+    For Overpass, the presence of a top-level `remark` field (Overpass's way of reporting a runtime problem inside an HTTP 200) is recorded as metadata only. It is **not** part of the approved success criterion.
+
+    **Execution.** An acquisition-only GitHub workflow (`.github/workflows/pilot-acquire.yml`):
+    - one job per observation, `fail-fast: false`, `max-parallel: 1`, so the two Overpass calls are never simultaneous;
+    - a failing `osm / kotor` does not stop `osm / budva` or the Wikidata observations;
+    - each observation uploads its own artifact;
+    - on a failure there are no automatic retries; the result is reported, and a later run may request only the failed observations.
+
+    **Assembly** happens once four post-amendment successful observations exist:
+    - the four untouched bodies go through the frozen `pilot_fetch.py --import`;
+    - for each source's single `fetched_at`, the later of its two actual request times is used, as already pre-registered for imports;
+    - both per-box times, the artifact ids and the run ids are kept in an acquisition manifest (`fetch_times.txt`);
+    - SHA256 as usual.
+
+    The step stops at assembled raw dumps + `SHA256SUMS`, with no `pilot_run`.
+
 **This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
