@@ -215,6 +215,30 @@ The categories are those the product already supports. The category maps are dat
 
     The two Wikidata observations were made with workflow commit `64c828f` and pilot commit `9e802c4`, with the A2 User-Agent and the pre-registered query hashes. The bodies were not inspected beyond the HTTP status, content type, size, hash and the JSON-validity check.
 
+14. **Acquisition-protocol amendment A3 (approved by Yuri; recorded here BEFORE any post-A3 HTTP request).** The pre-registered Overpass endpoint `https://overpass-api.de/api/interpreter` returned 504 on every OSM observation at several times of day:
+    - runs 1–3 (old protocol), 2026-10-07 17:53, 17:58 and 21:31 UTC;
+    - the A1 campaign, 2026-10-08 07:47–07:48 UTC: `osm/kotor` and `osm/budva`.
+
+    This is an acquisition-availability problem, not a defect of the query or the data processing. All those observations remain failure evidence and are excluded from the dataset.
+
+    **The only change in A3 is the endpoint of future OSM observations:**
+
+    | | Overpass endpoint |
+    |---|---|
+    | frozen (`pilot_fetch.ENDPOINTS`) | `https://overpass-api.de/api/interpreter` |
+    | A3 | `https://overpass.private.coffee/api/interpreter` |
+
+    The A3 server is the Private.coffee Overpass instance, formerly kumi.systems, listed in the OpenStreetMap wiki's public Overpass instances as a global public instance. It executes the same Overpass QL over the same OSM data. The endpoint actually used is recorded in every `observation.json`.
+
+    **Unchanged:** OSM query text and SHA256, boxes, `POST` with form field `data`, the A2 User-Agent, timeout, categories, normalization, ER, field policies, audit methodology, sampling, labelling and observation atomicity (A1). The Wikidata endpoint is unchanged.
+
+    **Frozen observations stay frozen:** `wikidata/kotor` (artifact 11537783193) and `wikidata/budva` (artifact 11538206827) are never refetched.
+
+    **Execution of A3.** Only `osm/kotor` and `osm/budva` are run, sequentially, one request each, with no automatic retries.
+    - A success is frozen immediately and never requested again.
+    - A failure is kept as evidence; automatic activity stops, and the endpoint does not change again without a new decision.
+    - Stop at the OSM artifacts: no assembly and no `pilot_run` without a new instruction.
+
 **This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
