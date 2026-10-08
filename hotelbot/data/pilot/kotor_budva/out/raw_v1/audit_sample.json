@@ -1,0 +1,392 @@
+{
+ "audit_sample_version": "1",
+ "selection_algorithm": "Pairs = every (record x candidate canonical) decision in matching.PAIR_LOG.\nDeterministic order: pairs sorted by (outcome, stratum, source_id, record_id,\nstable key of the candidate = its smallest (source_id, record_id) member).\nStrata (assigned from the logged evidence, in this precedence):\n  MATCH:  explicit_id_only        external_id SUPPORTS, no phone/domain/address SUPPORTS\n          explicit_id_plus_independent  external_id SUPPORTS and phone/domain/address SUPPORTS\n          contact_based           no external_id; phone or domain SUPPORTS\n          address_based           no external_id, no contact; address SUPPORTS\n          other_rule              anything else (relocation, event rules, ...)\n  AMBIGUOUS: multiple_candidates  the record had >= 2 non-NO_MATCH candidates\n          support_and_contradiction  a signal SUPPORTS and another CONTRADICTS\n          name_geo_only           no signal SUPPORTS or CONTRADICTS\n          other\n  NO_MATCH_DIFFICULT (machine criterion, fixed before data): NO_MATCH with\n          name_similarity >= 0.6, or distance <= 50 m, or any SUPPORTS signal,\n          or any CONTRADICTS signal.\nPer-stratum sample size: min(stratum size, max(MIN_PER_STRATUM, ceil(TARGET x stratum share))).\nTARGET (50 / 50 / 30) is a target allocation, not a cap: the per-stratum minimum can raise the\nactual sample above it; the manifest records the actual sample size.\nEach stratum is sampled with random.Random(sha256(f\"{seed}:{outcome}:{stratum}\")), without replacement.\nCensus (all pairs, no sampling): unusual MATCH (name_similarity < 0.5 or distance > 150 m) and every pair\nwith a CONTRADICTS signal.\nA pair that falls in several groups is audited once, under the first group in this order:\nMATCH strata, AMBIGUOUS strata, NO_MATCH_DIFFICULT, unusual_match_all, contradictory_signals_all.\n",
+ "random_seed": 20261007,
+ "target_allocation": {
+  "MATCH": 50,
+  "AMBIGUOUS": 50,
+  "NO_MATCH_DIFFICULT": 30
+ },
+ "minimum_per_nonempty_stratum": 10,
+ "actual_sample_size": {
+  "by_outcome": {
+   "match": 12,
+   "ambiguous": 13,
+   "no_match_difficult": 30
+  },
+  "total": 55
+ },
+ "source_dump_hashes": {
+  "osm": "9cab9962dd46fd9af5669a96b00d00ef747eddbc888e02683d376b32ee9485e7",
+  "wikidata": "1fea8b40b2e528b519ff40caf75eb18931d0dae7c4cb6bd43f454bc89540674e"
+ },
+ "code_commit": "0cb918b58b12a014fbe1eb451796dcb43609ff2e",
+ "code_dirty": false,
+ "strata": {
+  "match:explicit_id_only": {
+   "population": 11,
+   "sampled": 11
+  },
+  "match:explicit_id_plus_independent": {
+   "population": 1,
+   "sampled": 1
+  },
+  "ambiguous:multiple_candidates": {
+   "population": 4,
+   "sampled": 4
+  },
+  "ambiguous:name_geo_only": {
+   "population": 7,
+   "sampled": 7
+  },
+  "ambiguous:other": {
+   "population": 2,
+   "sampled": 2
+  },
+  "no_match_difficult:difficult": {
+   "population": 213,
+   "sampled": 30
+  },
+  "unusual_match_all": {
+   "population": 1,
+   "sampled": 1
+  },
+  "contradictory_signals_all": {
+   "population": 0,
+   "sampled": 0
+  }
+ },
+ "rows_written": 55,
+ "pairs": [
+  {
+   "pair_id": "Xcdc7c131d6",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q11742529",
+   "b": "osm:way/186817702"
+  },
+  {
+   "pair_id": "Xb1d7d2fea2",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q19828108",
+   "b": "osm:way/170847930"
+  },
+  {
+   "pair_id": "Xf3001e3eb4",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q116287499",
+   "b": "osm:way/164690010"
+  },
+  {
+   "pair_id": "X99d858c4ba",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q107232433",
+   "b": "osm:way/165389719"
+  },
+  {
+   "pair_id": "X06bdadf75e",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q4981066",
+   "b": "osm:way/207434563"
+  },
+  {
+   "pair_id": "X8bb81ec99a",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q136243283",
+   "b": "osm:way/197926383"
+  },
+  {
+   "pair_id": "X09f90f2aad",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q92158398",
+   "b": "osm:way/62263551"
+  },
+  {
+   "pair_id": "Xef46dcc9fc",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q130272053",
+   "b": "osm:way/156809757"
+  },
+  {
+   "pair_id": "Xbcab131865",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q136243291",
+   "b": "osm:way/197926362"
+  },
+  {
+   "pair_id": "X0099856757",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q65055390",
+   "b": "osm:relation/15620090"
+  },
+  {
+   "pair_id": "X0286104f34",
+   "group": "match:explicit_id_only",
+   "a": "wikidata:Q966429",
+   "b": "osm:way/165389709"
+  },
+  {
+   "pair_id": "X0ce9bbec14",
+   "group": "match:explicit_id_plus_independent",
+   "a": "wikidata:Q45270231",
+   "b": "osm:way/1364470106"
+  },
+  {
+   "pair_id": "Xbc8d53305b",
+   "group": "ambiguous:multiple_candidates",
+   "a": "wikidata:Q45270231",
+   "b": "osm:node/6420988511"
+  },
+  {
+   "pair_id": "X20cff438f6",
+   "group": "ambiguous:multiple_candidates",
+   "a": "wikidata:Q11742529",
+   "b": "osm:way/186817704"
+  },
+  {
+   "pair_id": "X7617505821",
+   "group": "ambiguous:multiple_candidates",
+   "a": "wikidata:Q65055390",
+   "b": "osm:relation/15619249"
+  },
+  {
+   "pair_id": "X88bb924afe",
+   "group": "ambiguous:multiple_candidates",
+   "a": "wikidata:Q92158398",
+   "b": "osm:way/62263552"
+  },
+  {
+   "pair_id": "Xd47813bd81",
+   "group": "ambiguous:name_geo_only",
+   "a": "wikidata:Q116290165",
+   "b": "osm:way/252357862"
+  },
+  {
+   "pair_id": "X827656b6a2",
+   "group": "ambiguous:name_geo_only",
+   "a": "wikidata:Q131085324",
+   "b": "osm:way/207477335"
+  },
+  {
+   "pair_id": "X75c2597ae8",
+   "group": "ambiguous:name_geo_only",
+   "a": "wikidata:Q116287103",
+   "b": "osm:way/208143096"
+  },
+  {
+   "pair_id": "Xb51b1c8396",
+   "group": "ambiguous:name_geo_only",
+   "a": "wikidata:Q13436034",
+   "b": "osm:way/1167605107"
+  },
+  {
+   "pair_id": "X679d98cf36",
+   "group": "ambiguous:name_geo_only",
+   "a": "wikidata:Q25464652",
+   "b": "osm:way/223248486"
+  },
+  {
+   "pair_id": "Xafb833c3f4",
+   "group": "ambiguous:name_geo_only",
+   "a": "wikidata:Q12754203",
+   "b": "osm:way/156809757"
+  },
+  {
+   "pair_id": "X7eae7d6c8e",
+   "group": "ambiguous:name_geo_only",
+   "a": "wikidata:Q4301501",
+   "b": "osm:way/161886546"
+  },
+  {
+   "pair_id": "X43e4afcc71",
+   "group": "ambiguous:other",
+   "a": "wikidata:Q136243191",
+   "b": "osm:way/197926360"
+  },
+  {
+   "pair_id": "X7484d93fd3",
+   "group": "ambiguous:other",
+   "a": "wikidata:Q136236545",
+   "b": "osm:way/305641942"
+  },
+  {
+   "pair_id": "X2acb06a941",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q966429",
+   "b": "osm:node/11140916307"
+  },
+  {
+   "pair_id": "Xbf5f2177b5",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q12907852",
+   "b": "osm:node/11085459441"
+  },
+  {
+   "pair_id": "Xdb29162543",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q11742529",
+   "b": "osm:node/13707379919"
+  },
+  {
+   "pair_id": "X3a62e46a27",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q11742529",
+   "b": "osm:node/10922238639"
+  },
+  {
+   "pair_id": "Xbd2f927d20",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136236545",
+   "b": "osm:node/4313087190"
+  },
+  {
+   "pair_id": "X35fe83fb16",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q107232433",
+   "b": "osm:node/4781767864"
+  },
+  {
+   "pair_id": "X27cbbce7c9",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136236545",
+   "b": "osm:node/4779749723"
+  },
+  {
+   "pair_id": "Xf9d88e5d24",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136243291",
+   "b": "osm:node/4414393691"
+  },
+  {
+   "pair_id": "X7de6b6f20a",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q116287103",
+   "b": "osm:node/7080628840"
+  },
+  {
+   "pair_id": "Xd2afcb238d",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q12907852",
+   "b": "osm:node/3102976412"
+  },
+  {
+   "pair_id": "Xbfac15c9e3",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136243291",
+   "b": "osm:node/9282711887"
+  },
+  {
+   "pair_id": "Xa5ba1eac34",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q107232433",
+   "b": "osm:node/4779749722"
+  },
+  {
+   "pair_id": "X71a7c2c5d5",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q12907852",
+   "b": "osm:node/8123683666"
+  },
+  {
+   "pair_id": "Xf389ec7243",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136236545",
+   "b": "osm:node/4779749722"
+  },
+  {
+   "pair_id": "X3e528a56d4",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q116287103",
+   "b": "osm:node/13716578979"
+  },
+  {
+   "pair_id": "X7827c555d3",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q12907852",
+   "b": "osm:node/3103056422"
+  },
+  {
+   "pair_id": "Xad5e1682aa",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136243274",
+   "b": "osm:node/4552627389"
+  },
+  {
+   "pair_id": "X2948e27e91",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136236545",
+   "b": "osm:node/6643602586"
+  },
+  {
+   "pair_id": "X6e013c6608",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q966429",
+   "b": "osm:node/5039175022"
+  },
+  {
+   "pair_id": "X3c6761ed4f",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q116287103",
+   "b": "osm:node/12253427301"
+  },
+  {
+   "pair_id": "X9d9f8f774f",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q131345135",
+   "b": "osm:node/777921148"
+  },
+  {
+   "pair_id": "Xe8d1d146b8",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136243274",
+   "b": "osm:node/6491319655"
+  },
+  {
+   "pair_id": "X6031be40f7",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136243283",
+   "b": "osm:node/3102976406"
+  },
+  {
+   "pair_id": "X23e765fca6",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136236545",
+   "b": "osm:node/4382759293"
+  },
+  {
+   "pair_id": "X4c15c5a04a",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q65133681",
+   "b": "osm:node/5131259521"
+  },
+  {
+   "pair_id": "X03608a9e87",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q12907852",
+   "b": "osm:node/9282711887"
+  },
+  {
+   "pair_id": "X033bf206aa",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q11742529",
+   "b": "osm:node/6728496687"
+  },
+  {
+   "pair_id": "X5bfbd8619c",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q136236545",
+   "b": "osm:node/14065955154"
+  },
+  {
+   "pair_id": "X0d12ae162a",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q12907852",
+   "b": "osm:node/6004839687"
+  },
+  {
+   "pair_id": "Xa75e9d372a",
+   "group": "no_match_difficult:difficult",
+   "a": "wikidata:Q966429",
+   "b": "osm:node/9282711887"
+  }
+ ]
+}

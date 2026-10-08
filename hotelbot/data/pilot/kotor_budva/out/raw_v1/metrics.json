@@ -1,0 +1,492 @@
+{
+ "run": "raw_v1",
+ "now": "2026-10-08T09:17:38.827835+00:00",
+ "provenance": {
+  "dumps": {
+   "osm": "9cab9962dd46fd9af5669a96b00d00ef747eddbc888e02683d376b32ee9485e7",
+   "wikidata": "1fea8b40b2e528b519ff40caf75eb18931d0dae7c4cb6bd43f454bc89540674e"
+  },
+  "pilot_yaml_sha256": "fc915037f9841189826c191aae4c6c8ade0669fbd0db5e96f439d1b112f401e1",
+  "policies_sha256": "5e5e1b2c6252ed0b56e83cd92e26014d357ec81d30cc53bd4e9543b7517149e1",
+  "code_commit": "0cb918b58b12a014fbe1eb451796dcb43609ff2e",
+  "code_dirty": false
+ },
+ "sources": {
+  "osm": {
+   "license": "ODbL-1.0",
+   "attribution": "© OpenStreetMap contributors, ODbL",
+   "fetched_at": "2026-10-08T09:17:38.827835+00:00",
+   "parts": [
+    {
+     "box": "kotor",
+     "sha256": "22ad31c0d29ec1a55107b5b8cc102fe6ee69aab05497a6a7bfff9cc45909e860"
+    },
+    {
+     "box": "budva",
+     "sha256": "7986f94c786de2f5caf3778d3cf17588cf334f2ba6481ce552b994de0f164de7"
+    }
+   ],
+   "field_coverage": {
+    "counts": {
+     "records": 2064,
+     "name": 1096,
+     "coordinates": 2064,
+     "phone": 153,
+     "website_domain": 154,
+     "address_any": 243,
+     "address_with_house_number": 104,
+     "external_id_cross_source": 28,
+     "opening_hours_raw": 433,
+     "opening_hours_parsed": 362,
+     "category_mapped": 1909,
+     "positive_identity_signals_1": 1780,
+     "positive_identity_signals_2": 181,
+     "positive_identity_signals_3+": 103
+    },
+    "share": {
+     "name": 0.531,
+     "coordinates": 1.0,
+     "phone": 0.074,
+     "website_domain": 0.075,
+     "address_any": 0.118,
+     "address_with_house_number": 0.05,
+     "external_id_cross_source": 0.014,
+     "opening_hours_raw": 0.21,
+     "opening_hours_parsed": 0.175,
+     "category_mapped": 0.925,
+     "positive_identity_signals_1": 0.862,
+     "positive_identity_signals_2": 0.088,
+     "positive_identity_signals_3+": 0.05
+    },
+    "alias_languages": {
+     "primary": 1096,
+     "en": 205,
+     "sr": 116,
+     "ru": 96,
+     "fr": 24,
+     "de": 23,
+     "uk": 21,
+     "pl": 14,
+     "sr-Latn": 13,
+     "es": 11,
+     "cs": 8,
+     "zh": 6,
+     "alt": 5,
+     "signed": 4,
+     "tr": 2,
+     "int": 2,
+     "hr": 2,
+     "it": 2,
+     "be": 2,
+     "cnr-Cyrl": 1,
+     "la": 1,
+     "he": 1,
+     "sk": 1,
+     "ro": 1,
+     "ace": 1
+    },
+    "alias_scripts": {
+     "latin": 1408,
+     "cyrillic": 250
+    },
+    "issues": {
+     "category not mapped": 155,
+     "opening hours not understood": 72,
+     "several phones in one tag; the first is used for identity": 2
+    },
+    "unmapped_categories": {
+     "'shop=convenience'": 76,
+     "'tourism=attraction'": 37,
+     "'historic=city_gate'": 11,
+     "'tourism=artwork'": 11,
+     "'historic=yes'": 5,
+     "'amenity=boat_rental'": 4,
+     "'historic=tomb'": 3,
+     "'historic=ship'": 2,
+     "'historic=cannon'": 2,
+     "'historic=pillory'": 1,
+     "'historic=building'": 1,
+     "'tourism=yes'": 1,
+     "'amenity=drinking_water'": 1
+    }
+   }
+  },
+  "wikidata": {
+   "license": "CC0-1.0",
+   "attribution": null,
+   "fetched_at": "2026-10-08T08:40:15.201942+00:00",
+   "parts": [
+    {
+     "box": "kotor",
+     "sha256": "68ea566c548b4829b9f98f4829ad081373809f45a0eeb0207a782f509b571947"
+    },
+    {
+     "box": "budva",
+     "sha256": "3c15df8cfe34231dc2f5cab084c81d97232cbb9713266f982555fee34a7653c7"
+    }
+   ],
+   "field_coverage": {
+    "counts": {
+     "records": 26,
+     "name": 26,
+     "coordinates": 26,
+     "phone": 0,
+     "website_domain": 3,
+     "address_any": 0,
+     "address_with_house_number": 0,
+     "external_id_cross_source": 2,
+     "opening_hours_raw": 0,
+     "opening_hours_parsed": 0,
+     "category_mapped": 26,
+     "positive_identity_signals_2": 3,
+     "positive_identity_signals_1": 23
+    },
+    "share": {
+     "name": 1.0,
+     "coordinates": 1.0,
+     "phone": 0.0,
+     "website_domain": 0.115,
+     "address_any": 0.0,
+     "address_with_house_number": 0.0,
+     "external_id_cross_source": 0.077,
+     "opening_hours_raw": 0.0,
+     "opening_hours_parsed": 0.0,
+     "category_mapped": 1.0,
+     "positive_identity_signals_2": 0.115,
+     "positive_identity_signals_1": 0.885
+    },
+    "alias_languages": {
+     "primary": 26,
+     "de": 12,
+     "sr": 10,
+     "ru": 8,
+     "en": 5,
+     "it": 3,
+     "hr": 1
+    },
+    "alias_scripts": {
+     "latin": 48,
+     "cyrillic": 17
+    },
+    "issues": {},
+    "unmapped_categories": {}
+   }
+  }
+ },
+ "ingest": {
+  "osm": {
+   "records": 2064,
+   "seconds": 98.3,
+   "records_per_s": 21.0,
+   "status": "ok",
+   "decisions": {
+    "decisions": 2064,
+    "candidates_evaluated": 0,
+    "match": 0,
+    "no_match": 2064,
+    "ambiguous": 0
+   }
+  },
+  "wikidata": {
+   "records": 26,
+   "seconds": 10.4,
+   "records_per_s": 2.5,
+   "status": "ok",
+   "decisions": {
+    "decisions": 26,
+    "candidates_evaluated": 5087,
+    "match": 12,
+    "no_match": 5,
+    "ambiguous": 9
+   }
+  }
+ },
+ "candidates_per_record": {
+  "p50": 0,
+  "p95": 0,
+  "p99": 41,
+  "max": 336,
+  "mean": 2.43
+ },
+ "pairs": {
+  "total": 5087,
+  "by_outcome": {
+   "MATCH": 12,
+   "NO_MATCH": 5062,
+   "AMBIGUOUS": 13
+  },
+  "by_rule": {
+   "different kind of business": 2403,
+   "too far apart (chains are separate locations)": 2056,
+   "-": 603,
+   "shared explicit identifier": 12,
+   "same spot, same kind, different names (translation?)": 5,
+   "similar name nearby; no positive identity evidence (a missing contact is unknown, not support)": 3,
+   "similar name nearby, not enough evidence": 3,
+   "shared id but the records contradict each other": 2
+  },
+  "signal_states": {
+   "phone": {
+    "UNKNOWN": 5087
+   },
+   "domain": {
+    "UNKNOWN": 5086,
+    "SUPPORTS_MATCH": 1
+   },
+   "address": {
+    "UNKNOWN": 5087
+   },
+   "external_id": {
+    "SUPPORTS_MATCH": 14,
+    "UNKNOWN": 5073
+   }
+  },
+  "candidate_reasons": {
+   "geo:300m + identifier:ext:wikidata": 11,
+   "geo:300m": 5073,
+   "geo:300m + identifier:domain + identifier:ext:wikidata": 1,
+   "geo:300m + identifier:ext:osm + identifier:ext:wikidata": 1,
+   "geo:300m + identifier:ext:osm": 1
+  },
+  "matches": {
+   "id_link_direction": {
+    "osm_wikidata_tag_only": 11,
+    "wikidata_osm_property_only": 1
+   },
+   "with_independent_support": 1,
+   "only_by_id_link_chain": 11
+  }
+ },
+ "world": {
+  "source_entities": 2090,
+  "canonical_entities": 2078,
+  "multi_source_canonicals": 12,
+  "reviews_open": 9
+ },
+ "audit": {
+  "strata": {
+   "match:explicit_id_only": {
+    "population": 11,
+    "sampled": 11
+   },
+   "match:explicit_id_plus_independent": {
+    "population": 1,
+    "sampled": 1
+   },
+   "ambiguous:multiple_candidates": {
+    "population": 4,
+    "sampled": 4
+   },
+   "ambiguous:name_geo_only": {
+    "population": 7,
+    "sampled": 7
+   },
+   "ambiguous:other": {
+    "population": 2,
+    "sampled": 2
+   },
+   "no_match_difficult:difficult": {
+    "population": 213,
+    "sampled": 30
+   },
+   "unusual_match_all": {
+    "population": 1,
+    "sampled": 1
+   },
+   "contradictory_signals_all": {
+    "population": 0,
+    "sampled": 0
+   }
+  },
+  "rows_written": 55
+ },
+ "same_source_lookalikes": 36,
+ "facts": {
+  "multi_source_places": 12,
+  "name": {
+   "contested": 12,
+   "rates": {
+    "contested": 1.0
+   },
+   "winner_sources": {
+    "wikidata": 12
+   }
+  },
+  "opening_hours": {
+   "absent_everywhere": 11,
+   "single_source": 1,
+   "rates": {
+    "absent_everywhere": 0.917,
+    "single_source": 0.083
+   },
+   "winner_sources": {
+    "osm": 1
+   }
+  },
+  "phone": {
+   "absent_everywhere": 12,
+   "rates": {
+    "absent_everywhere": 1.0
+   },
+   "winner_sources": {}
+  },
+  "website": {
+   "absent_everywhere": 9,
+   "single_source": 2,
+   "contested": 1,
+   "rates": {
+    "absent_everywhere": 0.75,
+    "single_source": 0.167,
+    "contested": 0.083
+   },
+   "winner_sources": {
+    "osm": 1,
+    "wikidata": 2
+   }
+  },
+  "address": {
+   "absent_everywhere": 9,
+   "single_source": 3,
+   "rates": {
+    "absent_everywhere": 0.75,
+    "single_source": 0.25
+   },
+   "winner_sources": {
+    "osm": 3
+   }
+  },
+  "coordinates": {
+   "agree": 9,
+   "contested": 3,
+   "rates": {
+    "agree": 0.75,
+    "contested": 0.25
+   },
+   "winner_sources": {
+    "wikidata": 12
+   }
+  },
+  "temporary_closure": {
+   "absent_everywhere": 12,
+   "rates": {
+    "absent_everywhere": 1.0
+   },
+   "winner_sources": {}
+  },
+  "subcategory": {
+   "agree": 11,
+   "contested": 1,
+   "rates": {
+    "agree": 0.917,
+    "contested": 0.083
+   },
+   "winner_sources": {
+    "wikidata": 12
+   }
+  },
+  "price_range": {
+   "absent_everywhere": 12,
+   "rates": {
+    "absent_everywhere": 1.0
+   },
+   "winner_sources": {}
+  }
+ },
+ "opening_hours": {
+  "parsed": 362,
+  "unparsed": 71
+ },
+ "discovery": [
+  {
+   "query": "Find a restaurant in Kotor open tonight",
+   "retrieved": 328,
+   "rejected": {
+    "closed_at_time": 16,
+    "state_unknown": 241
+   },
+   "results": [
+    "Konoba Roma",
+    "Scala Santa",
+    "Boka",
+    "Ladovina",
+    "Resto Bar Taraca"
+   ]
+  },
+  {
+   "query": "Where can I get cocktails in Budva?",
+   "retrieved": 0,
+   "rejected": {},
+   "results": []
+  },
+  {
+   "query": "Nearest pharmacy",
+   "retrieved": 32,
+   "rejected": {},
+   "results": [
+    "Vegapharm",
+    "Apoteka Tea Medica 28",
+    "Apoteka Latkovich",
+    "Villa",
+    "Benu"
+   ]
+  },
+  {
+   "query": "Where can we eat late?",
+   "retrieved": 328,
+   "rejected": {},
+   "results": [
+    "Old Fisherman's Pub",
+    "Regina E",
+    "Perla",
+    "Riva Concept Restaurant & Bar",
+    "Babaluu Bar & Ristorante"
+   ]
+  },
+  {
+   "query": "Is there an ATM nearby?",
+   "retrieved": 67,
+   "rejected": {},
+   "results": [
+    "node/13238720730",
+    "node/9551839117",
+    "node/13716103405",
+    "Euronet",
+    "node/10077997574"
+   ]
+  },
+  {
+   "query": "A museum in Kotor",
+   "retrieved": 6,
+   "rejected": {},
+   "results": [
+    "Muzej mačaka",
+    "Naval Heritage Collection",
+    "Arheološki muzej",
+    "Museum Maritimum",
+    "way/305481242"
+   ]
+  },
+  {
+   "query": "Find a beach in Budva",
+   "retrieved": 68,
+   "rejected": {},
+   "results": [
+    "Malaya Beach Club",
+    "City beach (Budva)",
+    "Ričardova glava",
+    "Pizana",
+    "Mogren"
+   ]
+  }
+ ],
+ "spatial_ms": {
+  "radius_1km_p50": 89.46,
+  "radius_1km_p95": 245.78,
+  "nearest_5_p50": 43.49,
+  "nearest_5_p95": 213.42
+ },
+ "snapshot": {
+  "name": "kotor-budva-pilot-raw",
+  "content_hash": "1de0e5d7dd306795d8138e271460b67302a88435e1a0c06ce402fb0543f22f94"
+ }
+}
