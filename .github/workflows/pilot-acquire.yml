@@ -16,16 +16,16 @@
 #   5. success = HTTP 2xx + valid JSON; anything else is failure evidence, not data.
 # Each observation uploads its own artifact. No assembly, no pilot_run, no commit.
 #
-# Push of this file (the first campaign) attempts all four. A later manual run may
-# attempt ONLY the missing / failed observations (input `observations`); a
-# successful observation is never requested again for raw_v1.
+# The first campaign (push of f8c0f33) attempted all four. Later manual runs attempt
+# ONLY the missing / failed observations (input `observations`); a successful
+# observation is never requested again for raw_v1.
+# Amendment A2 (docs/REAL_PILOT.md section 12, 2fd327e): the ONLY change is the
+# User-Agent of future observations - a real contact (the public repository URL).
 
 name: pilot-acquire (A1, temporary)
 
+# A2 (2fd327e): manual runs only - a change to this file never starts a campaign.
 on:
-  push:
-    branches: [ccr-b496a55d-mr7ho5]
-    paths: [.github/workflows/pilot-acquire.yml]
   workflow_dispatch:
     inputs:
       observations:
@@ -77,6 +77,8 @@ jobs:
       PILOT_COMMIT: 9e802c4dd8fa9a6ecabbd4279f936f8959970daf
       OBS_SOURCE: ${{ matrix.obs.source }}
       OBS_BOX: ${{ matrix.obs.box }}
+      # A2: the only acquisition change - an actionable contact in the User-Agent
+      A2_USER_AGENT: "hotelbot-world-pilot/0.1 (https://github.com/korsakovyuri8-design/korsakov-group; real-data pilot, Kotor/Budva) python-httpx/0.28.1"
     steps:
       - name: Checkout the pre-data checkpoint (9e802c4) exactly
         uses: actions/checkout@v4
@@ -122,7 +124,7 @@ jobs:
           query = query_for(src, cfg["scope"][box])
           query_sha = hashlib.sha256(query.encode()).hexdigest()
           record = {
-              "amendment": "A1 (docs/REAL_PILOT.md section 11, commit 86b56d0)",
+              "amendment": "A1 (section 11, 86b56d0) + A2 User-Agent (section 12, 2fd327e)",
               "observation": obs, "source": source, "box": box,
               "pilot_code_commit": os.environ["PILOT_COMMIT"], "workflow_commit": os.environ["GITHUB_SHA"],
               "workflow_run_id": os.environ["GITHUB_RUN_ID"], "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
@@ -143,7 +145,9 @@ jobs:
 
           endpoint = ENDPOINTS[src["format"]]
           sent = {}
-          client = httpx.Client(timeout=240, headers={"User-Agent": USER_AGENT},
+          user_agent = os.environ["A2_USER_AGENT"]                # A2; the frozen USER_AGENT is recorded alongside
+          record |= {"user_agent": user_agent, "frozen_user_agent_replaced": USER_AGENT}
+          client = httpx.Client(timeout=240, headers={"User-Agent": user_agent},
                                 event_hooks={"request": [lambda request: sent.setdefault("at", now())]})
           record |= {"endpoint": endpoint, "method": "POST" if source == "osm" else "GET"}
           body = None
