@@ -176,6 +176,34 @@ The categories are those the product already supports. The category maps are dat
 
     The step stops at assembled raw dumps + `SHA256SUMS`, with no `pilot_run`.
 
+12. **Acquisition-protocol amendment A2 (approved by Yuri; recorded here BEFORE any post-A2 HTTP request).** The first A1 campaign ([run 37745652338](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37745652338), 2026-10-08 07:47–07:48 UTC) produced **no** successful observation. It is kept as failure evidence, and nothing from it enters `raw_v1`.
+
+    | Observation | Result |
+    |---|---|
+    | osm / kotor | 504, 695 B |
+    | osm / budva | 504, 695 B |
+    | wikidata / kotor | 403, 141 B `text/plain` |
+    | wikidata / budva | 403, 141 B `text/plain` |
+
+    The Wikidata 403 body (artifact 11535771907, checked by Yuri) cites the Wikimedia robot / User-Agent policy. That policy requires automated clients to send an identifiable `User-Agent` with a real contact (a URL, email or wiki user). The frozen UA's `contact: repository owner` gives no actionable contact.
+
+    **The only change in A2 is the `User-Agent` header of future observations.**
+
+    | | User-Agent |
+    |---|---|
+    | frozen (`pilot_fetch.USER_AGENT`) | `hotelbot-world-pilot/0.1 (real-data pilot, Kotor/Budva; contact: repository owner)` |
+    | A2 | `hotelbot-world-pilot/0.1 (https://github.com/korsakovyuri8-design/korsakov-group; real-data pilot, Kotor/Budva) python-httpx/0.28.1` |
+
+    The contact is the public GitHub repository URL, following Wikimedia's recommended `name/version (contact) library/version` form. No email is used.
+
+    **Unchanged:** query text, query hashes, endpoints, HTTP methods, SPARQL, boxes, `Accept`, timeout, category maps, ER, normalization, sampling, labelling. The frozen `pilot_fetch.py` itself is not modified; the workflow sends the A2 string and records it in each `observation.json`. Everything else in A1 still applies: one request per observation, bytes before parsing, success = 2xx + valid JSON, no automatic retries, and a success is never refetched.
+
+    **Execution of A2:**
+    - Only `wikidata / kotor` and `wikidata / budva` are attempted now. Overpass is not re-queried to test a header.
+    - If both return 2xx + valid JSON, they are frozen, and acquisition stops there.
+    - If either returns 403 again, acquisition stops and the result is reported. No alternative headers, authentication, endpoints or repeated requests without a new decision; the next step would be another machine or another official access route.
+    - The two OSM observations stay pending under A1 for a separate later attempt, with the same endpoint.
+
 **This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
