@@ -21,6 +21,8 @@
 # observation is never requested again for raw_v1.
 # Amendment A2 (docs/REAL_PILOT.md section 12, 2fd327e): the ONLY change is the
 # User-Agent of future observations - a real contact (the public repository URL).
+# Amendment A3 (docs/REAL_PILOT.md section 14, 1b8640f): the ONLY change is the
+# endpoint of future OSM observations (overpass.private.coffee); Wikidata unchanged.
 
 name: pilot-acquire (A1, temporary)
 
@@ -79,6 +81,8 @@ jobs:
       OBS_BOX: ${{ matrix.obs.box }}
       # A2: the only acquisition change - an actionable contact in the User-Agent
       A2_USER_AGENT: "hotelbot-world-pilot/0.1 (https://github.com/korsakovyuri8-design/korsakov-group; real-data pilot, Kotor/Budva) python-httpx/0.28.1"
+      # A3: the only OSM change - the Overpass endpoint (same QL, same data)
+      A3_OSM_ENDPOINT: "https://overpass.private.coffee/api/interpreter"
     steps:
       - name: Checkout the pre-data checkpoint (9e802c4) exactly
         uses: actions/checkout@v4
@@ -124,7 +128,7 @@ jobs:
           query = query_for(src, cfg["scope"][box])
           query_sha = hashlib.sha256(query.encode()).hexdigest()
           record = {
-              "amendment": "A1 (section 11, 86b56d0) + A2 User-Agent (section 12, 2fd327e)",
+              "amendment": "A1 (section 11, 86b56d0) + A2 User-Agent (section 12, 2fd327e) + A3 OSM endpoint (section 14, 1b8640f)",
               "observation": obs, "source": source, "box": box,
               "pilot_code_commit": os.environ["PILOT_COMMIT"], "workflow_commit": os.environ["GITHUB_SHA"],
               "workflow_run_id": os.environ["GITHUB_RUN_ID"], "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
@@ -144,6 +148,9 @@ jobs:
               finish(False, 2)
 
           endpoint = ENDPOINTS[src["format"]]
+          if src["format"] == "osm.overpass.v1":                  # A3: OSM endpoint only; the frozen one is recorded
+              record["frozen_endpoint_replaced"] = endpoint
+              endpoint = os.environ["A3_OSM_ENDPOINT"]
           sent = {}
           user_agent = os.environ["A2_USER_AGENT"]                # A2; the frozen USER_AGENT is recorded alongside
           record |= {"user_agent": user_agent, "frozen_user_agent_replaced": USER_AGENT}
