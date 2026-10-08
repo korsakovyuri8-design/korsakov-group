@@ -210,8 +210,15 @@ The categories are those the product already supports. The category maps are dat
     |---|---|---|---|---|---|---|
     | wikidata / kotor | **frozen** | [37751323718](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37751323718) / 11537783193 | 2026-10-08 08:40:03.950155 → 08:40:04.647614 | 200 `application/sparql-results+json` | 22,904 | `68ea566c548b4829b9f98f4829ad081373809f45a0eeb0207a782f509b571947` |
     | wikidata / budva | **frozen** | [37751323718](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37751323718) / 11538206827 | 2026-10-08 08:40:15.201942 → 08:40:15.500087 | 200 `application/sparql-results+json` | 16,522 | `3c15df8cfe34231dc2f5cab084c81d97232cbb9713266f982555fee34a7653c7` |
-    | osm / kotor | pending | - | - | - | - | - |
-    | osm / budva | pending | - | - | - | - | - |
+    | osm / kotor | **frozen** (A4) | [37755558600](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37755558600) / 11539898139 | 2026-10-08 09:17:07.025410 → 09:17:25.854499 | 200 `application/json` | 381,973 | `22ad31c0d29ec1a55107b5b8cc102fe6ee69aab05497a6a7bfff9cc45909e860` |
+    | osm / budva | **frozen** (A4) | [37755558600](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37755558600) / 11539932655 | 2026-10-08 09:17:38.827835 → 09:17:56.370897 | 200 `application/json` | 524,772 | `7986f94c786de2f5caf3778d3cf17588cf334f2ba6481ce552b994de0f164de7` |
+
+    **The OSM observations were made under A4:**
+    - endpoint `https://maps.mail.ru/osm/tools/overpass/api/interpreter`, workflow `5192607`, pilot `9e802c4`, the A2 User-Agent;
+    - verified query SHA256 `72c74ecc…12a01` (kotor) and `0acccd58…1493d` (budva);
+    - no Overpass `remark` field was recorded.
+
+    All four observations for `raw_v1` now exist and are frozen. None is ever refetched.
 
     **Failed OSM attempts under A3** (`overpass.private.coffee`, [run 37754244471](https://github.com/korsakovyuri8-design/korsakov-group/actions/runs/37754244471), workflow `e6cff47`; failure evidence, not data):
 
