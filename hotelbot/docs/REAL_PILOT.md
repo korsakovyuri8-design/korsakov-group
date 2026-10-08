@@ -248,6 +248,35 @@ The categories are those the product already supports. The category maps are dat
     - A failure is kept as evidence; automatic activity stops, and the endpoint does not change again without a new decision.
     - Stop at the OSM artifacts: no assembly and no `pilot_run` without a new instruction.
 
+15. **Acquisition-protocol amendment A4 (approved by Yuri; recorded here BEFORE any post-A4 HTTP request).** A3 failed. `overpass.private.coffee` returned the same generic Apache HTTP 500 page for both boxes (run 37754244471). The preserved bodies, read by Yuri, show a server-side Internal Server Error (`Apache/2.4.66 (Debian)`, `webmaster@localhost`). A3 is not retried.
+
+    **The only change in A4 is the endpoint of future OSM observations:**
+
+    | | Overpass endpoint |
+    |---|---|
+    | frozen | `https://overpass-api.de/api/interpreter` |
+    | A3 (failed) | `https://overpass.private.coffee/api/interpreter` |
+    | A4 | `https://maps.mail.ru/osm/tools/overpass/api/interpreter` |
+
+    The A4 server is VK Maps Overpass, listed in the OpenStreetMap wiki as a global public Overpass instance. The endpoint actually used is recorded in every `observation.json`.
+
+    **Unchanged:**
+    - OSM query text and both OSM query SHA256 values, boxes;
+    - the request: `POST` with body `data=<exact query>`, the A2 User-Agent;
+    - source identity (`osm`);
+    - the pipeline: categories, normalizer, ER, field policies;
+    - the evaluation: sampling, labelling;
+    - the acquisition rules: observation atomicity and success criteria.
+
+    The frozen Wikidata observations (artifacts 11537783193 and 11538206827) stay untouched. All runs against `overpass-api.de` and the A3 runs are failure evidence only and are excluded from `raw_v1`.
+
+    **Execution of A4.** Only `osm/kotor` and `osm/budva`, dispatched manually and run sequentially, one request each, with no automatic retry.
+    - A success is frozen immediately and never fetched again.
+    - A failure keeps its raw body and metadata; activity stops, and no other endpoint or run is tried automatically.
+    - If both succeed, the process stops at the two artifacts. No `pilot_run` is run and the dataset is not inspected.
+
+    **Limit on endpoint changes.** A4 is the last change of public Overpass instance. If A4 also fails, the next step is not another server. Instead, the two OSM requests are made from an ordinary external machine under the A4 protocol and their raw bodies are imported. That separates "public Overpass instances cannot handle the query" from "GitHub-hosted runners / their IPs are poorly served".
+
 **This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
