@@ -284,6 +284,16 @@ The categories are those the product already supports. The category maps are dat
 
     **Limit on endpoint changes.** A4 is the last change of public Overpass instance. If A4 also fails, the next step is not another server. Instead, the two OSM requests are made from an ordinary external machine under the A4 protocol and their raw bodies are imported. That separates "public Overpass instances cannot handle the query" from "GitHub-hosted runners / their IPs are poorly served".
 
+16. **Labelling deviation record for `raw_v1` (before any label exists).**
+    - **What happened.** While reviewing `raw_v1` (commit 35c7abf), Yuri opened `out/raw_v1/audit_sample.json`. That manifest lists every opaque `pair_id` with its sample group (e.g. `match:explicit_id_only`), which reveals the algorithm's predicted class. Yuri is therefore no longer a blind annotator for this sample and will not provide its primary labels. No label had been written at that point; `audit_blind.csv` itself (sha256 `3ba7730e…fc530`, 55 rows, empty `human_label`) is unaffected.
+    - **Design weakness (recorded, not fixed now).** The blind view is clean. The leak path is the sample manifest in the same directory, which maps `pair_id` to group, together with the technical `audit_pairs.*`. Both are committed to the public repository. A future run should keep the `pair_id` → group mapping out of anything an annotator can reach. That is a tooling change for after this pilot, not now.
+    - **Replacement procedure.**
+      - **Who labels.** The primary labels for `raw_v1` come from an annotator with no project context. Yuri uses a fresh chat that receives **only** `audit_blind.csv` and a fixed instruction: label from the CSV alone, no URLs, no web; SAME_ENTITY / DIFFERENT_ENTITY / UNSURE; UNSURE when the level of entity cannot be shown to be the same.
+      - **What it is not told.** Nothing about ER, strata, MATCH or AMBIGUOUS counts, or `raw_v1` metrics.
+      - **What is recorded.** The returned `labels_raw_v1.csv` (`pair_id,label,notes`) is frozen by SHA256 before `pilot_labels.py` runs. The annotator type (a context-free AI chat, not a human) and the instruction text are recorded alongside the labels, and reported with every number computed from them.
+      - **Who does not label.** This development session knows the algorithm's decisions and is not an annotator either.
+    - **Second stage, after the labels are frozen.** Yuri can legitimately review the results and the technical audit and classify the defects.
+
 **This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
