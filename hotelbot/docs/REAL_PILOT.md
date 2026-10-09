@@ -297,6 +297,18 @@ The categories are those the product already supports. The category maps are dat
     - **Who does not label.** This development session knows the algorithm's decisions and labels nothing. Neither does any subagent with access to the repository.
     - **Second stage, after the labels are frozen.** Yuri can legitimately review the results and the technical audit and classify the defects.
 
+17. **Reporting rules for the `raw_v1` labels (fixed before any label exists; part of the conclusion, not a footnote).** What the labels can show, and how strongly:
+    - **Auto-MATCH precision: exhaustive.** All 12 automatic MATCH pairs are in the sample. The number of false merges among all auto-MATCHes in Kotor + Budva is therefore known, with no sampling error. UNSURE labels are reported apart.
+    - **AMBIGUOUS: exhaustive census.** All 13 pairs are labelled, giving SAME / DIFFERENT / UNSURE counts.
+    - **False splits: sample estimate only.** 30 of the 213 difficult NO_MATCH pairs are labelled. The report gives x/30, optionally with an interval for that stratum only. This is **not** a global ER recall.
+    - **No recall figure is published for Iteration 6.** A recall needs the denominator of all true matches, NO_MATCH included, and that is not fully labelled here.
+    - **Pre-registered wording of the result:**
+      > The real-data pilot measured auto-merge precision exhaustively, while false-split risk was estimated from a pre-registered sample of difficult non-matches. The pilot does not provide a full recall estimate.
+    - **Safety patch (5.1) wording:**
+      > On this real set the conservative policy produced X false merges among all auto-MATCHes; the difficult-NO_MATCH sample found Y potential false splits. However, this source pair carries little independent identity evidence and many pre-existing OSM↔Wikidata links (11 of 12 MATCHes rest on the id-link chain alone). The patch's effect on recall is therefore only partly tested.
+    - **What Iteration 6 is.** A real-world **safety and data-quality pilot**, not a definitive recall benchmark.
+    - **What the next real-data ER benchmark needs.** Two more independent sources with no ready-made cross-id chain, e.g. OSM plus a tourism or business directory. Only then is the question from the synthetic 10k actually tested: how many real entities can be recovered under "missing evidence = UNKNOWN" without bringing false merges back.
+
 **This is the pre-data checkpoint.** Methodology is frozen at the commit that adds the blind-labelling rule (on top of 9ded138 and db5c12c). No further backend code before the four response bodies exist.
 
 **Fixed sequence:**
