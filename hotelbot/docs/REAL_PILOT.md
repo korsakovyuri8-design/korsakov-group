@@ -304,6 +304,27 @@ The categories are those the product already supports. The category maps are dat
     - **No recall figure is published for Iteration 6.** A recall needs the denominator of all true matches, NO_MATCH included, and that is not fully labelled here.
     - **Pre-registered wording of the result:**
       > The real-data pilot measured auto-merge precision exhaustively, while false-split risk was estimated from a pre-registered sample of difficult non-matches. The pilot does not provide a full recall estimate.
+    - **Label intake protocol (fixed before any label exists).** When the human labels come back:
+      - **Machine check first.** A script checks the format and prints only pass/fail:
+        - the `pair_id` set equals the set in `audit_blind.csv`, 55 rows with no duplicates;
+        - every label is one of `SAME_ENTITY`, `DIFFERENT_ENTITY`, `UNSURE`;
+        - no row is empty.
+        
+        Nobody looks at the labels or their distribution before the freeze commit.
+      - **Freeze.** The file is committed as `labels_raw_v1.csv`. A provenance record `labels_raw_v1.provenance.yaml` is committed with it, in the same commit:
+        ```yaml
+        annotation_type: blind_human
+        source_file_sha256: 3ba7730e4084b1f436d23e24682b32e479aaf57662ccc89992a79805f5efc530
+        rows: 55
+        allowed_labels: [SAME_ENTITY, DIFFERENT_ENTITY, UNSURE]
+        external_lookup_before_primary_label: prohibited
+        algorithm_output_seen_by_annotator: no
+        repository_access: no
+        instruction_sha256: <sha256 of the annotator instruction (README_FIRST.txt), or its exact text>
+        labels_sha256: <sha256 of labels_raw_v1.csv>
+        ```
+        The annotator's name is not recorded.
+      - **Order, not to be changed:** human labels → hash/commit → reveal the algorithm → `pilot_labels.py` → blind AI layer → comparison → Iteration 6.1.
     - **Safety patch (5.1) wording:**
       > On this real set the conservative policy produced X false merges among all auto-MATCHes; the difficult-NO_MATCH sample found Y potential false splits. However, this source pair carries little independent identity evidence and many pre-existing OSM↔Wikidata links (11 of 12 MATCHes rest on the id-link chain alone). The patch's effect on recall is therefore only partly tested.
     - **What Iteration 6 is.** A real-world **safety and data-quality pilot**, not a definitive recall benchmark.
