@@ -320,7 +320,7 @@ The categories are those the product already supports. The category maps are dat
         external_lookup_before_primary_label: prohibited
         algorithm_output_seen_by_annotator: no
         repository_access: no
-        instruction_sha256: <sha256 of the annotator instruction (README_FIRST.txt), or its exact text>
+        instruction_sha256: 4c3d0898c04265dc559f2f830d9bba61799745b2d4a216055ab542e83f969898   # annotator_package_raw_v1/README_FIRST.txt
         labels_sha256: <sha256 of labels_raw_v1.csv>
         ```
         The annotator's name is not recorded.
