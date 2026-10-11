@@ -99,3 +99,57 @@ All 21 remaining strings were checked by value against the classification, and n
 - "Restaurant in Kotor open tonight" and "eat late in Budva" now surface places whose hours were bare spans: Pepe Nero, Pržun, Astoria, Rivijera.
 
 **Tests.** 782 collected, 781 pass. The one failure is `test_local_layer.py::test_staff_can_read_a_guest_plan`, which also fails without this change (verified by stash). It is date-dependent ("events this week") and unrelated.
+
+## 2. Taxonomy gaps — classification of the 155 unclassified OSM records (no code changed)
+
+**Source.** The frozen OSM dump: 2064 unique elements.
+
+**How the category is chosen today.** `real_formats.osm_category()` takes the **first present** key in the order `amenity, tourism, shop, historic, leisure, natural, man_made, office`. That `key=value` is looked up in `pilot.yaml` `category_map`. If it is not there, the record becomes `unclassified`.
+
+There are 155 records, in 13 patterns.
+
+**How each record got into the dataset.** It was attributed to the Overpass clause that matched its tags.
+
+**Existing vocabulary.** `app/places/taxonomy.py` has `historic_site` (CULTURE), `monument`, `supermarket`, `souvenir_shop`, `bike_rental`, `car_rental` and `ski_rental` (RENTAL), and `visitor_center` (top category ATTRACTION). It has **no** generic attraction, convenience, artwork or boat subcategory.
+
+| raw tag | records (named) | how it entered | existing internal category | action | confidence |
+|---|---:|---|---|---|---|
+| `shop=convenience` | 76 (52) | **requested** (`shop~…convenience…`) | none. `supermarket` is a sibling, not a broader type | **ADD_CATEGORY** `convenience_store` (SHOPPING) | high |
+| `tourism=attraction` | 37 (25) | **requested** (`tourism~…attraction…`) | top category ATTRACTION exists; no generic subcategory | **ADD_CATEGORY** generic `attraction` (ATTRACTION) for 36. Never narrowed to museum or viewpoint. 1 record → NORMALIZER_DEFECT (row below) | high |
+| `tourism=artwork` | 11 (5) | **requested** | none. `monument` is not the same thing (murals, sculptures) | **ADD_CATEGORY** `artwork` (CULTURE) | medium |
+| `amenity=boat_rental` | 4 (3) | **requested** | the RENTAL family exists, with no boat entry | **ADD_CATEGORY** `boat_rental` (RENTAL) | high |
+| `historic=city_gate` | 11 (10) | broad `nwr["historic"]` | `historic_site` (broader, not narrower) | **MAP_EXISTING** → `historic_site` | high |
+| `historic=tomb` | 3 (2) | broad `historic` | `historic_site` | **MAP_EXISTING** → `historic_site` | high |
+| `historic=yes` | 5 (4) | broad `historic` | `historic_site`. OSM only says "historic" | **MAP_EXISTING** → `historic_site` | medium |
+| `historic=ship` | 2 (2) | broad `historic` | `historic_site` (historic object, not a site) | **MAP_EXISTING** → `historic_site` | medium |
+| `historic=cannon` | 2 (0) | broad `historic` | `historic_site` | **MAP_EXISTING** → `historic_site` | medium |
+| `historic=pillory` | 1 (0) | broad `historic` | `historic_site` | **MAP_EXISTING** → `historic_site` | medium |
+| `historic=building` | 1 (0) | broad `historic` | `historic_site` | **MAP_EXISTING** → `historic_site` | medium |
+| `tourism=yes` | 1 (1) | via **`natural=beach`** | `beach` (from `natural=beach`, already mapped) | **NORMALIZER_DEFECT** | high |
+| `amenity=drinking_water` | 1 (0) | via **`historic=memorial`** | `monument` (from `historic=memorial`, already mapped) | **NORMALIZER_DEFECT** | high |
+| (subset of `tourism=attraction`) | 1 | via `tourism=attraction` **and** `historic=ruins` | `historic_site` (from `historic=ruins`, mapped) | **NORMALIZER_DEFECT** | high |
+
+**NORMALIZER_DEFECT, 3 records.** The selection uses key order only. An incidental tag (`amenity=drinking_water`, `tourism=yes`, `tourism=attraction`) wins over a **mapped** tag on the same element. In two of the cases the mapped tag is the very one the query requested.
+
+Proposed general rule: choose the first tag in key order **that the source's `category_map` knows**. Fall back to the first present tag (and `unclassified`) only when no tag is mapped. Records that already have a mapped first tag keep their category.
+
+Checked: only 2 mapped records carry a second, different mappable tag:
+- `amenity=place_of_worship` + `historic=ruins`;
+- `amenity=bar` + `leisure=beach_resort`.
+
+Both keep their current, sensible category under the rule.
+
+**KEEP_UNCLASSIFIED.** None of the 13 patterns. `historic=yes` is the closest candidate; it is mapped only to the broad `historic_site`, never to anything narrower.
+
+The 2 `tourism=attraction` records that also carry `natural=tree` stay `attraction`, because `natural=tree` is not mapped.
+
+### Baseline
+
+| step | records leaving `unclassified` | of 155 |
+|---|---:|---:|
+| obvious MAP_EXISTING only (`city_gate`, `tomb` → `historic_site`) | **14** | 9.0 % |
+| + medium MAP_EXISTING (`historic` tail: `yes`, `ship`, `cannon`, `pillory`, `building`) | 25 | 16.1 % |
+| + NORMALIZER_DEFECT fix | 28 | 18.1 % |
+| + ADD_CATEGORY (`convenience_store` 76, `attraction` 36, `artwork` 11, `boat_rental` 4) | 155 | 100 % |
+
+**Most of the gap is ADD_CATEGORY.** It covers 127 of 155 records, and all of them are values we requested ourselves in the query and forgot to map. Mapping alone cannot close it without inventing a narrower or sibling category.
