@@ -235,3 +235,119 @@ All earlier ER safety tests pass.
 - In `audit_blind.csv` the same 55 pair_ids appear in the same order. Only the `category_b` column differs, for records that were `unclassified` before.
 
 **Lesson from real data.** ER had assumed that any assigned top category is equally strong identity evidence. A richer taxonomy showed this is false for generic tags.
+
+## 3. Discovery — diagnosis on the current state (hours + taxonomy + ER fixed), no code changed
+
+**Setup.**
+- The world was rebuilt from the frozen dumps with code c347c6a, the same state as `taxonomy_fix_v2`: 2078 active places.
+- The evaluation time is the newest fetch: 2026-10-08 09:17 UTC, i.e. 11:17 local.
+- Each query went through `parse_discovery(require_cue=False)`, then `run()`, with the pilot's fixed anchor point (old-town gate) and `limit=5`, exactly as `pilot_run.discovery_sample` does.
+- Three extra *counterfactual* queries, using existing vocabulary, show what happens once understanding succeeds.
+
+### Path per query
+
+**1. "Find a restaurant in Kotor open tonight"**
+- Built: subs `{restaurant, konoba, fast_food}`, `at` = 22:00, `open_at`.
+- Retrieved 328. Rejected: `closed_at_time` 19, `state_unknown` 220.
+- Top 5: all open at 22:00, within 0.6 km.
+- Correct. Policy: once known-open places exist, unknown ones are not used to pad the list.
+
+**2. "Where can I get cocktails in Budva?"**
+- Built: label `drinks`, subs `{cocktail_bar, lounge, rooftop}` only.
+- Retrieved **0**.
+- The data holds **0** `cocktail_bar` / `lounge` / `rooftop` places: OSM has no such kinds, and `amenity=bar` → `bar`. There are 48 `bar`, 14 `pub` and 10 `nightclub`, of which 41 lie within 3 km of Budva's old town. The raw OSM has 2 elements with explicit cocktail evidence (`Strix Cocktail Bar` and `THE DEEP`, both `amenity=bar`).
+- **Not** an understanding failure: "cocktails" was recognised. **Not** a coverage gap: bars exist, and cocktail evidence even exists.
+- The query is built from kinds the data never emits, with no fallback to the bar family.
+- The hours, taxonomy and ER fixes had no effect: raw_v1 also gave 0, with the same query.
+- Counterfactual "a drink in Budva" → NIGHTLIFE, 72 retrieved, sensible bars.
+
+**3. "Nearest pharmacy"**
+- Built: subs `{pharmacy}`, essential, no time, no radius.
+- Retrieved 32.
+- Top 5 at 0.12 / 0.44 / **6.5 / 15.7 / 16.0 km**. All are known-open (rank key: availability first, then distance).
+- The *nearest* pharmacy (0.08 km, unknown hours, unnamed) and others at 0.39 and 1.37 km are pushed below places 16 km away.
+
+**4. "Something interesting near the Old Town"**
+- `parse_discovery` → **None**.
+- "interesting" is no cue and names no kind. "near the old town" is cut out as the anchor phrase, so nothing is left.
+- Counterfactual "Something to see near the Old Town" → label `sights`, categories `{ATTRACTION, CULTURE, NATURE}`, `anchor_text` "old town", **no radius**.
+  - Retrieved 450 across the whole region.
+  - Top 5: Muzej mačaka 0.09 km, Galerija nives 0.09, Naval Heritage 6.5, **Malaya Beach Club 16.1**, **Arheološki muzej 17.2**.
+  - Meanwhile 63 CULTURE / ATTRACTION places lie within 1 km of Kotor's old town (23 historic sites, 19 religious, 6 tourist attractions, 6 monuments, …).
+- So understanding is the first wall, and ranking is the second.
+
+**5. "Where can we eat late?"**
+- Built: label `food`, subs `{restaurant, konoba, fast_food}`, **at = None**: "late" is not understood (only "open late", "after midnight", "after N" are).
+- Retrieved 328.
+- Top 5: open *now* (11:17), close 23:00–01:00.
+- Plausible by accident. The time constraint was dropped.
+
+**6. "Is there an ATM nearby?"**
+- Built: subs `{atm}`, essential, `max_km` 2.0.
+- Retrieved 67.
+- Top 2 are 24/7 ATMs at **0.36 and 0.78 km**, ranked above at least 8 ATMs within **40–90 m** with unknown hours.
+- 4 of the 5 lines render as `node/…`: **97 of 103 ATMs** are unnamed.
+- Euronet and `node/13716103405` sit at the same spot (same-source lookalikes, step 5).
+
+**7. "A museum in Kotor"**
+- Built: subs `{museum}`. "in Kotor" is **not** a constraint (no locality is extracted at all), and there is no radius.
+- Retrieved 6, which is all the museums in the region.
+- Top 5 in order:
+  - Muzej mačaka 0.09 km;
+  - **Naval Heritage 6.5 km**;
+  - **Arheološki muzej 17.2 km** (Budva);
+  - Museum Maritimum 0.04 km (unknown hours);
+  - `way/305481242` 0.08 km (unnamed).
+- Coverage is thin: 6 museums, 3 of them in Kotor. But the ordering is the defect, since a Budva museum outranks the Maritime Museum in Kotor's old town.
+
+**8. "Find a beach in Budva"**
+- Built: subs `{beach}`, no time.
+- Top 1 is **Malaya Beach Club, 2.0 km** (it has hours, open). It outranks City beach at 0.1 km, Ričardova glava at 0.12 and Pizana at 0.15, all with unknown hours. Beaches almost never carry hours.
+
+### Systemic finding
+
+With **no time in the request**, `rank()` puts `availability` (OPEN 0 < OPEN_LATER 1 < UNKNOWN 2 < CLOSED 3) **before distance**, for essential and non-essential queries alike.
+
+Hours are known for only about 20 % of OSM places (412 of 2064 parsed). So "known open" beats "nearby" across the board: pharmacies (16 km), museums (17 km), beaches (2 km against 0.1 km), sights (16–17 km), ATMs (0.78 km against 0.04 km).
+
+The hard filter already treats unknown correctly: only KNOWN-closed is removed. The *ranking* still treats UNKNOWN almost like CLOSED.
+
+**Unnamed entities.** 968 of 2078 places are rendered as `node/…` / `way/…`:
+- `car_park` 384;
+- `viewpoint` 98;
+- `atm` 97;
+- `tourist_info` 52;
+- `beach` 39;
+- `souvenir_shop` 35;
+- `public_toilet` 34;
+- `historic_site` 28;
+- `convenience_store` 24;
+- `restaurant` 20;
+- …
+
+### Table
+
+| Query | UNDERSTAND | Query built | Retrieved | Top result quality | Primary defect | Proposed fix class |
+|---|---|---|---:|---|---|---|
+| Find a restaurant in Kotor open tonight | ok (locality ignored, harmless here) | restaurants, open at 22:00 | 328 | good | — | — |
+| Where can I get cocktails in Budva? | ok ("drinks / cocktails") | only cocktail_bar / lounge / rooftop | 0 | none | **OVERCONSTRAINED_QUERY** | query building: "cocktails" → bar family plus soft cocktail relevance (name / tag evidence), not an empty kind set |
+| Nearest pharmacy | ok | pharmacy, essential | 32 | 3 of 5 are 6–16 km away; nearest (80 m) missing | **RANKING_FAIL** | with no time asked, unknown ≠ closed: distance before (open vs unknown), for essential kinds at least |
+| Something interesting near the Old Town | **fail** (None) | — | — | — | **UNDERSTAND_FAIL** | intent: "interesting / something to do" → sights. Then anchor resolution ("old town" → point + radius). Then the ranking fix |
+| Where can we eat late? | partial ("late" dropped) | food, no time | 328 | plausible by accident | **UNDERSTAND_FAIL** (time constraint) | temporal: "late" → open_until / evening |
+| Is there an ATM nearby? | ok | atm, essential, 2 km | 67 | 0.36 / 0.78 km ahead of 40 m; `node/…` names | **RANKING_FAIL** + **RENDER_FAIL** | ranking fix (as for pharmacy); neutral display name for unnamed entities |
+| A museum in Kotor | partial ("in Kotor" not a constraint) | museum, whole region | 6 | 6.5 / 17 km above 40 m | **RANKING_FAIL** (+ locality, + unnamed) | ranking fix; locality "in <town>" → anchor/area; render |
+| Find a beach in Budva | ok (locality ignored) | beach | 69 | 2 km beach club above 0.1 km beaches | **RANKING_FAIL** | ranking fix |
+
+**Answer to the cocktail question.** It is neither NLU nor coverage. Understanding works, and the data has 41 bars nearby and 2 with explicit cocktail evidence. The **query builder** maps "cocktails" to three kinds no real source here produces and drops the bar family. The case was untouched by the hours, taxonomy and ER fixes (raw_v1 also gave 0).
+
+**Order suggested by impact.**
+1. RANKING: unknown hours in no-time queries. This affects 5 of the 8 sample queries.
+2. OVERCONSTRAINED_QUERY: cocktails.
+3. UNDERSTAND: "interesting", "late", locality "in <town>".
+4. RENDER: unnamed entities.
+
+None of these needs `SUBCATEGORIES` labels or keywords to change:
+- the GENERIC phrase table and the ranking key live in `nlu.py` / `engine.py`;
+- ER reads only `SUBCATEGORIES`.
+
+Still, the 5087-pair check is repeated after each commit, as agreed.
