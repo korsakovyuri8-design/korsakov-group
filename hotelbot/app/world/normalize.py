@@ -128,38 +128,78 @@ def _time_ok(t: str) -> bool:
     return bool(m) and not (m.group(1) == "24" and m.group(2) != "00")
 
 
+def _hhmm(t: str) -> str:
+    h, m = t.split(":")
+    return "00:00" if t == "24:00" else f"{int(h):02d}:{m}"
+
+
+def _union(spans: list[list[str]]) -> list[list[str]] | None:
+    """Merge overlapping spans of one day (end <= start = past midnight).
+    None when the union would run longer than 24 hours."""
+    mins = sorted((int(s[:2]) * 60 + int(s[3:]), int(e[:2]) * 60 + int(e[3:])) for s, e in spans)
+    merged: list[list[int]] = []
+    for s, e in mins:
+        e = e + 1440 if e <= s else e
+        if merged and s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    if any(e - s > 1440 for s, e in merged):
+        return None
+    return [[f"{s // 60:02d}:{s % 60:02d}", f"{e % 1440 // 60:02d}:{e % 60:02d}"] for s, e in merged]
+
+
 def parse_osm_hours(text: Any) -> tuple[dict[str, Any] | None, str | None]:
     """OSM-style opening_hours subset -> {"weekly": {...}}.
 
     "Mo-Fr 09:00-18:00; Sa 10:00-14:00; Su off", "24/7",
-    "Mo-Su 12:00-15:00,18:00-23:00". Unspecified days are closed (OSM rule).
-    Anything else is reported, not guessed."""
+    "Mo-Su 12:00-15:00,18:00-23:00", "09:00-22:00" (no day selector = every
+    day), "Mo-Fr 08:00-20:00, Sa 08:00-15:00" (", " = additional rule: adds,
+    does not override), "Mo-Su,PH 09:00-22:00" (PH only together with all
+    seven days, where it changes nothing). Unspecified days are closed (OSM
+    rule). Times are HH:MM. Anything else - a PH rule of its own, months,
+    seasons, a bare "closed" - is reported, not guessed."""
     if not isinstance(text, str) or not text.strip():
         return None, None
     raw = text.strip()
     if raw == "24/7":
         return {"weekly": {d: [["00:00", "00:00"]] for d in _DAY_KEYS}}, None
+    bad = (None, f"opening hours not understood: {raw!r}")
     weekly: dict[str, list[list[str]]] = {d: [] for d in _DAY_KEYS}
     for rule in (r.strip() for r in raw.split(";") if r.strip()):
-        m = re.match(r"^([A-Za-z,\- ]+?)\s+(off|closed|[\d:,\- ]+)$", rule)
-        if not m:
-            return None, f"opening hours not understood: {raw!r}"
-        days: list[int] = []
-        for part in m.group(1).replace(" ", "").split(","):
-            ends = part.lower().split("-")
-            if any(e not in _DAYS for e in ends) or len(ends) > 2:
-                return None, f"opening hours not understood: {raw!r}"
-            a, b = _DAYS.index(ends[0]), _DAYS.index(ends[-1])
-            days += list(range(a, b + 1)) if a <= b else list(range(a, 7)) + list(range(0, b + 1))
-        spans: list[list[str]] = []
-        if m.group(2) not in ("off", "closed"):
-            for span in m.group(2).replace(" ", "").split(","):
-                se = span.split("-")
-                if len(se) != 2 or not all(_time_ok(x) for x in se):
-                    return None, f"opening hours not understood: {raw!r}"
-                spans.append(["00:00" if se[0] == "24:00" else se[0], "00:00" if se[1] == "24:00" else se[1]])
-        for d in days:
-            weekly[_DAY_KEYS[d]] = spans
+        # ", " followed by a selector after a time ends a rule: an additional rule
+        for n, part in enumerate(re.split(r"(?<=\d),\s*(?=[A-Za-z])", rule)):
+            m = re.match(r"^(?:([A-Za-z,\- ]+?)\s+)?(off|closed|[\d:,\- ]+)$", part.strip())
+            if not m or (m.group(1) is None and m.group(2) in ("off", "closed")):
+                return bad
+            days: list[int] = []
+            ph = False
+            for sel in (m.group(1) or "mo-su").replace(" ", "").split(","):
+                if sel.lower() == "ph":
+                    ph = True
+                    continue
+                ends = sel.lower().split("-")
+                if any(e not in _DAYS for e in ends) or len(ends) > 2:
+                    return bad
+                a, b = _DAYS.index(ends[0]), _DAYS.index(ends[-1])
+                days += list(range(a, b + 1)) if a <= b else list(range(a, 7)) + list(range(0, b + 1))
+            if ph and set(days) != set(range(7)):
+                return bad        # a holiday rule of its own needs a holiday calendar
+            spans: list[list[str]] = []
+            if m.group(2) not in ("off", "closed"):
+                for span in m.group(2).replace(" ", "").split(","):
+                    se = span.split("-")
+                    if len(se) != 2 or not all(_time_ok(x) for x in se):
+                        return bad
+                    spans.append([_hhmm(se[0]), _hhmm(se[1])])
+            for d in days:
+                if n == 0:
+                    weekly[_DAY_KEYS[d]] = spans
+                else:
+                    union = _union(weekly[_DAY_KEYS[d]] + spans)
+                    if union is None:
+                        return bad
+                    weekly[_DAY_KEYS[d]] = union
     return {"weekly": weekly}, None
 
 
