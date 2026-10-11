@@ -102,6 +102,9 @@ def _taxonomy_type_words() -> dict[str, str]:
 _TYPE_OF = {**_taxonomy_type_words(), **_TYPE_OF}      # curated classes win (konoba ~ restaurant)
 _STOP = {"the", "a", "an", "and", "of", "i", "u", "na", "de", "la", "le", "el", "il", "da", "di", "&", "v"}
 CATEGORY_GROUPS = [{"FOOD", "NIGHTLIFE"}]       # a cafe-bar may be filed under either
+# A generic subcategory says nothing about what the entity IS (tourism=attraction can be a church,
+# a beach, a fortress): it is neither support nor contradiction of the identity type - UNKNOWN.
+GENERIC_SUBCATEGORIES = frozenset({"tourist_attraction"})
 
 
 @dataclass
@@ -322,10 +325,12 @@ def _decide_place(ent: NormalizedEntity, prof: Profile, locality: set[str], sour
     domain_eq = bool(domains & prof.domains)
     phone_conflict = bool(phones and prof.phones and not (phones & prof.phones))
     sub = ent.fields.get("subcategory")
-    cat = category_of(sub) if sub else None
-    cat_conflict = bool(cat and prof.categories and cat not in prof.categories
-                        and not any({cat} | prof.categories <= g for g in CATEGORY_GROUPS)
-                        and "OTHER" not in prof.categories | {cat})
+    # only specific subcategories take part in the type check, on both sides of the pair
+    cat = category_of(sub) if sub and sub not in GENERIC_SUBCATEGORIES else None
+    prof_cats = {category_of(x) for x in prof.subcategories if x not in GENERIC_SUBCATEGORIES}
+    cat_conflict = bool(cat and prof_cats and cat not in prof_cats
+                        and not any({cat} | prof_cats <= g for g in CATEGORY_GROUPS)
+                        and "OTHER" not in prof_cats | {cat})
     addr = _address_key(ent.fields.get("address"))
     address_eq = bool(addr and addr in prof.addresses)
     # explicit evidence states: a missing value is UNKNOWN - never support
