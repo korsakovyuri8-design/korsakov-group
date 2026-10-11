@@ -498,7 +498,10 @@ def _from_real(rec: SourceRecord, d: SourceDescriptor) -> NormalizedEntity:
     from app.world.real_formats import osm_to_generic, wikidata_to_generic
 
     if d.format == "osm.overpass.v1":
+        from app.world.real_formats import osm_category
+
         payload = osm_to_generic(rec.payload)
+        payload["category"] = osm_category(rec.payload.get("tags") or {}, d.config.get("category_map") or {})
     else:
         payload = wikidata_to_generic(rec.record_id, rec.payload["rows"])
         known = d.config.get("category_map") or {}

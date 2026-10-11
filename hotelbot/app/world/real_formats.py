@@ -9,8 +9,10 @@ functions only map fields, they never invent a value:
 * names: `name` is the primary name; `name:<lang>`, `int_name`, `alt_name`
   are aliases with their language; `old_name` is NOT an alias (a former
   name can belong to the business that replaced it);
-* categories map through the source's `category_map` (data, per source);
-  an unmapped tag becomes "unclassified" plus an issue, as for any source.
+* categories map through the source's `category_map` (data, per source):
+  the first tag (in OSM_CATEGORY_KEYS order) the map knows wins, a generic
+  tag (OSM_GENERIC_TAGS) only when no specific one is mapped; with no mapped
+  tag the record becomes "unclassified" plus an issue, as for any source.
 """
 
 from __future__ import annotations
@@ -29,12 +31,23 @@ def _first(value: str | None) -> tuple[str | None, bool]:
     return (parts[0] if parts else None), len(parts) > 1
 
 
-def osm_category(tags: dict[str, str]) -> str | None:
-    """The tag that says what this is, as 'key=value' (the category_map key)."""
-    for key in OSM_CATEGORY_KEYS:
-        if tags.get(key):
-            return f"{key}={tags[key]}"
-    return None
+# Tags that say "something of this kind" without saying what: a specific mapped
+# tag on the same element always decides instead.
+OSM_GENERIC_TAGS = frozenset({"tourism=attraction", "tourism=yes", "historic=yes"})
+
+
+def osm_categories(tags: dict[str, str]) -> list[str]:
+    """Every tag that could say what this is, as 'key=value', in key order."""
+    return [f"{key}={tags[key]}" for key in OSM_CATEGORY_KEYS if tags.get(key)]
+
+
+def osm_category(tags: dict[str, str], known: dict[str, str] | None = None) -> str | None:
+    """The tag that decides the category (the category_map key): the first
+    mapped specific tag, else the first mapped generic tag, else the first tag."""
+    cands = osm_categories(tags)
+    mapped = [c for c in cands if known and c in known]
+    return next((c for c in mapped if c not in OSM_GENERIC_TAGS), mapped[0] if mapped else
+                (cands[0] if cands else None))
 
 
 def osm_address(tags: dict[str, str]) -> str | None:
