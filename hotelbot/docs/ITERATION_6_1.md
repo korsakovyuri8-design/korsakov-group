@@ -191,3 +191,47 @@ The OSM element has **no** `amenity=place_of_worship`. Its only category tag is 
 That is the only changed outcome. The +7 evaluated pairs (all NO_MATCH) come from the now-separate canonical. 178 NO_MATCH pairs changed their rule label from `-` to "different kind of business" with the same outcome. The audit sample changed with it: the `match:explicit_id_only` stratum goes from 11 to 10 and `ambiguous:other` from 2 to 3. The `taxonomy_fix_v1/audit_blind.csv` hash differs. `raw_v1` and its blind file are untouched.
 
 **Diagnosis.** This is the "specific beats generic" rule failing to reach ER. `tourism=attraction` says nothing about what the object is, so it cannot *contradict* `religious_site`. Under the 5.1 principle that a missing value is UNKNOWN and never CONTRADICTS, a generic category should behave like OTHER in `matching._decide_place`. The fix would sit in ER, which this step was not allowed to touch, so it is left for a decision.
+
+### ER: generic subcategory = UNKNOWN for the type check (decision A, narrow form)
+
+**Tests first.** 11f8168: 5 of 6 tests fail before the change; the `visitor_center` guard passes both before and after.
+
+**The change.** a8f61ce, in `matching._decide_place`. `GENERIC_SUBCATEGORIES = {"tourist_attraction"}` — explicit, not all of ATTRACTION, no wildcard. The category-conflict check now compares only **specific** subcategories, on both sides of the pair. A generic tag alone neither supports nor contradicts. A specific subcategory on the same canonical (e.g. `{tourist_attraction, religious_site}` against `restaurant`) still conflicts. For data without generic subcategories the check is identical to before.
+
+**Tests cover:**
+1. attraction + religious_site with a shared id → MATCH;
+2. the same with the sources in reverse order (symmetry);
+3. a generic tag alone gives no conflict;
+4. a canonical `{tourist_attraction, religious_site}` against `restaurant` still conflicts;
+5. `visitor_center` is not generic.
+
+All earlier ER safety tests pass.
+
+**Run `out/taxonomy_fix_v2/`.** Code a8f61ce, `code_dirty: false`, the same dump hashes. `taxonomy_fix_v1` is kept as the record of the defect.
+
+| | hours_fix_v1 | taxonomy_fix_v1 | **taxonomy_fix_v2** |
+|---|---:|---:|---:|
+| MATCH | 12 | 11 | **12** |
+| AMBIGUOUS | 13 | 14 | **13** |
+| NO_MATCH | 5062 | 5069 | **5062** |
+| category_mapped | 1909 | 2064 | **2064** |
+
+**Pair-level check.**
+- The ingest was rerun with the `hours_fix_v1` code (eb88150) and its own `pilot.yaml`, and with the current code and current `pilot.yaml`, on the same frozen dumps.
+- All **5087** pair decisions (record → canonical members → outcome) are **identical**.
+- `Q4981066` ↔ `way/207434563` is MATCH again.
+
+**Against `hours_fix_v1`, unchanged:**
+- world counts;
+- candidates;
+- facts;
+- the audit strata;
+- same-source lookalikes;
+- opening hours;
+- ingest decisions.
+
+**What did change:**
+- 71 NO_MATCH pairs changed their rule label from `-` to "different kind of business", with the same outcome. The newly classified records now carry a real kind.
+- In `audit_blind.csv` the same 55 pair_ids appear in the same order. Only the `category_b` column differs, for records that were `unclassified` before.
+
+**Lesson from real data.** ER had assumed that any assigned top category is equally strong identity evidence. A richer taxonomy showed this is false for generic tags.
