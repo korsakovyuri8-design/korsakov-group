@@ -68,6 +68,14 @@ sources:
       historic=fort: historic_site
       historic=archaeological_site: historic_site
       historic=ruins: historic_site
+      # Iteration 6.1: historic values observed in raw_v1, each listed explicitly (no wildcard)
+      historic=city_gate: historic_site
+      historic=tomb: historic_site
+      historic=yes: historic_site
+      historic=ship: historic_site
+      historic=cannon: historic_site
+      historic=pillory: historic_site
+      historic=building: historic_site
       leisure=beach_resort: beach
       natural=beach: beach
       leisure=park: park
