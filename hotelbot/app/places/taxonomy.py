@@ -87,6 +87,9 @@ SUBCATEGORIES: dict[str, Subcategory] = {s.key: s for s in [
     _s("architecture", C.CULTURE, "architecture", "arhitektura", "архитектура", "architect*", "arhitektur*",
        "архитектур*"),
     _s("monument", C.CULTURE, "monument", "spomenik", "памятник", "monument*", "memorial", "spomenik*", "памятник*"),
+    # No search keywords yet (Iteration 6.1 represents the data; discovery NLU is a separate step).
+    _s("tourist_attraction", C.ATTRACTION, "tourist attraction", "turistička atrakcija", "достопримечательность"),
+    _s("artwork", C.CULTURE, "artwork", "umjetničko djelo", "арт-объект"),
     _s("visitor_center", C.ATTRACTION, "visitor centre", "info centar parka", "визит-центр", "visitor cent*",
        "info centar", "визит-центр*"),
     _s("viewpoint", C.NATURE, "viewpoint", "vidikovac", "смотровая площадка", "viewpoint", "view", "panorama",
@@ -115,6 +118,7 @@ SUBCATEGORIES: dict[str, Subcategory] = {s.key: s for s in [
        "charger", "electronics", "adapter", "phone shop", "punjac*", "elektronik*", "зарядк*", "электроник*", "адаптер*"),
     _s("outdoor_store", C.SHOPPING, "outdoor equipment shop", "planinarska oprema", "туристическое снаряжение",
        "hiking boots", "outdoor gear", "outdoor equipment", "planinarsk* oprem*", "снаряжени*", "ботинки"),
+    _s("convenience_store", C.SHOPPING, "convenience store", "prodavnica", "магазин у дома"),   # no keywords yet
     _s("souvenir_shop", C.SHOPPING, "souvenir shop", "suveniri", "сувениры", "souvenir*", "suvenir*", "сувенир*"),
     # ESSENTIAL / HEALTH / FINANCE / CONNECTIVITY
     _s("pharmacy", C.HEALTH, "pharmacy", "apoteka", "аптека", "pharmacy", "chemist", "medicine", "apotek*", "lijek*",
@@ -179,6 +183,7 @@ SUBCATEGORIES: dict[str, Subcategory] = {s.key: s for s in [
        "велосипед*"),
     _s("car_rental", C.RENTAL, "car rental", "rent-a-car", "прокат автомобилей", "car rental", "rent a car",
        "rent-a-car", "прокат авто*"),
+    _s("boat_rental", C.RENTAL, "boat rental", "iznajmljivanje čamaca", "прокат лодок"),   # no keywords yet
     _s("guide", C.GUIDE, "guide", "vodič", "гид", "guide", "vodic*", "гид*", "экскурсовод*"),
     _s("rafting", C.ACTIVITY, "rafting", "rafting", "рафтинг", "rafting", "рафтинг*"),
     _s("hiking", C.ACTIVITY, "hiking", "planinarenje", "поход", "hike", "hiking", "trek*", "planinar*", "поход*"),
