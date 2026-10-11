@@ -153,3 +153,41 @@ The 2 `tourism=attraction` records that also carry `natural=tree` stay `attracti
 | + ADD_CATEGORY (`convenience_store` 76, `attraction` 36, `artwork` 11, `boat_rental` 4) | 155 | 100 % |
 
 **Most of the gap is ADD_CATEGORY.** It covers 127 of 155 records, and all of them are values we requested ourselves in the query and forgot to map. Mapping alone cannot close it without inventing a narrower or sibling category.
+
+### Fix and before/after — three pieces, each tests-first
+
+| piece | tests | change |
+|---|---|---|
+| tag selection | 37bda41 | a7a8440 — first mapped **specific** tag in key order; generic (`tourism=attraction`, `tourism=yes`, `historic=yes`) only as fallback; `unclassified` only if nothing is mapped |
+| historic values | 5986544 | 25e4e89 — 7 explicit `historic=<value>: historic_site`, no wildcard |
+| new subcategories | a178fbb | 8bb47ef — `convenience_store` (SHOPPING), `tourist_attraction` (ATTRACTION), `artwork` (CULTURE), `boat_rental` (RENTAL); en/cnr/ru labels, **no search keywords**; 4 pilot mappings |
+
+**Run `out/taxonomy_fix_v1/`.** Code 8bb47ef, `code_dirty: false`, the same dump hashes. Compared against `hours_fix_v1`.
+
+**Categories.**
+- `category_mapped` goes from 1909 to **2064 of 2064**, and the unmapped count from 155 to **0**.
+- Per record:
+  - 25 records via the explicit `historic` maps;
+  - 3 via the selection fix (`tourism=yes` → `beach`, `amenity=drinking_water` → `monument`, `tourism=attraction` + `historic=ruins` → `historic_site`);
+  - 127 via the new subcategories (`convenience_store` 76, `tourist_attraction` 36, `artwork` 11, `boat_rental` 4).
+- Of the 1909 records classified before, **none** changed subcategory. This was checked per record against the raw_v1 selection and map.
+
+**ER: one decision changed. The acceptance criterion "ER pair decisions unchanged" is NOT met.**
+
+| | hours_fix_v1 | taxonomy_fix_v1 |
+|---|---:|---:|
+| MATCH | 12 | **11** |
+| AMBIGUOUS | 13 | **14** |
+| NO_MATCH | 5062 | 5069 |
+| pairs evaluated | 5087 | 5094 |
+| multi-source canonicals | 12 | 11 |
+
+**The pair.** Wikidata `Q4981066`, "Church of Our Lady of Remedy" (`religious_site`, CULTURE), against OSM `way/207434563`, "Crkva Gospe od Zdravlja". The two share the id `wikidata=Q4981066`, lie 15 m apart and have name similarity 1.0.
+
+The OSM element has **no** `amenity=place_of_worship`. Its only category tag is `tourism=attraction`.
+- Before: `unclassified`, so the top category was OTHER, which is exempt from the category check. Result: MATCH.
+- Now: `tourist_attraction`, so the top category is ATTRACTION, which differs from CULTURE. `category_conflict=true` gives the rule "shared id but the records contradict each other", so the pair is AMBIGUOUS.
+
+That is the only changed outcome. The +7 evaluated pairs (all NO_MATCH) come from the now-separate canonical. 178 NO_MATCH pairs changed their rule label from `-` to "different kind of business" with the same outcome. The audit sample changed with it: the `match:explicit_id_only` stratum goes from 11 to 10 and `ambiguous:other` from 2 to 3. The `taxonomy_fix_v1/audit_blind.csv` hash differs. `raw_v1` and its blind file are untouched.
+
+**Diagnosis.** This is the "specific beats generic" rule failing to reach ER. `tourism=attraction` says nothing about what the object is, so it cannot *contradict* `religious_site`. Under the 5.1 principle that a missing value is UNKNOWN and never CONTRADICTS, a generic category should behave like OTHER in `matching._decide_place`. The fix would sit in ER, which this step was not allowed to touch, so it is left for a decision.
