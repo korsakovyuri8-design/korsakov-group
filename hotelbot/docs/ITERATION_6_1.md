@@ -65,3 +65,37 @@ These map to the existing `seasonal` model (MM-DD ranges, wrapping the year). Va
 Expected effect of fixing A + B1 + C only: parsed goes from 362 to **412 of 433** (83.6 % → 95.2 %), with no new interpretation that the spec does not define. Adding D gives 414. The remaining 19 stay UNKNOWN on purpose.
 
 **Side observation, not counted above.** `7:00` is accepted but stored unpadded (`"7:00"`). It works with `_t()`, but any string comparison of times would misorder it. The fix should normalise every time to `HH:MM`.
+
+### Fix and before/after (A + B1 + C + HH:MM; D, B2, E untouched)
+
+**Commits.**
+- e75d634 — failing tests first: 11 fail before the fix; the B2/D/E guards and the `;` override test pass before and after.
+- eb88150 — the `parse_osm_hours` fix.
+- e5bed38 — run `out/hours_fix_v1/` on the same frozen inputs. Code `eb88150`, `code_dirty: false`, dump hashes identical to `raw_v1`. `raw_v1` is not touched.
+
+**Opening hours.**
+
+| | raw_v1 | hours_fix_v1 |
+|---|---:|---:|
+| opening_hours parsed | 362 / 433 (83.6 %) | **412 / 433 (95.2 %)** |
+| unparsed | 71 | 21 |
+| "opening hours not understood" issues | 72 | 21 |
+
+The issue count includes one `opening_hours:kitchen` string, `09:00-22:00` (class A), which is now parsed as well.
+
+**Gain by class.**
+- Added: A +41, B1 +5, C +4 (= 50).
+- Still unparsed: B2 10, E1 4, E2 5 (the 19 deliberately unsupported strings), plus D 2.
+
+All 21 remaining strings were checked by value against the classification, and none of the 19 became parsed.
+
+**No regressions among old parses.** The old (HEAD~) and new parsers were run on all 866 `opening_hours` tag values in the frozen OSM dump (each place appears twice: per-box part and merged). Every value parsed before is still parsed, with identical minute-level semantics. 4 values changed only by `7:00` → `07:00`.
+
+**ER and everything else unchanged.** These are identical to `raw_v1`: pairs and outcomes, world counts, candidates per record, same-source lookalikes, fact resolution, ingest decisions, the audit block and `audit_blind.csv` (sha256 `3ba7730e…`).
+
+**User-visible effect (discovery sample).**
+- `state_unknown` rejections fall from 241 to 220.
+- `closed_at_time` rises from 16 to 19: places now correctly known to be closed.
+- "Restaurant in Kotor open tonight" and "eat late in Budva" now surface places whose hours were bare spans: Pepe Nero, Pržun, Astoria, Rivijera.
+
+**Tests.** 782 collected, 781 pass. The one failure is `test_local_layer.py::test_staff_can_read_a_guest_plan`, which also fails without this change (verified by stash). It is date-dependent ("events this week") and unrelated.
