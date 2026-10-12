@@ -112,3 +112,41 @@ def test_essential_open_now_keeps_availability_first(monkeypatch):
     order = _order(monkeypatch, places, subcategories={"pharmacy"}, essential=True, open_at=True,
                    at=datetime(2026, 10, 8, 11, 17))
     assert order[0] == "Far open"
+
+
+# ------------------------------------------------- essential, no time: "definitely unavailable now" goes down
+OPENS_LATER = {"weekly": {d: [["14:00", "22:00"]] for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}}
+
+
+def _essential(monkeypatch, places) -> list[str]:
+    return _order(monkeypatch, places, subcategories={"pharmacy"}, essential=True)
+
+
+def test_essential_near_closed_ranks_below_farther_open(monkeypatch):
+    places = [_place("Near closed", 0.05, "pharmacy", CLOSED_TODAY, "HEALTH"),
+              _place("Farther open", 0.15, "pharmacy", OPEN_ALL_DAY, "HEALTH")]
+    assert _essential(monkeypatch, places) == ["Farther open", "Near closed"]
+
+
+def test_essential_near_open_later_ranks_below_farther_open(monkeypatch):
+    places = [_place("Near opens later", 0.05, "pharmacy", OPENS_LATER, "HEALTH"),
+              _place("Farther open", 0.15, "pharmacy", OPEN_ALL_DAY, "HEALTH")]
+    assert _essential(monkeypatch, places) == ["Farther open", "Near opens later"]
+
+
+def test_essential_near_closed_ranks_below_farther_unknown(monkeypatch):
+    places = [_place("Near closed", 0.05, "pharmacy", CLOSED_TODAY, "HEALTH"),
+              _place("Farther unknown", 0.15, "pharmacy", None, "HEALTH")]
+    assert _essential(monkeypatch, places) == ["Farther unknown", "Near closed"]
+
+
+def test_essential_available_group_is_distance_first(monkeypatch):
+    places = [_place("Open 400m", 0.4, "pharmacy", OPEN_ALL_DAY, "HEALTH"),
+              _place("Unknown 80m", 0.08, "pharmacy", None, "HEALTH"),
+              _place("Closed 50m", 0.05, "pharmacy", CLOSED_TODAY, "HEALTH")]
+    assert _essential(monkeypatch, places) == ["Unknown 80m", "Open 400m", "Closed 50m"]
+
+
+def test_normal_no_time_closed_may_still_beat_a_very_far_open(monkeypatch):
+    places = [_place("Far open", 17.0, "museum", OPEN_ALL_DAY), _place("Near closed", 0.09, "museum", CLOSED_TODAY)]
+    assert _order(monkeypatch, places, subcategories={"museum"})[0] == "Near closed"
