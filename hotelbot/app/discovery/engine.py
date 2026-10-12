@@ -22,8 +22,9 @@ it may build a query but never candidates.)
                 tie-breaker): most real places carry no hours, and unknown
                 hours must not outrank geography.
                 Essential needs (pharmacy, ATM...) rank by open state,
-                distance and data reliability only - distance first when
-                no time was asked ("nearest pharmacy").
+                distance and data reliability only. With no time asked
+                they still mean "usable now": a place known closed / opening
+                later goes down, open and unknown ones rank by distance.
 * EXPLAIN       machine-readable reasons, caveats and score components; the
                 renderer turns them into words. Nothing is invented.
 
@@ -307,7 +308,10 @@ def rank(place: Place, f: Facts, q: DiscoveryQuery, signals: Signals | None) -> 
     if q.essential and time_intent(q):
         key = (availability, dist_bucket, reliability, place.name)
     elif q.essential:
-        key = (dist_bucket, reliability, availability, place.name)
+        # "I need a pharmacy" means usable now: only DEFINITELY unavailable now
+        # (closed / opens later) goes down; open and unknown rank by distance.
+        unavailable = int(state in (OpenState.CLOSED, OpenState.OPEN_LATER))
+        key = (unavailable, dist_bucket, reliability, availability, place.name)
     elif time_intent(q):
         key = (availability, -relevance, -prefs, dist_bucket, reliability, rating, value, relationship,
                -commission, place.name)
