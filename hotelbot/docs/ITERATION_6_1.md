@@ -416,3 +416,69 @@ Non-essential no-time queries would keep geography first, as agreed.
 - The world snapshot `content_hash` is not reproducible across runs of identical evidence. Rows carry random UUID ids, and `_evidence` strips only `created_at` / `updated_at`. `taxonomy_fix_v2` and `ranking_fix_v1` have identical evidence but different hashes.
 
 **Tests.** 1 new failure (the gate above), plus the pre-existing date-dependent `test_local_layer.py::test_staff_can_read_a_guest_plan`.
+
+### Ranking fix v2: essential needs without a time demote only "definitely unavailable now"
+
+**Commits.**
+- d4e8530 — tests first: 4 new tests fail before the fix.
+- cf644a2 — the fix.
+
+**The rule.** For essential needs without an explicit time, the key is `(unavailable_now, distance, reliability, availability)`:
+- `unavailable_now = 1` for CLOSED or OPEN_LATER;
+- `unavailable_now = 0` for OPEN or UNKNOWN.
+
+The other three keys are unchanged from v1.
+
+**Tests.**
+- near UNKNOWN beats a farther OPEN;
+- near CLOSED loses to a farther OPEN, and to a farther UNKNOWN;
+- near OPEN_LATER loses to a farther OPEN;
+- the available group is distance-first: Unknown 80 m, then Open 400 m, then Closed 50 m;
+- a normal no-time query may still put a near CLOSED above a very far OPEN;
+- an explicit "open now" keeps strict availability first.
+
+**Gate `disc_pharmacy_sunday`.** Green again, with the gate itself unchanged. The full suite has only the pre-existing date-dependent failure (`test_staff_can_read_a_guest_plan`).
+
+**Run `out/ranking_fix_v2/`.** Code cf644a2, clean. Against `ranking_fix_v1`, these are identical:
+- pairs, world, facts, audit, sources, opening hours, lookalikes, candidates;
+- `audit_blind.csv`.
+
+**All 5087 ER pair decisions** are identical to `hours_fix_v1`.
+
+**8 frozen queries at 11:17.** km and state, O = open, U = unknown. The output is identical to v1: nothing is closed or opens later in these top-5s at 11:17.
+
+| query | before (taxonomy_fix_v2) | after (ranking_fix_v2) |
+|---|---|---|
+| restaurant Kotor tonight | 0.1O 0.11O 0.07O 0.12O 0.58O | same |
+| cocktails Budva | — | — |
+| nearest pharmacy | 0.12O 0.44O 6.46O 15.72O 16.03O | 0.08U 0.12O 0.39U 0.44O 1.37U |
+| something interesting | not understood | not understood |
+| eat late | 0.1O 0.18O 0.08O 0.07O 0.39O | 0.08U 0.1O 0.18O 0.08O 0.07O |
+| ATM nearby | 0.36O 0.78O 0.04U 0.04U 0.11U | 0.04U 0.04U 0.11U 0.08U 0.07U |
+| museum in Kotor | 0.09O 6.51O 17.22O 0.04U 0.08U | 0.09O 0.04U 0.08U 6.51O 17.22O |
+| beach Budva | 2.01O 0.1U 0.12U 0.15U 0.44U | 0.1U 0.12U 0.15U 0.44U 0.59U |
+
+**Stress check.** No-time queries at 07, 09, 18, 22 and 00 local.
+
+*Essential (pharmacy, ATM).*
+- CLOSED or OPEN_LATER above OPEN or UNKNOWN: **0**.
+- CLOSED or OPEN_LATER in the top-5: 6 before, **0** after.
+
+*Normal queries (agreed: geography first).* Unavailable-now places above available ones:
+
+| unavailable | above | count |
+|---|---|---:|
+| CLOSED | OPEN | 2 |
+| CLOSED | UNKNOWN | 2 |
+| OPEN_LATER | OPEN | 2 |
+| OPEN_LATER | UNKNOWN | 6 |
+
+Before, the count was 22, all OPEN_LATER above UNKNOWN, which was the old order by design.
+
+Every CLOSED-above-OPEN case is "A museum in Kotor":
+- Muzej mačaka, 0.09 km, closed: above Naval Heritage (6.5 km) at 09:00, and above Arheološki muzej (17.2 km, Budva) at 09:00 and 18:00;
+- Naval Heritage, 6.5 km, closed: above Arheološki muzej at 18:00.
+
+**Open, kept separate.**
+- Snapshot `content_hash` depends on random UUIDs.
+- The hours-reliability bonus applies to places without hours.
