@@ -351,3 +351,68 @@ None of these needs `SUBCATEGORIES` labels or keywords to change:
 - ER reads only `SUBCATEGORIES`.
 
 Still, the 5087-pair check is repeated after each commit, as agreed.
+
+### Ranking fix: availability first only with a time intent
+
+**Commits.**
+- d394b53 — tests first: 5 of 11 fail before the fix, the 6 controls pass.
+- 51d3404 — `rank()` uses 4 keys, and `time_intent(q)` = `open_at` / `serving_at` / `open_until` / `window_end` / an explicit `at`:
+
+| | key |
+|---|---|
+| time-sensitive essential | availability → distance → reliability |
+| non-time essential | distance → reliability → availability |
+| time-sensitive normal | availability → relevance → preferences → distance → reliability → … (unchanged) |
+| non-time normal | relevance → preferences → distance → reliability → availability → … |
+
+UNKNOWN is never made OPEN. The hard filter and the "no unknown padding when known-open exist" rule are unchanged.
+
+**Run `out/ranking_fix_v1/`.** Code 51d3404, clean. Against `taxonomy_fix_v2`, these are identical:
+- pairs, world, facts, audit, ingest, sources, opening hours;
+- `audit_blind.csv`;
+- **all 5087 pair decisions**, checked pair by pair.
+
+Only `discovery` changes.
+
+**Before/after on the 8 frozen queries.** Evaluated at 11:17 local; top-5 distances in km and states.
+
+| query | before | after |
+|---|---|---|
+| restaurant Kotor tonight (time intent) | 0.1 0.11 0.07 0.12 0.58, all open | **unchanged** |
+| cocktails Budva | 0 retrieved | 0 (next step) |
+| nearest pharmacy | 0.12 0.44 **6.46 15.72 16.03**, all open | **0.08** 0.12 0.39 0.44 1.37 (U O U O U); mean 7.75 → **0.48** |
+| something interesting | not understood | not understood (NLU step) |
+| eat late (no time intent: "late" not understood) | 0.1 0.18 0.08 0.07 0.39, all open | 0.08 (U) 0.1 0.18 0.08 0.07; mean 0.16 → 0.10 |
+| ATM nearby | **0.36 0.78** 0.04 0.04 0.11 | 0.04 0.04 0.11 0.08 0.07, all U; mean 0.27 → **0.07** |
+| museum in Kotor | 0.09 **6.51 17.22** 0.04 0.08 | 0.09 **0.04 0.08** 6.51 17.22 |
+| beach Budva | **2.01 (beach club)** 0.1 0.12 0.15 0.44 | 0.1 0.12 0.15 0.44 0.59 |
+
+- UNKNOWN placed above OPEN: 11 pairs in the top-5 at 11:17. Every case is closer, or tied by distance bucket and decided on reliability.
+- Known CLOSED above OPEN at 11:17: **0**.
+
+**Stress check, same world, other times.** Run at 07, 09, 18, 22 and 00 local, no-time queries only, comparing old and new code:
+
+| | old | new |
+|---|---:|---:|
+| CLOSED in top-5 | 3 | 7 |
+| CLOSED above OPEN | 0 | 2 |
+
+Both CLOSED-above-OPEN cases are "A museum in Kotor" at 18:00: Muzej mačaka (0.09 km, closed) and Naval Heritage (6.5 km, closed) above Arheološki muzej (17.2 km, Budva, open). Distance-justified under the agreed key.
+
+**Gate regression — needs a decision.** `evals/scenarios/discovery.yaml::disc_pharmacy_sunday` (**gate**) now fails.
+- "I need a pharmacy" on a Sunday, no time stated.
+- The fixture's nearer pharmacy is **known CLOSED**; the expected first result is the open one.
+- With "non-time essential = distance first", the known-closed nearer pharmacy ranks first.
+- That is a known CLOSED dominating, not an UNKNOWN being un-penalised. The gate and test were left unchanged.
+
+Proposed refinement, not implemented: for **essential** needs without a time, demote only **known CLOSED**. Key: `(state is CLOSED, distance, reliability, availability)`. An essential need ("I need a pharmacy / an ATM") implicitly means *now*.
+- OPEN, OPEN_LATER and UNKNOWN would still rank by distance, so the 80 m pharmacy with unknown hours stays first.
+- Only evidence of closure demotes.
+
+Non-essential no-time queries would keep geography first, as agreed.
+
+**Side findings, not changed.**
+- Reliability before availability is computed from the *hours fact's* freshness even when a place has **no hours**. A place without hours can look "fresher" than one whose hours were verified 186 days ago. In "eat late", Konoba Galeb (0.08 km, U) ranks above Astoria (0.10 km, open) within the same 0.5 km bucket for this reason.
+- The world snapshot `content_hash` is not reproducible across runs of identical evidence. Rows carry random UUID ids, and `_evidence` strips only `created_at` / `updated_at`. `taxonomy_fix_v2` and `ranking_fix_v1` have identical evidence but different hashes.
+
+**Tests.** 1 new failure (the gate above), plus the pre-existing date-dependent `test_local_layer.py::test_staff_can_read_a_guest_plan`.
