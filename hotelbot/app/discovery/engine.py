@@ -12,13 +12,18 @@ it may build a query but never candidates.)
                 reason: exclusions, diet/accessibility/pets/family, age,
                 group size, price ceiling, radius, closed / temporarily closed
                 / kitchen closed when time matters, window too short.
-* RANK          only survivors; a lexicographic key in policy order:
+* RANK          only survivors; a lexicographic key in policy order.
+                With a time / open-state intent ("open now", "tonight"):
                   1 availability/open state  2 relevance to the request
                   3 traveller preferences    4 distance/convenience
                   5 quality/reliability (freshness, rating)  6 price/value
                   7 property relationship    8 commercial tie-breaker
+                Without one, availability moves after reliability (a weak
+                tie-breaker): most real places carry no hours, and unknown
+                hours must not outrank geography.
                 Essential needs (pharmacy, ATM...) rank by open state,
-                distance and data reliability only.
+                distance and data reliability only - distance first when
+                no time was asked ("nearest pharmacy").
 * EXPLAIN       machine-readable reasons, caveats and score components; the
                 renderer turns them into words. Nothing is invented.
 
@@ -269,8 +274,10 @@ def hard_filter(place: Place, f: Facts, q: DiscoveryQuery) -> str | None:
 def rank(place: Place, f: Facts, q: DiscoveryQuery, signals: Signals | None) -> tuple[tuple, dict[str, Any]]:
     attrs = place.attributes or {}
     tags = set((place.tags or {}).get("tags", []))
-    # Real availability always ranks (policy step 2): with no time given it
-    # is the state NOW. Only an explicit time makes it a hard filter.
+    # Availability dominates only when the guest expressed a time / open-state
+    # intent. Without one (most places carry no hours) it is a weak tie-breaker
+    # after relevance, distance and reliability: an UNKNOWN state is not
+    # treated almost like CLOSED, and is never turned into OPEN.
     state = f.food.state if (q.serving_at and f.food is not None) else f.venue.state
     availability = _AVAIL[state]
     relevance = (1 if place.subcategory in q.specific else 0) + len(tags & q.relevance_tags) \
@@ -297,12 +304,24 @@ def rank(place: Place, f: Facts, q: DiscoveryQuery, signals: Signals | None) -> 
              "distance_bucket": dist_bucket, "reliability": reliability, "rating": rating, "value": value,
              "relationship": relationship, "commission": commission,
              "quality": (place.quality or {}).get("tier")}
-    if q.essential:
+    if q.essential and time_intent(q):
         key = (availability, dist_bucket, reliability, place.name)
-    else:
+    elif q.essential:
+        key = (dist_bucket, reliability, availability, place.name)
+    elif time_intent(q):
         key = (availability, -relevance, -prefs, dist_bucket, reliability, rating, value, relationship,
                -commission, place.name)
+    else:
+        key = (-relevance, -prefs, dist_bucket, reliability, availability, rating, value, relationship,
+               -commission, place.name)
     return key, comps
+
+
+def time_intent(q: DiscoveryQuery) -> bool:
+    """Did the guest say anything about time or being open ("open now",
+    "tonight", "at 22:30", "after midnight", "for three hours")?"""
+    return bool(q.open_at or q.serving_at or q.open_until is not None or q.window_end is not None
+                or q.at is not None)
 
 
 # ================================================================== EXPLAIN
