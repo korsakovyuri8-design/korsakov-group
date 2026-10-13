@@ -56,6 +56,7 @@ from app.places.freshness import FactFreshness, Freshness, classify, place_facts
 from app.places.hours import (HoursStatus, OpenState, always_open, food_state, local_at, open_throughout,
                               status_at)
 from app.shared.geo import Point, StraightLineEstimator, TravelEstimator, distance_km, walking_minutes
+from app.text import contains_phrase, fold
 
 _AVAIL = {OpenState.OPEN: 0, OpenState.OPEN_LATER: 1, OpenState.UNKNOWN: 2, OpenState.CLOSED: 3}
 
@@ -84,6 +85,7 @@ class DiscoveryQuery:
     preferred: dict[str, Any] = field(default_factory=dict)
     tags_preferred: set[str] = field(default_factory=set)
     relevance_tags: set[str] = field(default_factory=set)      # explicit request words ("jazz", "cocktails")
+    relevance_words: set[str] = field(default_factory=set)     # found in a place's name/tags/attributes: evidence
     specific: set[str] = field(default_factory=set)            # kinds the guest named exactly
     price_pref: str | None = None                               # "low" | "high"
     traveller: dict[str, Any] = field(default_factory=dict)    # persisted traveller preferences (soft)
@@ -282,7 +284,7 @@ def rank(place: Place, f: Facts, q: DiscoveryQuery, signals: Signals | None) -> 
     state = f.food.state if (q.serving_at and f.food is not None) else f.venue.state
     availability = _AVAIL[state]
     relevance = (1 if place.subcategory in q.specific else 0) + len(tags & q.relevance_tags) \
-        + sum(1 for t in q.relevance_tags if attrs.get(t) is True)
+        + sum(1 for t in q.relevance_tags if attrs.get(t) is True) + _word_evidence(place, tags, attrs, q)
     prefs = sum(1 for k, v in q.preferred.items() if _attr_ok(attrs, k, v)
                 or (k == "noise_level" and v == "lively" and attrs.get(k) == "very_lively")) \
         + len(tags & q.tags_preferred) \
@@ -319,6 +321,15 @@ def rank(place: Place, f: Facts, q: DiscoveryQuery, signals: Signals | None) -> 
         key = (-relevance, -prefs, dist_bucket, reliability, availability, rating, value, relationship,
                -commission, place.name)
     return key, comps
+
+
+def _word_evidence(place: Place, tags: set[str], attrs: dict[str, Any], q: DiscoveryQuery) -> int:
+    """1 if a request word ("cocktail*") appears on the place itself - its
+    name, tags or attributes. Evidence for ranking only, never a filter."""
+    if not q.relevance_words:
+        return 0
+    text = fold(" ".join([place.name or "", *sorted(tags), *(f"{k} {v}" for k, v in sorted(attrs.items()))]))
+    return int(any(contains_phrase(text, w) for w in q.relevance_words))
 
 
 def time_intent(q: DiscoveryQuery) -> bool:

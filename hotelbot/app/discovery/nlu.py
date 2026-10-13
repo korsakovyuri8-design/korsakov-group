@@ -41,11 +41,13 @@ CUES = [
     "где", "найди", "найдите", "посоветуй*", "порекоменд*", "рядом", "поблизости", "в городе", "куда",
     "открыт*", "нужна", "нужен", "нужно", "ищу", "что происходит", "что посмотреть", "ближайш*",
 ]
+# A drink, not a kind of place: every bar is a candidate, the word on a place is evidence.
+COCKTAIL = ["cocktail*", "koktel*", "коктейл*"]
 # Generic needs -> whole categories / groups of subcategories.
 GENERIC: list[tuple[list[str], set[str], set[str], str]] = [
     (["buy food", "groceries", "grocery", "where locals buy", "kupiti hranu", "namirnic*", "купить продукт*",
       "купить еду", "продукты"], set(), {"supermarket", "food_market"}, "groceries"),
-    (["cocktail*", "koktel*", "коктейл*"], set(), {"cocktail_bar", "lounge", "rooftop"}, "drinks"),
+    (COCKTAIL, set(), set(FAMILIES["bar"]), "drinks"),
     (["drinks", "drink", "go out", "night out", "nightlife", "izlazak", "izaci", "popiti", "pice",
       "выпить", "ночн* жизн*", "тусов*"], {"NIGHTLIFE"}, set(), "drinks"),
     (["lunch", "rucak", "rucat", "обед*"], set(), {"restaurant", "konoba", "fast_food", "cafe", "bakery"}, "lunch"),
@@ -210,9 +212,9 @@ def parse_discovery(text: str, today_local: datetime, *, require_cue: bool = Tru
         if _any(kinds_text, phrases):
             req.label = req.label or label
             cats |= categories
-            # "cocktails" names a DRINK: every kind of place that serves it
-            # (cocktail bar, lounge, rooftop), even though "cocktail" also
-            # matches the cocktail_bar keyword.
+            # "cocktails" names a DRINK: every kind of bar is a candidate, even
+            # though "cocktail" also matches the cocktail_bar keyword (which
+            # stays the only exact match, q.specific).
             if subcategories and (label in ("drinks", "work") or not subs):
                 subs |= subcategories - excluded
             if label in ("groceries",):
@@ -221,6 +223,8 @@ def parse_discovery(text: str, today_local: datetime, *, require_cue: bool = Tru
             and req.label not in ("sights", "work"):
         cats = set()   # specific kinds win over a generic family they don't belong to
     q.subcategories, q.categories, q.exclude_subcategories = subs, cats, excluded
+    if _any(kinds_text, COCKTAIL):
+        q.relevance_words |= set(COCKTAIL)     # cocktail evidence on a place ranks it up; never required
     req.events = _any(folded, EVENTS)
     req.event_categories = {c for c, words in EVENT_CATEGORY_WORDS.items() if _any(folded, words)}
     music = _any(folded, MUSIC)
