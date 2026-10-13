@@ -331,7 +331,11 @@ def parse_discovery(text: str, today_local: datetime, *, require_cue: bool = Tru
                                                                              "vecer*", "обед*", "ужин*", "food",
                                                                              "tonight"]):
         q.serving_at, q.open_at = True, False   # a meal: the KITCHEN must be serving
-    if _any(folded, AFTER_MIDNIGHT):
+    # "eat late" / "a late drink" = the existing "late night" meaning, but only for
+    # food or nightlife ("late check-in" is not a discovery request).
+    kinds = {SUBCATEGORIES[x].category.value for x in q.subcategories if x in SUBCATEGORIES} | q.categories
+    late = contains_phrase(folded, "late") and (req.label in ("food", "drinks") or kinds & {"FOOD", "NIGHTLIFE"})
+    if _any(folded, AFTER_MIDNIGHT) or late:
         base = (q.at or today_naive).date()
         q.open_until = datetime.combine(base + timedelta(days=1), time(0, 30))
         q.open_at = False
