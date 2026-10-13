@@ -119,6 +119,8 @@ _RADIUS_KM = re.compile(r"\bwithin\s+(\d+(?:[.,]\d+)?)\s*(km|kilomet\w*|m|meters
                         r"\b(?:u krugu|do)\s+(\d+(?:[.,]\d+)?)\s*(km|m)\b|\bв радиусе\s+(\d+(?:[.,]\d+)?)\s*(км|м)\b")
 _RADIUS_WALK = re.compile(r"\bwithin\s+(\d{1,2})\s*(?:min\w*)\s*(?:walk\w*)?|\b(\d{1,2})\s*min\w*\s+walk")
 _AGE = re.compile(r"\b(\d{1,2})[\s-]*(?:year[\s-]*old|yo|godin\w*|лет\w*|год\w*)\b")
+# "in Kotor": a capitalised place name after "in" (the region's localities decide what it means)
+_LOCALITY = re.compile(r"\bin\s+([A-ZČĆŠŽĐ][\w'’-]+(?:\s+[A-ZČĆŠŽĐ][\w'’-]+)?)")
 _HOURS_FOR = re.compile(r"\bfor\s+(\d{1,2}|two|three|four|five|six)\s+hours?\b|\bna\s+(\d{1,2})\s+sat\w*\b|"
                         r"\bна\s+(\d{1,2}|два|три|четыре)\s+час\w*\b")
 _NUM = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "два": 2, "три": 3, "четыре": 4}
@@ -368,6 +370,8 @@ def parse_discovery(text: str, today_local: datetime, *, require_cue: bool = Tru
         from app.shared.geo import km_for_walk
 
         q.max_km = km_for_walk(15)
+    if m := _LOCALITY.search(text):
+        q.locality = fold(m.group(1))          # resolved against registered localities by the engine
     if m := re.search(r"\bnear (?:the )?([a-z][a-z' ]{2,40}?)(?:[,.?!]|$| and | for | open)", folded):
         target = m.group(1).strip()
         if target not in ("me", "us", "here", "hotel", "the hotel", "our hotel", "you"):

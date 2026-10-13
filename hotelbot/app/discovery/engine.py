@@ -38,9 +38,10 @@ the renderer says both, and that it cannot confirm which is current.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import SimpleNamespace
 from datetime import datetime, timedelta
 from typing import Any
@@ -50,13 +51,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.clock import as_utc
-from app.db.models import Event, Place
+from app.db.models import CoverageArea, Event, Place
 from app.places.freshness import RANK as FRESH_RANK
 from app.places.freshness import FactFreshness, Freshness, classify, place_facts
 from app.places.hours import (HoursStatus, OpenState, always_open, food_state, local_at, open_throughout,
                               status_at)
 from app.shared.geo import Point, StraightLineEstimator, TravelEstimator, distance_km, walking_minutes
 from app.text import contains_phrase, fold
+from app.world import coverage
 
 _AVAIL = {OpenState.OPEN: 0, OpenState.OPEN_LATER: 1, OpenState.UNKNOWN: 2, OpenState.CLOSED: 3}
 
@@ -72,6 +74,7 @@ class DiscoveryQuery:
     any_of: dict[str, list[Any]] = field(default_factory=dict) # attribute contains one of, e.g. cuisine
     exclude_attrs: dict[str, set[Any]] = field(default_factory=dict)   # e.g. dress_code: {formal}
     max_km: float | None = None                                 # explicit radius
+    locality: str | None = None          # "in Kotor": a registered locality of the region scopes the search
     party_size: int | None = None                               # vs attributes.max_group
     min_age: int | None = None                                  # youngest guest vs age_restriction
     price_max: int | None = None                                # price_range ceiling ("cheap")
@@ -382,10 +385,17 @@ def explain(place: Place, f: Facts, q: DiscoveryQuery) -> tuple[list[str], list[
 def run(session: Session, q: DiscoveryQuery, now_utc: datetime, tz: str, *, signals: Signals | None = None,
         estimator: TravelEstimator | None = None) -> DiscoveryResult:
     estimator = estimator or StraightLineEstimator()
+    area = locality_area(session, q)
+    if area is not None and q.near is None:
+        q = replace(q, near=_area_center(area))          # "a museum in Budva" from nowhere: measured from Budva
     pool = retrieve(session, q)
     rejected: Counter = Counter()
     survivors: list[Candidate] = []
     for place in pool:
+        if area is not None and (place.latitude is None or not coverage.contains(area, place.latitude,
+                                                                                  place.longitude)):
+            rejected["outside_locality"] += 1
+            continue
         f = normalize(place, q, now_utc, tz, estimator)
         reason = hard_filter(place, f, q)
         if reason:
@@ -404,6 +414,29 @@ def run(session: Session, q: DiscoveryQuery, now_utc: datetime, tz: str, *, sign
         rejected["state_unknown"] += len(unknown)
         survivors = [c for c in survivors if c not in unknown]
     return DiscoveryResult(q, survivors[: q.limit], len(pool), rejected)
+
+
+def locality_area(session: Session | None, q: DiscoveryQuery) -> CoverageArea | None:
+    """The registered locality of the query's region that "in <town>" names
+    (all its words in the area's name or aliases); the smallest wins. An
+    unknown town scopes nothing - it is not guessed."""
+    if not q.locality or session is None:
+        return None
+    words = set(re.split(r"[^0-9a-z]+", fold(q.locality))) - {""}
+    found = []
+    for a in session.scalars(select(CoverageArea).where(CoverageArea.kind.in_(("locality", "admin_area")))):
+        if q.region and not (a.code == q.region or a.code.startswith(f"{q.region}:") or a.parent_code == q.region):
+            continue
+        names = [a.name, *(a.attributes or {}).get("aliases", [])]
+        if any(words <= set(re.split(r"[^0-9a-z]+", fold(n or ""))) for n in names):
+            found.append(a)
+    return min(found, key=lambda a: coverage._size(a), default=None)
+
+
+def _area_center(area: CoverageArea) -> Point:
+    if area.min_lat is not None:
+        return Point((area.min_lat + area.max_lat) / 2, (area.min_lon + area.max_lon) / 2)
+    return Point(area.center_lat, area.center_lon)
 
 
 def discover_places(session: Session, q: DiscoveryQuery, now_utc: datetime, tz: str,
