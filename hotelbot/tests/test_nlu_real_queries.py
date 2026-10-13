@@ -121,3 +121,42 @@ def test_town_without_a_point_measures_from_the_town(monkeypatch, areas):
     res = _run(monkeypatch, areas, "A museum in Budva", _museums(), near=None)
     assert [c.place.name for c in res.candidates] == ["Budva museum"]
     assert res.candidates[0].distance_km is not None and res.candidates[0].distance_km < 3.0   # from the box centre
+
+
+# ------------------------------------------------------------ "late"
+from datetime import time, timedelta  # noqa: E402
+
+LATE_NIGHT = datetime.combine(LOCAL.date() + timedelta(days=1), time(0, 30))   # the existing "late night" meaning
+
+
+def test_eat_late_is_a_temporal_constraint_not_only_a_category():
+    q = _p("Where can we eat late?", require_cue=False).query
+    assert q.open_until == LATE_NIGHT and not q.open_at
+    assert q.subcategories >= {"restaurant", "konoba"}
+
+
+def test_late_means_the_same_as_late_night():
+    assert _p("Where can we eat late?").query.open_until == _p("Where can we eat late night?").query.open_until
+
+
+def test_a_late_drink_is_nightlife_open_late():
+    q = _p("Where can we get a late drink?").query
+    assert q.categories == {"NIGHTLIFE"} and q.open_until == LATE_NIGHT
+
+
+def test_late_without_food_or_nightlife_is_no_discovery_request():
+    for text in ("Is late check-in possible?", "Can I have a late checkout?", "We arrive late"):
+        assert _p(text) is None and _p(text, require_cue=False) is None, text
+
+
+def test_later_is_not_late():
+    assert _p("Where can we eat later?").query.open_until is None
+
+
+def test_existing_time_phrases_keep_their_meaning():
+    q = _p("Find a restaurant in Kotor open tonight").query
+    assert q.open_at and q.at == datetime(2026, 10, 8, 22, 0) and q.open_until is None
+    q = _p("Where can we eat after midnight?").query
+    assert q.open_until == LATE_NIGHT and not q.open_at
+    q = _p("Is there a pharmacy open now?").query
+    assert q.open_at and q.at == LOCAL and q.open_until is None
