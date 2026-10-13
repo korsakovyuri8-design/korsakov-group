@@ -62,6 +62,10 @@ GENERIC: list[tuple[list[str], set[str], set[str], str]] = [
     (["work for", "place to work", "somewhere to work", "work from", "laptop", "raditi", "поработать"],
      set(), {"coworking", "cafe"}, "work"),
 ]
+# "Something interesting" is a broad sightseeing need - but only with a discovery
+# cue, an anchor or "something": the word alone ("that's interesting") is no request.
+INTERESTING = ["interesting", "zanimljiv*", "интересн*"]
+INTEREST_CUES = ["something", "nesto", "что-нибудь", "что-то", "что нибудь"]
 EVENTS = ["event*", "happening", "concert*", "festival*", "show", "gig", "what's on", "whats on", "anything on",
           "interesting happening", "dogadjaj*", "koncert*", "festival*", "desava", "событи*", "концерт*",
           "фестивал*", "мероприяти*", "происходит"]
@@ -187,6 +191,12 @@ def _excluded(folded: str) -> set[str]:
     return out
 
 
+def _real_anchor(anchor: re.Match | None) -> bool:
+    """A real anchor ("near the Old Town"), not "near me / here / the hotel"."""
+    return bool(anchor) and anchor.group(1).strip() not in ("me", "us", "here", "hotel", "the hotel", "our hotel",
+                                                             "you")
+
+
 def parse_discovery(text: str, today_local: datetime, *, require_cue: bool = True) -> DiscoveryRequest | None:
     folded = fold(text)
     cue = _any(folded, CUES) or _any(folded, EVENTS) or _any(folded, MUSIC) or _names_a_kind(folded)
@@ -219,6 +229,9 @@ def parse_discovery(text: str, today_local: datetime, *, require_cue: bool = Tru
                 subs |= subcategories - excluded
             if label in ("groceries",):
                 break   # "buy food" is shopping, not a meal
+    if not (subs or cats) and _any(kinds_text, INTERESTING) and not _any(folded, EVENTS) \
+            and (_any(folded, CUES) or _any(folded, INTEREST_CUES) or _real_anchor(anchor)):
+        cats, req.label = {"ATTRACTION", "CULTURE", "NATURE"}, "sights"
     if subs and cats and not ({SUBCATEGORIES[s].category.value for s in subs if s in SUBCATEGORIES} & cats) \
             and req.label not in ("sights", "work"):
         cats = set()   # specific kinds win over a generic family they don't belong to
