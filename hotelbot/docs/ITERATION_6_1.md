@@ -518,3 +518,39 @@ Only the cocktail query changed among the 8 sample queries.
 **THE DEEP: not boosted, recorded.** Its only cocktail evidence is OSM `description` = "Speakeasy cocktail bar". `real_formats.osm_to_generic` does not carry `description`, and the generic place normalizer does not store one, so the evidence never reaches the world. Carrying it would be a data-model / normalizer change and is out of scope here. The venue is in Tivat, 21.4 km from Budva and 6.5 km from Kotor, so it does not affect this query.
 
 **Tests.** All green except the pre-existing date-dependent `test_staff_can_read_a_guest_plan`. All discovery evals and gates pass unchanged.
+
+### NLU: "interesting", "in <town>", "late" — three separate fixes
+
+Each fix was committed tests-first. After every code commit all **5087 ER pair decisions** were re-checked against `hours_fix_v1`: 0 differences each time.
+
+| defect | tests | fix | rule |
+|---|---|---|---|
+| interesting | 8fee5a4 | 2a44488 | `interesting` / `zanimljiv*` / `интересн*` → ATTRACTION + CULTURE + NATURE (label `sights`) |
+| in <town> | 6260021 | 4bf18d3 (+ e4f25d1) | a capitalised name after "in" becomes `q.locality`, resolved against the region's registered coverage areas; places outside are `rejected["outside_locality"]` |
+| late | e05b718 | f2e774f | "late" for food / nightlife sets the existing "late night" constraint: `open_until` = next day 00:30. No new threshold |
+
+**Conditions and edge cases.**
+- **interesting.** Applies only when nothing more specific was asked, and when there is a discovery cue, "something / nešto / что-нибудь", or a real anchor. An events request ("anything interesting happening") is excluded. The word alone ("that's interesting", "what an interesting idea") is no request.
+- **in <town>.** Areas of kind `locality` / `admin_area`, matched by name or alias. Each area uses its **own bbox or radius**; no radius is invented. With no point given, distance is measured from the area's centre. An unknown town ("in Paris") scopes nothing. "in the evening" and "in town" are not localities.
+- **late.** "late check-in", "we arrive late" and "later" are unchanged. "open tonight", "after midnight" and "open now" keep their meaning; tests pin all three.
+
+**e4f25d1** moves the locality lookup into `app/discovery/repository.py`, because discovery reads the world only through its repository (`tests/test_architecture.py`, which f2e774f had broken). Behaviour is unchanged. `nlu_fix_v1` (at f2e774f) and `nlu_fix_v2` (at e4f25d1) have identical discovery samples.
+
+**Run `out/nlu_fix_v2/`.** Code e4f25d1, clean. Against `cocktails_fix_v1`, these are identical: pairs, world, facts, audit, sources, hours, lookalikes, candidates and `audit_blind.csv`.
+
+**8 frozen queries, after the NLU fixes.**
+
+| query | before (cocktails_fix_v1) | after (nlu_fix_v2) |
+|---|---|---|
+| restaurant in Kotor open tonight | top 5 open, ≤ 0.6 km; whole region | same top 5; `outside_locality` 197 |
+| cocktails in Budva | Strix first, 62 retrieved | same top 5; `outside_locality` 27 |
+| nearest pharmacy | — | unchanged |
+| **something interesting near the Old Town** | **not understood** | sights: Church of Our Lady of Remedy 0.17 km, Kotorska katedrala 0.05, Kotorska tvrđava 0.02, Pima Palace 0.06, Saint Anne 0.08 |
+| **eat late** | food, no time: Konoba Galeb (U), Astoria (closes 23:00), … | `open_until` 00:30; `closes_too_early` 85. Old Fisherman's Pub, Regina E, Perla, Riva Concept, Babaluu: all open until 01:00 |
+| ATM nearby | — | unchanged |
+| **museum in Kotor** | 6 shown, incl. Arheološki muzej (17.2 km, Budva) | `outside_locality` 2 (both Budva). Muzej mačaka 0.09, Museum Maritimum 0.04, `way/305481242` 0.08, Naval Heritage 6.5 km |
+| beach in Budva | — | same top 5; `outside_locality` 17 |
+
+**Known limit (data, not NLU).** The pilot's Kotor box `[42.400, 18.690, 42.470, 18.790]` also covers Tivat's Porto Montenegro. So Naval Heritage (Tivat) counts as "in Kotor". It ranks below the three old-town museums.
+
+**Tests.** All green except the pre-existing date-dependent `test_staff_can_read_a_guest_plan`. Discovery gates are unchanged and pass.
