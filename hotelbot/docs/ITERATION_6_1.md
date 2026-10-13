@@ -482,3 +482,39 @@ Every CLOSED-above-OPEN case is "A museum in Kotor":
 **Open, kept separate.**
 - Snapshot `content_hash` depends on random UUIDs.
 - The hours-reliability bonus applies to places without hours.
+
+### Cocktails: the bar family as candidates, cocktail evidence as relevance
+
+**Commits.**
+- ff7620f — tests first: 4 of 7 fail before the fix. The `cocktail_bar` exact-match guard and the no-relabel guard pass before and after.
+- a8567e3 — the fix, in `nlu.py` (query construction) and `engine.rank` (one evidence term). **No taxonomy vocabulary changed** (`SUBCATEGORIES` untouched, so `_taxonomy_type_words` and ER are unaffected). **No hard filter changed.**
+
+**What changed.**
+- **Candidates.** "cocktails / koktel / коктейл" now yields the whole bar family, `FAMILIES["bar"]`: bar, cocktail_bar, wine_bar, pub, lounge, rooftop, live_music_venue. Before, it yielded only cocktail_bar / lounge / rooftop.
+- **Exact match.** `q.specific` stays `{"cocktail_bar"}`. The bar family is **not** added to it.
+- **Evidence.** New `q.relevance_words = {cocktail*, koktel*, коктейл*}`. A place whose name, tags or attributes contain one of them gets +1 relevance. Absence excludes nothing, and no place changes subcategory.
+- **Nightclub.** Not added. It was optional, and the cocktail case does not need it.
+
+**Run `out/cocktails_fix_v1/`.** Code a8567e3, clean. Against `ranking_fix_v2`, these are identical:
+- pairs, world, facts, audit, sources, hours, lookalikes, candidates;
+- `audit_blind.csv`;
+- all 5087 ER pair decisions (identical to `hours_fix_v1`).
+
+Only the cocktail query changed among the 8 sample queries.
+
+**Before/after, "Where can I get cocktails in Budva?"**
+
+| | before | after |
+|---|---|---|
+| query | subs {cocktail_bar, lounge, rooftop} | subs = bar family; specific {cocktail_bar}; relevance_words {cocktail*, …} |
+| retrieved | **0** | **62** |
+| top 5 | — | **Strix Cocktail Bar** (bar, 0.07 km, unknown; relevance 1); Rakia & Wine Bar (bar, 0.07, unknown); Blues Brothers Bar (bar, 0.07, unknown); Mañana (bar, 0.09, opens later); Old Town Pub (pub, 0.03, opens later) |
+
+**Unchanged (checked with the diagnosis script at fb06139 and at a8567e3):**
+- "a drink in Budva": NIGHTLIFE, 72 retrieved, the same top 5;
+- "a bar in Budva": the same query and the same top 5;
+- the other 7 sample queries.
+
+**THE DEEP: not boosted, recorded.** Its only cocktail evidence is OSM `description` = "Speakeasy cocktail bar". `real_formats.osm_to_generic` does not carry `description`, and the generic place normalizer does not store one, so the evidence never reaches the world. Carrying it would be a data-model / normalizer change and is out of scope here. The venue is in Tivat, 21.4 km from Budva and 6.5 km from Kotor, so it does not affect this query.
+
+**Tests.** All green except the pre-existing date-dependent `test_staff_can_read_a_guest_plan`. All discovery evals and gates pass unchanged.
