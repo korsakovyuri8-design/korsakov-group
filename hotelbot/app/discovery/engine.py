@@ -38,7 +38,6 @@ the renderer says both, and that it cannot confirm which is current.
 
 from __future__ import annotations
 
-import re
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -51,14 +50,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.clock import as_utc
-from app.db.models import CoverageArea, Event, Place
+from app.db.models import Event, Place
 from app.places.freshness import RANK as FRESH_RANK
 from app.places.freshness import FactFreshness, Freshness, classify, place_facts
 from app.places.hours import (HoursStatus, OpenState, always_open, food_state, local_at, open_throughout,
                               status_at)
 from app.shared.geo import Point, StraightLineEstimator, TravelEstimator, distance_km, walking_minutes
 from app.text import contains_phrase, fold
-from app.world import coverage
 
 _AVAIL = {OpenState.OPEN: 0, OpenState.OPEN_LATER: 1, OpenState.UNKNOWN: 2, OpenState.CLOSED: 3}
 
@@ -387,13 +385,12 @@ def run(session: Session, q: DiscoveryQuery, now_utc: datetime, tz: str, *, sign
     estimator = estimator or StraightLineEstimator()
     area = locality_area(session, q)
     if area is not None and q.near is None:
-        q = replace(q, near=_area_center(area))          # "a museum in Budva" from nowhere: measured from Budva
+        q = replace(q, near=area.center)                  # "a museum in Budva" from nowhere: measured from Budva
     pool = retrieve(session, q)
     rejected: Counter = Counter()
     survivors: list[Candidate] = []
     for place in pool:
-        if area is not None and (place.latitude is None or not coverage.contains(area, place.latitude,
-                                                                                  place.longitude)):
+        if area is not None and (place.latitude is None or not area.contains(place.latitude, place.longitude)):
             rejected["outside_locality"] += 1
             continue
         f = normalize(place, q, now_utc, tz, estimator)
@@ -416,27 +413,14 @@ def run(session: Session, q: DiscoveryQuery, now_utc: datetime, tz: str, *, sign
     return DiscoveryResult(q, survivors[: q.limit], len(pool), rejected)
 
 
-def locality_area(session: Session | None, q: DiscoveryQuery) -> CoverageArea | None:
-    """The registered locality of the query's region that "in <town>" names
-    (all its words in the area's name or aliases); the smallest wins. An
-    unknown town scopes nothing - it is not guessed."""
+def locality_area(session: Session | None, q: DiscoveryQuery):  # noqa: ANN201
+    """The registered locality "in <town>" names (app/discovery/repository.py);
+    None when there is none - an unknown town scopes nothing."""
+    from app.discovery.repository import DEFAULT
+
     if not q.locality or session is None:
         return None
-    words = set(re.split(r"[^0-9a-z]+", fold(q.locality))) - {""}
-    found = []
-    for a in session.scalars(select(CoverageArea).where(CoverageArea.kind.in_(("locality", "admin_area")))):
-        if q.region and not (a.code == q.region or a.code.startswith(f"{q.region}:") or a.parent_code == q.region):
-            continue
-        names = [a.name, *(a.attributes or {}).get("aliases", [])]
-        if any(words <= set(re.split(r"[^0-9a-z]+", fold(n or ""))) for n in names):
-            found.append(a)
-    return min(found, key=lambda a: coverage._size(a), default=None)
-
-
-def _area_center(area: CoverageArea) -> Point:
-    if area.min_lat is not None:
-        return Point((area.min_lat + area.max_lat) / 2, (area.min_lon + area.max_lon) / 2)
-    return Point(area.center_lat, area.center_lon)
+    return DEFAULT.locality(session, q)
 
 
 def discover_places(session: Session, q: DiscoveryQuery, now_utc: datetime, tz: str,
