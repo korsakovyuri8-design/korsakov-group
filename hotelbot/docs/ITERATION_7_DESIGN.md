@@ -270,3 +270,45 @@ Decision ids D-077 onward are assigned when these are accepted.
    - Nothing else is built until this is green.
 2. **Slice 2.** Hotel, restaurant and cancellation fixtures (F2, F3, F8, F9), with status precedence and provider-vs-guest issues (F6).
 3. **Slice 3.** Timeline, windows, policies, overlaps, missing transfer; then the E2E fixture world and the Discovery bridge.
+
+## 15. Slice 1 — done (Trip / records / observations / items; airline F1)
+
+**Commits.**
+- f4f0e5e — fixtures and failing tests.
+- 2e4751d — more gates, and a migration test for 0009.
+- ec2c47f — the implementation.
+
+**What exists.**
+- **Models and migration `0009_journey`:** `Trip`, `TripSourceRecord`, `TripItem`, `TripObservation`, `TripIssue`.
+- **`app/journey/timeinfo.py`:** the time record (raw → local → IANA zone → UTC → evidence, plus the registry version).
+- **`app/journey/parsers/airline.py`:** a deterministic parser for F1.
+- **`app/journey/ingest.py`:** import, revisions and model proposals.
+
+**Fixtures** (`data/trips/fixtures/`):
+
+| fixture | what it is |
+|---|---|
+| F1 | the confirmation |
+| F1b | a forwarded copy with `> ` quoting and another Message-ID |
+| F1d | a re-sent copy with different spacing and headers |
+| F1c | a schedule-change notice: same booking, departure +2 h, "remains confirmed" |
+
+All names and contacts are fictitious; the carrier is "Demo Air", code DM.
+
+**Gates (17 tests in `tests/test_journey_slice1.py`, all green).**
+- **One flight item.** F1 gives a single `flight` item, `confirmed`, with validated details.
+- **Provenance.** Every resolved field has an observation whose evidence text literally occurs in the raw document. The status evidence contains "confirmed".
+- **Time zones.** LGW 09:15 → `Europe/London`, 08:15 UTC (BST). TGD 12:55 → `Europe/Podgorica`, 10:55 UTC (CEST). Every record carries raw, local, tz, utc, evidence and registry.
+- **Unknown zone.** An airport not in the registry → `tz=None`, `utc=None`, plus an `unknown_timezone` issue.
+- **DST.** The ambiguous London time 2026-10-25 01:30 and the non-existent 2026-03-29 01:30 both give an issue and no UTC.
+- **Idempotency.** The identical file again changes nothing. F1b and F1d each add a new record but no new item and no new revision.
+- **Revision.** F1c is revision 2: new times, status still `confirmed`. Revision 1 is kept, and `changed_fields = [arrives, departs]`.
+- **An unstated field is not a change.** F1c lists no passengers, and the passengers stay.
+- **Issue order wins over arrival order.** F1c imported before F1 still stays current, because the provider issued it later.
+- **No invented state.** A model-proposed status is rejected, with or without evidence. Other proposals need evidence that literally occurs in the raw.
+- **Validated details.** Unknown keys and wrong types are rejected.
+- **Ownership.** `app/journey` imports nothing from transactions, marketplace or stays, and does not name `Quote`, `Action`, `ExternalTransaction` or `Stay`.
+
+**Deviations, recorded.**
+1. **D-079 time-zone registry.** OurAirports' `airports.csv` has coordinates but **no time-zone column**, and this environment has no network. Slice 1 therefore uses a small, explicitly versioned, hand-curated registry (`data/trips/tz_registry.yaml`, version `2026-10-15.1`) covering the fixture airports. A full airport snapshot needs a coordinate → IANA resolver: a separate, later step.
+2. **Migration test.** The world-fabric migration test assumed 0008 was the head. It now compares the models at `head`, the convention the 0007 test already used. Its data assertions are unchanged.
