@@ -702,7 +702,7 @@ A new test pins the consequence of the approved key: at the same distance, with 
 | query | before | after |
 |---|---|---|
 | "Where can we eat?" (Budva, no time) — the Galeb case | **Konoba Galeb** (0.08, no hours), Astoria (0.10, open), Old Fisherman's Pub, Regina E, Rivijera | **Astoria**, Old Fisherman's Pub, Regina E, Rivijera, Punta Konoba (0.04, opens later) |
-| nearest pharmacy (0.1 km buckets) | ATM-like order: `node/…` 0.08 U, Vegapharm 0.12 O, … | Vegapharm 0.12 O, Pharmacy 0.08 U, Tea Medica 0.44 O, Pharmacy 0.39 U, Dobrota 1.37 U |
+| nearest pharmacy (0.1 km buckets) | Pharmacy (unnamed) 0.08 U, Vegapharm 0.12 O, Pharmacy 0.39 U, Tea Medica 0.44 O, Dobrota 1.37 U | Vegapharm 0.12 O, Pharmacy 0.08 U, Tea Medica 0.44 O, Pharmacy 0.39 U, Dobrota 1.37 U |
 | ATM nearby | `node/…` 0.04, Euronet 0.04, … | Euronet 0.04, ATM 0.04, … (same set) |
 | beach in Budva | City beach, Ričardova glava, Pizana, Mogren, Greco | City beach, Pizana, Ričardova glava, Greco, Mogren (same set) |
 | cocktails in Budva | Strix, Rakia & Wine Bar, Blues Brothers, Mañana, Old Town Pub | Strix, Mañana, Old Town Pub, Blue Cat, Blues Brothers |
