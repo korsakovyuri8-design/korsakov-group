@@ -52,7 +52,8 @@ def test_airline_confirmation_becomes_one_confirmed_flight(s, trip):
     assert rep.record_new and rep.item_new
     assert item.kind == "flight" and item.provider == "demo air" and item.booking_reference == "DMX7Q2"
     assert item.details == {"carrier": "DM", "flight_number": "DM1432", "origin": "LGW", "destination": "TGD",
-                            "cabin": "Economy", "passengers": ["Ana Example", "Marko Example"]}
+                            "cabin": "Economy", "passengers": ["Ana Example", "Marko Example"],
+                            "service_date": "2026-10-18"}          # slice 1.1: the segment anchor
     assert item.status == "confirmed" and item.current_revision == 1
 
 
@@ -61,12 +62,13 @@ def test_every_resolved_field_has_provenance_in_the_raw_document(s, trip):
     raw = rep.record.raw
     obs = s.scalars(select(TripObservation).where(TripObservation.item_id == rep.item.id)).all()
     fields = {o.field for o in obs}
-    assert {"status", "booking_reference", "flight_number", "origin", "destination", "departs", "arrives",
-            "passengers"} <= fields
+    assert {"provider", "status_event", "booking_reference", "flight_number", "origin", "destination", "departs",
+            "arrives", "passengers"} <= fields
     for o in obs:
         assert o.record_id == rep.record.id and o.evidence and o.evidence in raw, o.field
-    status = next(o for o in obs if o.field == "status")
-    assert "confirmed" in status.evidence.lower()
+    status = next(o for o in obs if o.field == "status_event")
+    assert status.value == "confirm" and "confirmed" in status.evidence.lower()
+    assert ingest.provenance_violations(s, rep.item) == []
 
 
 # ------------------------------------------------------------------ time
