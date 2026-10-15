@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import MetaData
 
 from app.config import Settings
+from app.clock import FrozenClock
 from app.container import Container, build_container
 from app.db.session import make_engine
 from app.llm.base import ChatMessage, LLMError
@@ -90,7 +91,8 @@ def transport() -> MockWhatsAppTransport:
 
 @pytest.fixture
 def container(settings: Settings, transport: MockWhatsAppTransport) -> Container:
-    return build_container(settings, llm=None, whatsapp=transport)
+    # a fixed clock: no test may depend on the machine's calendar ("this week" is the demo data's week)
+    return build_container(settings, llm=None, whatsapp=transport, clock=FrozenClock())
 
 
 @pytest.fixture
