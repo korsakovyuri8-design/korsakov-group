@@ -1028,6 +1028,98 @@ class WorldSnapshot(Base):
     content: Mapped[str] = mapped_column(Text)                          # gzip+base64 JSON
 
 
+# ===================================================== JOURNEY (Iteration 7)
+# SOURCE RECORD != TRIP FACT != TRIP ITEM, as in the World Fabric. A record is
+# one received document, immutable; an observation is one field claim from one
+# record with its evidence; an item is one real booking / segment, resolved
+# from observations. Status needs evidence; a change is a revision, never a
+# state. The journey layer never writes transaction or Stay state.
+# See docs/ITERATION_7_DESIGN.md.
+
+
+class Trip(Base):
+    """One journey of one party, above any number of Stays."""
+
+    __tablename__ = "trips"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    title: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class TripSourceRecord(Base):
+    """One received input, verbatim and immutable. The same bytes twice are one
+    record (raw_sha256); a forwarded or reformatted copy is a new record."""
+
+    __tablename__ = "trip_source_records"
+    __table_args__ = (UniqueConstraint("trip_id", "raw_sha256"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    trip_id: Mapped[str] = mapped_column(ForeignKey("trips.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))                 # airline_email, hotel_email, guest_statement, ...
+    source_id: Mapped[str] = mapped_column(String(255))           # Message-ID, fixture id, chat message id
+    received_at: Mapped[datetime] = mapped_column()
+    issued_at: Mapped[datetime | None] = mapped_column()          # the provider document's own issue time
+    raw: Mapped[str] = mapped_column(Text)
+    raw_sha256: Mapped[str] = mapped_column(String(64))
+    normalized_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class TripItem(Base):
+    """One real booking / segment / statement of a trip. Found by its semantic
+    identity (provider + booking reference + segment), never by record."""
+
+    __tablename__ = "trip_items"
+    __table_args__ = (UniqueConstraint("trip_id", "identity"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    trip_id: Mapped[str] = mapped_column(ForeignKey("trips.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(24))                 # flight, train, ..., accommodation, restaurant, ...
+    identity: Mapped[str] = mapped_column(String(255))
+    provider: Mapped[str | None] = mapped_column(String(120))
+    booking_reference: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="unknown")   # stated|booked|confirmed|cancelled|unknown
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # kind-validated
+    times: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)    # name -> {raw, local, tz, utc, evidence}
+    current_revision: Mapped[int] = mapped_column(Integer, default=1)
+    revisions: Mapped[list[Any]] = mapped_column(JSON, default=list)     # [{revision, record_id, issued_at, ...}]
+    world_entity_id: Mapped[str | None] = mapped_column(String(36))      # a link; never changes booking truth
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class TripObservation(Base):
+    """One field claim from one source record, with the exact evidence text."""
+
+    __tablename__ = "trip_observations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    trip_id: Mapped[str] = mapped_column(ForeignKey("trips.id"), index=True)
+    record_id: Mapped[str] = mapped_column(ForeignKey("trip_source_records.id"), index=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey("trip_items.id"), index=True)
+    field: Mapped[str] = mapped_column(String(64))
+    value: Mapped[Any] = mapped_column(JSON, nullable=True)
+    evidence: Mapped[str] = mapped_column(Text)
+    revision: Mapped[int] = mapped_column(Integer)
+    extractor: Mapped[str] = mapped_column(String(32))            # parser:<name> | model:<name>
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class TripIssue(Base):
+    """A surfaced problem (unknown zone, overlap, contradiction, ...): shown,
+    never silently fixed."""
+
+    __tablename__ = "trip_issues"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    trip_id: Mapped[str] = mapped_column(ForeignKey("trips.id"), index=True)
+    item_id: Mapped[str | None] = mapped_column(ForeignKey("trip_items.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(48))
+    detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 # ---------------------------------------------------- Core v1 aliases
 Hotel = Property
 HotelKnowledgeDocument = KnowledgeDocument
