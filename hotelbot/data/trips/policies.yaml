@@ -1,0 +1,9 @@
+# Iteration 7 trip policies (D-080). Versioned: every derived result records
+# the version it used. HARD = operational, SOFT = traveller (overridable).
+version: "2026-10-16.1"
+hard: {}          # buffers / minimum connection times / check-in handling (slice 3)
+soft: {}          # waking hours (slice 3)
+# Guest statement vs a provider-owned fact (D-082): the provider value stands;
+# a difference larger than the tolerance is a TripIssue. Status has no tolerance.
+tolerances:
+  arrival_time_minutes: 30

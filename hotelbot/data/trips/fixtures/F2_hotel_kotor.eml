@@ -1,0 +1,18 @@
+Message-ID: <hk-20931@hotel-demo.example>
+From: Hotel Demo Kotor <reservations@hotel-demo.example>
+To: traveller@example.org
+Subject: Booking confirmation HK20931
+Date: Thu, 03 Sep 2026 14:10:00 +0200
+
+Hotel Demo Kotor - booking confirmation
+
+Your reservation is confirmed.
+Confirmation number: HK20931
+Issued: 2026-09-03 14:10 +02:00
+
+Guest: Ana Example
+Address: Stari grad 1, Kotor, Montenegro
+Check-in: 18 Oct 2026 (from 14:00)
+Check-out: 21 Oct 2026 (until 11:00)
+Room: Double room, sea view
+Guests: 2
