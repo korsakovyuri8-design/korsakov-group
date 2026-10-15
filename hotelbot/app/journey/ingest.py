@@ -23,12 +23,16 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Trip, TripIssue, TripItem, TripObservation, TripSourceRecord
+from app.db.models import Trip, TripItem, TripObservation, TripSourceRecord
 from app.journey import timeinfo
+from app.journey.issues import raise_issue
 from app.journey.kinds import KINDS
-from app.journey.parsers import airline
+from app.journey.parsers import airline, guest, hotel, restaurant
+from app.journey.reconcile import reconcile
 
-PARSERS = {"airline_email": ("parser:airline", airline.parse)}
+PARSERS = {"airline_email": ("parser:airline", airline.parse), "hotel_email": ("parser:hotel", hotel.parse),
+           "restaurant_email": ("parser:restaurant", restaurant.parse),
+           "guest_statement": ("parser:guest", guest.parse)}
 
 
 @dataclass
@@ -85,12 +89,7 @@ def validate_details(kind: str, details: dict[str, Any]) -> None:
 
 
 def _issue(session: Session, trip_id: str, item_id: str | None, kind: str, detail: dict[str, Any]) -> bool:
-    for existing in session.scalars(select(TripIssue).where(TripIssue.trip_id == trip_id, TripIssue.kind == kind,
-                                                            TripIssue.item_id == item_id)):
-        if existing.detail == detail:
-            return False
-    session.add(TripIssue(trip_id=trip_id, item_id=item_id, kind=kind, detail=detail))
-    return True
+    return raise_issue(session, trip_id, item_id, kind, detail)
 
 
 def _comparable(times: dict[str, Any]) -> dict[str, Any]:
@@ -99,7 +98,8 @@ def _comparable(times: dict[str, Any]) -> dict[str, Any]:
 
 def _resolve_status(session: Session, item: TripItem) -> str:
     """Status from status EVENTS in the provider's issue order (D-081):
-    confirm -> confirmed; cancel -> cancelled; reinstate -> confirmed.
+    confirm -> confirmed; cancel -> cancelled; reinstate -> confirmed;
+    state (a guest's own statement) -> stated, never above provider evidence.
     CANCELLED dominates: a confirmation issued after it (or an old one
     forwarded again) does not revive the booking - it is surfaced; only an
     explicit reinstatement does. Events without an issue time order first."""
@@ -115,12 +115,23 @@ def _resolve_status(session: Session, item: TripItem) -> str:
             state = "cancelled"
         elif obs.value == "reinstate":
             state = "confirmed"
+        elif obs.value == "state" and state == "unknown":
+            state = "stated"
         elif obs.value == "confirm":
             if state == "cancelled":
                 _issue(session, item.trip_id, item.id, "confirmation_after_cancellation", {"record_id": rec.id})
             else:
                 state = "confirmed"
     return state
+
+
+def _utc(dt: datetime | None) -> datetime | None:
+    """An aware instant in UTC; a naive one (as the database returns it) is UTC already."""
+    from datetime import timezone
+
+    if dt is None:
+        return None
+    return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def _aware(dt: datetime | None) -> datetime:
@@ -150,6 +161,8 @@ def provenance_violations(session: Session, item: TripItem) -> list[str]:
         bad.append("status")
     spec = KINDS[item.kind]
     for k, v in (item.details or {}).items():
+        if k in spec.derived:
+            continue
         if k in spec.anchor_evidence:
             if not by_field.get(spec.anchor_evidence[k]):
                 bad.append(k)
@@ -172,8 +185,11 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
         return ImportReport(seen, False, session.get(TripItem, obs.item_id) if obs else None)
     extractor, parse = PARSERS[kind]
     parsed = parse(raw)
-    record = TripSourceRecord(trip_id=trip_id, kind=kind, source_id=source_id, received_at=received_at,
-                              issued_at=parsed.issued_at if parsed else None, raw=raw, raw_sha256=raw_sha,
+    # instants are stored in UTC: the database keeps no offset, and issue order must not
+    # compare wall clocks of different zones
+    issued_utc = _utc(parsed.issued_at) if parsed else None
+    record = TripSourceRecord(trip_id=trip_id, kind=kind, source_id=source_id, received_at=_utc(received_at),
+                              issued_at=issued_utc, raw=raw, raw_sha256=raw_sha,
                               normalized_sha256=_sha(normalized_text(raw)))
     session.add(record)
     session.flush()
@@ -245,7 +261,7 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
         seq = max((r["revision"] for r in revisions), default=0) + 1
         new_revision = seq if revisions else None
         revisions.append({"revision": seq, "record_ids": [record.id],
-                          "issued_at": parsed.issued_at.isoformat() if parsed.issued_at else None,
+                          "issued_at": issued_utc.isoformat() if issued_utc else None,
                           "details": details, "times": times, "changed_fields": []})
         revisions.sort(key=lambda r: (r["issued_at"] or "", r["revision"]))
     for i, cur in enumerate(revisions):                    # what each revision changed vs. everything before it
@@ -259,12 +275,14 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
     item.revisions = revisions
     item.current_revision = current["revision"]
     anchored = {k: item.details[k] for k in spec.anchors(values) if k in item.details}   # never moves
+    kept = {k: item.details[k] for k in spec.derived if k in item.details}                  # recomputed by code
     item.details, item.times = effective(revisions)
-    item.details = {**item.details, **anchored}
+    item.details = {**item.details, **anchored, **kept}
     validate_details(parsed.kind, item.details)
     session.flush()
     item.status = _resolve_status(session, item)
     session.flush()
+    reconcile(session, trip_id)
     return ImportReport(record, True, item, item_new, new_revision, issues)
 
 

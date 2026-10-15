@@ -9,7 +9,6 @@ re-import change nothing."""
 
 from __future__ import annotations
 
-import itertools
 from datetime import datetime, timezone
 
 import pytest
@@ -205,3 +204,18 @@ def test_the_mini_scenario_tells_one_consistent_current_picture_with_its_evidenc
         "cancel: \"Your reservation has been cancelled.\"") < text.index(
         "reinstate: \"Your reservation has been reinstated and is confirmed.\"")
     assert view.story(s, trip.id) == text                                    # deterministic
+
+
+def test_issue_order_is_by_utc_not_by_wall_clock_across_offsets(s, trip):
+    """Cancelled 12:00 +02:00 (10:00 UTC); reinstated 11:30 +00:00 (11:30 UTC):
+    the reinstatement is LATER although its wall-clock time is earlier."""
+    _imp(s, trip, "F3_restaurant_kotor.eml", "F3b_restaurant_cancel.eml")
+    raw = (FIX / "F3c_restaurant_reinstated.eml").read_text(encoding="utf-8").replace(
+        "Issued: 2026-10-12 09:00 +02:00", "Issued: 2026-10-10 11:30 +00:00")
+    rep = ingest.import_document(s, trip.id, kind="restaurant_email", raw=raw, source_id="utc", received_at=RECEIVED)
+    assert rep.item.status == "confirmed"
+    s.commit()
+    s.expire_all()                                                      # read back from the database
+    assert s.get(TripItem, rep.item.id).status == "confirmed"
+    rec = s.get(TripSourceRecord, rep.record.id)
+    assert rec.issued_at.replace(tzinfo=timezone.utc) == datetime(2026, 10, 10, 11, 30, tzinfo=timezone.utc)

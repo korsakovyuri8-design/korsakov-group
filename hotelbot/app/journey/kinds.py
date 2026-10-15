@@ -29,6 +29,7 @@ class KindSpec:
     resolve: Resolver
     anchors: Callable[[dict[str, Any]], dict[str, Any]] = lambda values: {}   # details fixed at creation
     anchor_evidence: dict[str, str] = field(default_factory=dict)            # anchor key -> observed field
+    derived: tuple[str, ...] = ()                 # details computed by code (e.g. comparisons), not claims
 
 
 def _local_date(value: dict[str, Any] | None) -> str | None:
@@ -87,4 +88,50 @@ FLIGHT = KindSpec(
     anchor_evidence={"service_date": "departs"},
 )
 
-KINDS: dict[str, KindSpec] = {s.kind: s for s in (FLIGHT,)}
+# ------------------------------------------------------------------ by booking reference
+def resolve_by_reference(session: Session, trip_id: str, parsed, values: dict[str, Any]):  # noqa: ANN001, ANN201
+    """One booking = provider + booking reference (a hotel stay, a table)."""
+    identity = "|".join([parsed.kind, parsed.provider or "", parsed.booking_reference or ""])
+    item = session.scalar(select(TripItem).where(TripItem.trip_id == trip_id, TripItem.identity == identity))
+    return item, identity, "existing" if item else "new"
+
+
+ACCOMMODATION = KindSpec(
+    kind="accommodation",
+    details={"guest_name": str, "address": str, "room": str, "guests": int, "check_in_from": str,
+             "check_out_until": str},
+    detail_fields=("guest_name", "address", "room", "guests", "check_in_from", "check_out_until"),
+    time_fields=("check_in", "check_out"),
+    resolve=resolve_by_reference,
+)
+
+RESTAURANT = KindSpec(
+    kind="restaurant",
+    details={"venue": str, "address": str, "party": int},
+    detail_fields=("venue", "address", "party"),
+    time_fields=("starts",),
+    resolve=resolve_by_reference,
+)
+
+
+# ------------------------------------------------------------------ guest statement
+def resolve_statement(session: Session, trip_id: str, parsed, values: dict[str, Any]):  # noqa: ANN001, ANN201
+    """A guest statement is its own item - never merged into a booking it
+    resembles; the same claim restated (same subject, place, day) is the
+    same statement, a different time a revision of it."""
+    identity = "|".join(["statement", values.get("subject", ""), (values.get("city") or "").lower(),
+                         _local_date(values.get("at")) or ""])
+    item = session.scalar(select(TripItem).where(TripItem.trip_id == trip_id, TripItem.identity == identity))
+    return item, identity, "existing" if item else "new"
+
+
+STATEMENT = KindSpec(
+    kind="statement",
+    details={"subject": str, "city": str, "related": list},
+    detail_fields=("subject", "city"),
+    time_fields=("at",),
+    resolve=resolve_statement,
+    derived=("related",),
+)
+
+KINDS: dict[str, KindSpec] = {s.kind: s for s in (FLIGHT, ACCOMMODATION, RESTAURANT, STATEMENT)}

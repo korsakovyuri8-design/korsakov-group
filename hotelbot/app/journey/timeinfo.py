@@ -18,13 +18,20 @@ import yaml
 _REGISTRY_PATH = Path(__file__).resolve().parents[2] / "data" / "trips" / "tz_registry.yaml"
 _REGISTRY = yaml.safe_load(_REGISTRY_PATH.read_text(encoding="utf-8"))
 REGISTRY_VERSION: str = _REGISTRY["version"]
-_KINDS = {"airport": "airports", "station": "stations", "port": "ports"}
+_KINDS = {"airport": "airports", "station": "stations", "port": "ports", "country": "countries",
+          "city": "cities"}
 
 
 def zone_for(code: str | None, kind: str) -> str | None:
     if code is None:
         return None
-    return (_REGISTRY.get(_KINDS.get(kind, ""), {}) or {}).get(code)
+    entry = (_REGISTRY.get(_KINDS.get(kind, ""), {}) or {}).get(code)
+    return entry.get("tz") if isinstance(entry, dict) else entry
+
+
+def city_airports(city: str) -> list[str]:
+    entry = (_REGISTRY.get("cities") or {}).get(city) or {}
+    return list(entry.get("airports") or [])
 
 
 def time_record(raw: str, local: datetime, code: str | None, kind: str, *, evidence: str | None) -> tuple[dict[str, Any], str | None]:

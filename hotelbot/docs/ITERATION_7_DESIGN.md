@@ -351,3 +351,63 @@ All names and contacts are fictitious; the carrier is "Demo Air", code DM.
 | F12a / F12b | the same ref, flight and route on 18 Oct and 25 Oct |
 | F12c | a change of the 18 Oct segment over midnight, with "Originally scheduled" |
 | F12d | a change with no original date |
+
+
+## 17. Slice 2 — hotel, restaurant, guest statement
+
+**Fixture numbering.** This supersedes the §10 table where they differ.
+
+| fixture | what it is |
+|---|---|
+| F2 | hotel confirmation |
+| F9 | HTML copy of F2 |
+| F3 | restaurant confirmation |
+| F3b | restaurant cancellation |
+| F3c | restaurant explicit reinstatement |
+| F6 | guest statement ("around 2pm") |
+| F6b | guest statement within tolerance ("around 1pm") |
+
+F8 / F8b / F8c stay the **airline** cancellation / reinstatement fixtures of slice 1.1 and are not reused.
+
+**Structure.**
+- **KindSpec registry** (`app/journey/kinds.py`). Each kind declares its details schema, detail fields, time fields, identity resolver, anchors (with the observed field that evidences them), and derived keys. `ingest.py` is one generic pipeline for every kind: parse → observations → resolve the item → revision → status events → provenance → issues → reconcile.
+- **Parsers** (`app/journey/parsers/`): `hotel` (text and HTML), `restaurant`, `guest`, and `common` (quoting, HTML, status sentences, dates).
+- **Policies** (`app/journey/policies.py`) read `data/trips/policies.yaml`.
+- **Reconciliation** (`app/journey/reconcile.py`) compares guest statements with provider facts.
+- **The story** (`app/journey/view.py`) is the readable trip.
+
+**Rules.**
+- **Hotel.** F2 → `TripItem(kind=accommodation)` only; no `Stay` is created or touched. Check-in and check-out are **dates** (`date_only`, no UTC, never 00:00). The hotel's "from 14:00" / "until 11:00" are its stated policy, kept as details.
+- **Zone of an address.** It comes from the country it names, but only for single-zone countries listed in the registry (Montenegro, Croatia, United Kingdom).
+- **Restaurant.** Confirmation → CONFIRMED; F3b → CANCELLED; the old F3 (or a forwarded copy) after that → still CANCELLED; F3c ("reinstated and is confirmed") → CONFIRMED. All events are kept.
+- **Guest statement.** It is its own `statement` item with status `stated` (a `state` event that never outranks provider evidence). It has no provider and no booking reference, and it is never merged with the booking it resembles.
+  - Its comparison with matching provider facts (flight arriving at the named city's airport that day) is stored on the statement as the derived `related` field.
+  - A difference greater than `tolerances.arrival_time_minutes` in the policy file is a `guest_provider_disagreement` issue, carrying the policy version and the tolerance. Within the tolerance, both observations stay and there is no issue.
+  - The provider item never changes.
+- **Instants are stored in UTC.** SQLite keeps no offset, and an offset lost on the way back would order "12:00 +02:00" after "11:30 +00:00". A test pins that the issue order is by UTC, not by wall clock.
+
+**Gates** (`tests/test_journey_slice2.py`, 18 tests):
+- every kind has field-level provenance;
+- the import order does not change the result (3 orders);
+- re-importing every fixture changes nothing;
+- the tolerance comes only from the policy file;
+- the mini-scenario story is deterministic.
+
+**The mini-scenario, as Atlas reads it.** Guest statement, airline, hotel, restaurant, its cancellation and its reinstatement were imported in that order:
+
+```
+Current picture
+  Flight DM1432 LGW -> TGD: departs 18 Oct 09:15 (Europe/London), arrives 18 Oct 12:55 (Europe/Podgorica) - CONFIRMED
+  Hotel Demo Kotor: 18 Oct -> 21 Oct (check-in from 14:00, check-out until 11:00) - CONFIRMED
+  Guest said: arrival in Podgorica 18 Oct around 14:00 - STATED (not a booking)
+  Konoba Demo: 18 Oct 20:00 (Europe/Podgorica), party of 2 - CONFIRMED
+
+Needs attention
+  - the guest said around 14:00, Demo Air DM1432 arrives 12:55 - 65 min apart (tolerance 30 min, policy 2026-10-16.1); the booking stands
+
+Evidence
+  Konoba Demo
+    2026-10-01 16:00 UTC confirm: "Your reservation is confirmed."
+    2026-10-10 10:00 UTC cancel: "Your reservation has been cancelled."
+    2026-10-12 07:00 UTC reinstate: "Your reservation has been reinstated and is confirmed."
+```
