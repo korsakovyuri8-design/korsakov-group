@@ -256,9 +256,25 @@ def test_world_fabric_upgrade_keeps_places_and_downgrades(engine):
         assert place["slug"] == "cafe" and place["canonical_entity_id"] is None and place["geohash"] is None
         assert {"canonical_entities", "source_entities", "fact_assertions", "entity_links",
                 "world_sources"} <= set(sa.inspect(conn).get_table_names())
+    _upgrade(engine, "head")                  # the models are compared at head (as for 0007)
     assert _diff(engine) == []
     with engine.begin() as conn:
         command.downgrade(alembic_config(conn), "0007_local_world")
     with engine.connect() as conn:
         assert "fact_assertions" not in sa.inspect(conn).get_table_names()
         assert _rows(conn, "select slug from places")[0]["slug"] == "cafe"
+
+
+def test_journey_upgrade_adds_trip_tables_and_downgrades(engine):
+    """0008 -> 0009: the journey tables appear (Iteration 7); nothing else
+    changes; downgrade removes them cleanly."""
+    _upgrade(engine, "0008_world_fabric")
+    _upgrade(engine, "0009_journey")
+    tables = {"trips", "trip_source_records", "trip_items", "trip_observations", "trip_issues"}
+    with engine.connect() as conn:
+        assert tables <= set(sa.inspect(conn).get_table_names())
+    assert _diff(engine) == []
+    with engine.begin() as conn:
+        command.downgrade(alembic_config(conn), "0008_world_fabric")
+    with engine.connect() as conn:
+        assert not tables & set(sa.inspect(conn).get_table_names())

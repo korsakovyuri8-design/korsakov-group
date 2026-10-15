@@ -175,3 +175,18 @@ def test_the_journey_layer_never_writes_transaction_or_stay_state():
 def test_fixture_files_exist():
     assert all(Path(FIX / n).exists() for n in ("F1_airline_lgw_tgd.eml", "F1b_airline_lgw_tgd_fwd.eml",
                                                 "F1c_airline_lgw_tgd_change.eml", "F1d_airline_lgw_tgd_reformatted.eml"))
+
+
+def test_a_field_the_change_notice_does_not_mention_is_not_changed(s, trip):
+    _import(s, trip, "F1_airline_lgw_tgd.eml")
+    item = _import(s, trip, "F1c_airline_lgw_tgd_change.eml").item
+    assert item.details["passengers"] == ["Ana Example", "Marko Example"]
+    assert "passengers" not in item.revisions[1]["details"] and "passengers" not in item.revisions[1]["changed_fields"]
+
+
+def test_details_are_validated_per_kind():
+    ingest.validate_details("flight", {"carrier": "DM", "passengers": []})
+    with pytest.raises(ValueError):
+        ingest.validate_details("flight", {"seat_map": "x"})
+    with pytest.raises(ValueError):
+        ingest.validate_details("flight", {"passengers": "Ana"})
