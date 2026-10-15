@@ -715,3 +715,37 @@ For sights, Kotor Cathedral and the Fortress (both Wikidata-linked) drop out of 
 What is missing is a **prominence / notability signal**: Wikidata presence, `tourism=attraction`, multi-source agreement. That is a new ranking feature, so it is proposed for the next iteration rather than squeezed into 6.1.
 
 **Tests.** All green except the pre-existing date-dependent test, which is next.
+
+### Date-dependent test: fixed clock for the test container
+
+- **Cause.** `tests/conftest.py::container` built the app with `SystemClock`. `test_local_layer::test_staff_can_read_a_guest_plan` asks for "events this week", and the demo DJ night (2026-10-09) left that week once the machine date passed 2026-10-11.
+- **Reproduced.** The same scenario fails with the system clock and passes with `FrozenClock()`.
+- **Fix (1d612af).** The shared container fixture gets `FrozenClock()`: 2026-10-05 12:00 UTC, the demo data's week. No test now depends on when it is run. No test was changed or skipped.
+
+**Full suite:** **862 passed, 2 skipped, 0 failed** (864 collected). The 2 skips are the PostgreSQL-only tests, which are skipped on SQLite as before.
+
+## Iteration 6.1 — closing summary
+
+All fixes were measured on the same frozen Kotor/Budva inputs as `raw_v1`, which is untouched.
+
+| area | before (raw_v1) | after |
+|---|---|---|
+| opening hours parsed | 362 / 433 (83.6 %) | **412 / 433 (95.2 %)**; 21 stay UNKNOWN on purpose |
+| OSM categories mapped | 1909 / 2064 | **2064 / 2064** |
+| ER pair decisions (vs `hours_fix_v1`) | — | **5087 / 5087 identical** after every commit. The one regression (generic `tourist_attraction`) was found and fixed |
+| ranking without a time | known-open first: pharmacy 16 km above 80 m | geography first; essential needs demote only "definitely unavailable now" |
+| cocktails in Budva | 0 | **62** candidates, Strix Cocktail Bar first |
+| "something interesting", "late", "in <town>" | not understood / ignored | understood; town = a registered locality as a hard scope |
+| technical OSM ids in guest-facing text | 968 places affected | **0**, in discovery and trip, in 4 locales |
+| snapshot `content_hash` | differs per build | **identical across builds** (`9aeca030…`) |
+| absent hours vs old hours in ranking | absent looked fresher | absent ranks like stale (ranking only) |
+| test suite | 781 / 782 (date-dependent failure) | **862 passed / 2 skipped / 0 failed** |
+
+**Open, deliberately left for later.**
+1. Blind human labels for `raw_v1` (§16/§17 of `REAL_PILOT.md`). The annotator package is frozen.
+2. A prominence / notability tie-breaker for sights.
+3. OSM `description` enrichment (THE DEEP).
+4. Locale-aware saved-item titles via `place_id`.
+5. A public-holiday calendar (hours class B2) and month ranges (class D).
+6. The pilot's Kotor box includes Tivat.
+7. Same-source lookalike review and second-source blocking scale, from the original priority list. Not reached in 6.1: no auto-merge was added, and ER decisions stayed fixed.
