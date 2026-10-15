@@ -593,3 +593,26 @@ The address is source text and is not transliterated.
 - `app/trip/planner.py`: the shortlist itinerary title, `"{title}: {names}"`.
 
 **Tests.** All green except the pre-existing date-dependent `test_staff_can_read_a_guest_plan`.
+
+### Display name v2: one rule for every guest-facing path
+
+**Commits.**
+- 9fe19eb — tests first: they fail on import before the change.
+- ebc6a0a — `display_name` / `is_unnamed` move to **`app/places/naming.py`**, so Trip does not depend on the Discovery renderer.
+
+**Where the rule now applies:**
+- `discovery/render.py`: candidate lines and event venues. It re-exports the very same function.
+- `trip/commands.py`: saved, shortlisted and planned item titles and their replies, and the not-bookable / not-an-event replies. The module no longer contains `place.name`, which the test asserts.
+- `trip/planner.py::shortlist_names`: the shortlist title.
+
+**Behaviour.**
+- An unnamed ATM is saved as "ATM" / "Bankomat" / "Банкомат".
+- Named places and event titles are unchanged.
+- Known limit: `PlanItem.title` stays a string in the language used at save time. Locale-aware titles via `place_id` come later.
+
+**Run `out/display_name_fix_v2/`.** Code ebc6a0a, clean.
+- Every metric, including `discovery`, is identical to `display_name_fix_v1`.
+- All 5087 ER pair decisions are unchanged.
+- 2078 places rendered in 4 locales: 0 lines with a technical id.
+
+**Tests.** All green except the pre-existing date-dependent test.
