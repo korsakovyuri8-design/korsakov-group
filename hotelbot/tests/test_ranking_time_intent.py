@@ -75,10 +75,20 @@ def test_unknown_is_not_turned_into_open(monkeypatch):
     assert c.status.state == OpenState.UNKNOWN
 
 
-def test_availability_still_breaks_ties_at_the_same_distance(monkeypatch):
+def test_availability_still_breaks_ties_at_the_same_distance_and_reliability(monkeypatch):
+    # equal reliability: absent hours rank like stale ones (test_hours_reliability.py), so the
+    # schedules here are stale too and availability alone breaks the tie
+    old = {"hours": "2026-04-05T00:00:00+00:00"}
     places = [_place("Unknown", 0.10, "museum", None), _place("Open", 0.10, "museum", OPEN_ALL_DAY),
               _place("Closed", 0.10, "museum", CLOSED_TODAY)]
+    places[1].verification = places[2].verification = old
     assert _order(monkeypatch, places, subcategories={"museum"}) == ["Open", "Unknown", "Closed"]
+
+
+def test_a_fresh_real_schedule_outranks_no_schedule_at_the_same_distance(monkeypatch):
+    # consequence of reliability (3 for no schedule) ranking before availability without a time
+    places = [_place("Unknown", 0.10, "museum", None), _place("Closed, fresh hours", 0.10, "museum", CLOSED_TODAY)]
+    assert _order(monkeypatch, places, subcategories={"museum"}) == ["Closed, fresh hours", "Unknown"]
 
 
 def test_explicit_relevance_still_beats_a_small_distance_difference(monkeypatch):
