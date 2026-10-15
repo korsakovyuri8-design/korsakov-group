@@ -66,10 +66,46 @@ def _rows(session: Session, model) -> list[dict[str, Any]]:  # noqa: ANN001
     return out
 
 
+def _natural_keys(tables: dict[str, list[dict[str, Any]]]) -> tuple[dict[str, str], set[str]]:
+    """Runtime-generated row id -> the entity's natural key; plus every row id
+    of the snapshot (the ids the database generated, never source content)."""
+    keys: dict[str, str] = {}
+    for r in tables.get("source_entities", []):
+        keys[r["id"]] = f"source_entity:{r['source_id']}/{r['source_record_id']}"
+    for r in tables.get("canonical_entities", []):
+        keys[r["id"]] = f"canonical:{r['canonical_slug']}"
+    for r in tables.get("coverage_areas", []):
+        keys[r["id"]] = f"area:{r['code']}"
+    row_ids = {r["id"] for t, rows in tables.items() if t != "world_sources"     # world_sources.id IS the source id
+               for r in rows if isinstance(r.get("id"), str)}
+    return keys, row_ids
+
+
 def _evidence(content: dict[str, Any]) -> str:
-    stripped = {t: [{k: v for k, v in row.items() if k not in VOLATILE} for row in rows]
-                for t, rows in content["tables"].items()}
-    return json.dumps(stripped, sort_keys=True, ensure_ascii=False, default=str)
+    """The semantic content the hash proves: runtime row ids replaced by the
+    natural key of the entity they identify (wherever they appear, nested
+    references included), ids of other rows dropped, rows in content order.
+    A value that only looks like an id (a UUID in a source tag) is kept."""
+    tables = content["tables"]
+    keys, row_ids = _natural_keys(tables)
+    stable_ids = {r["id"] for t in ("source_entities", "canonical_entities", "coverage_areas", "world_sources")
+                  for r in tables.get(t, [])}
+
+    def stable(v: Any) -> Any:
+        if isinstance(v, dict):
+            return {k: stable(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [stable(x) for x in v]
+        if isinstance(v, str) and v in row_ids:
+            return keys.get(v, "row")            # a reference to a row with no natural key of its own
+        return v
+
+    out = {}
+    for t, rows in tables.items():
+        cleaned = [{k: stable(v) for k, v in row.items()
+                    if k not in VOLATILE and not (k == "id" and row["id"] not in stable_ids)} for row in rows]
+        out[t] = sorted(cleaned, key=lambda r: json.dumps(r, sort_keys=True, ensure_ascii=False, default=str))
+    return json.dumps(out, sort_keys=True, ensure_ascii=False, default=str)
 
 
 def create(session: Session, name: str, now: datetime) -> WorldSnapshot:
