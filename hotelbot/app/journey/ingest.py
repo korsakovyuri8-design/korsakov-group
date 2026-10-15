@@ -31,10 +31,11 @@ PARSERS = {"airline_email": ("parser:airline", airline.parse)}
 
 # kind -> allowed details keys and their types (D-078: kind-validated details)
 DETAILS = {"flight": {"carrier": str, "flight_number": str, "origin": str, "destination": str,
-                      "cabin": (str, type(None)), "passengers": list}}
+                      "cabin": (str, type(None)), "passengers": list,
+                      "service_date": str}}            # the segment anchor: original local departure date
 _DETAIL_FIELDS = {"flight": ("carrier", "flight_number", "origin", "destination", "cabin", "passengers")}
 _TIME_FIELDS = ("departs", "arrives")
-_STATUS_RANK = {"unknown": 0, "stated": 1, "booked": 2, "confirmed": 3}
+_RAW_TIME = "%d %b %Y %H:%M"
 
 
 @dataclass
@@ -104,12 +105,101 @@ def _comparable(times: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_status(session: Session, item: TripItem) -> str:
-    statuses = [o.value for o in session.scalars(select(TripObservation).where(
-        TripObservation.item_id == item.id, TripObservation.field == "status",
-        TripObservation.extractor.like("parser:%")))]
-    if "cancelled" in statuses:
-        return "cancelled"
-    return max(statuses, key=lambda st: _STATUS_RANK.get(st, 0), default="unknown")
+    """Status from status EVENTS in the provider's issue order (D-081):
+    confirm -> confirmed; cancel -> cancelled; reinstate -> confirmed.
+    CANCELLED dominates: a confirmation issued after it (or an old one
+    forwarded again) does not revive the booking - it is surfaced; only an
+    explicit reinstatement does. Events without an issue time order first."""
+    rows = session.execute(select(TripObservation, TripSourceRecord).join(
+        TripSourceRecord, TripSourceRecord.id == TripObservation.record_id).where(
+        TripObservation.item_id == item.id, TripObservation.field == "status_event",
+        TripObservation.extractor.like("parser:%"))).all()
+    rows.sort(key=lambda r: (r[1].issued_at is not None, _aware(r[1].issued_at), _aware(r[1].received_at),
+                             _aware(r[0].created_at)))
+    state = "unknown"
+    for obs, rec in rows:
+        if obs.value == "cancel":
+            state = "cancelled"
+        elif obs.value == "reinstate":
+            state = "confirmed"
+        elif obs.value == "confirm":
+            if state == "cancelled":
+                _issue(session, item.trip_id, item.id, "confirmation_after_cancellation", {"record_id": rec.id})
+            else:
+                state = "confirmed"
+    return state
+
+
+def _aware(dt: datetime | None) -> datetime:
+    from datetime import timezone
+
+    if dt is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _segment(session: Session, trip_id: str, parsed, values: dict[str, Any]) -> tuple[TripItem | None, str, str]:  # noqa: ANN001
+    """Find the segment a document is about. The anchor - original local
+    departure date - is fixed at first sight and never moves with a
+    revision. Returns (item or None, identity prefix, outcome) with outcome
+    'existing' | 'new' | 'ambiguous'."""
+    prefix = "|".join([parsed.kind, parsed.provider or "", parsed.booking_reference or "",
+                       values.get("flight_number", ""), f"{values.get('origin', '')}-{values.get('destination', '')}"])
+    candidates = list(session.scalars(select(TripItem).where(TripItem.trip_id == trip_id,
+                                                             TripItem.identity.like(f"{prefix}|%"))))
+    dep = values.get("departs")
+    doc_date = datetime.strptime(dep["raw"], _RAW_TIME).date().isoformat() if dep else None
+    original = values.get("original_departure")
+    if original:                                           # the document names the segment it changes
+        want = datetime.strptime(original["raw"], _RAW_TIME).date().isoformat()
+        hit = [c for c in candidates if c.details.get("service_date") == want]
+        return (hit[0], prefix, "existing") if len(hit) == 1 else (None, prefix, "ambiguous" if candidates else "new")
+
+    def dates(c: TripItem) -> set[str]:
+        out = {c.details.get("service_date")}
+        for r in c.revisions:
+            if (r["times"].get("departs") or {}).get("local"):
+                out.add(r["times"]["departs"]["local"][:10])
+        return out
+
+    exact = [c for c in candidates if doc_date in dates(c)]
+    if len(exact) == 1:
+        return exact[0], prefix, "existing"
+    if len(exact) > 1:
+        return None, prefix, "ambiguous"
+    if parsed.doc_type in ("change", "cancellation") and candidates:
+        return (candidates[0], prefix, "existing") if len(candidates) == 1 else (None, prefix, "ambiguous")
+    return None, prefix, "new"
+
+
+SOURCE_FIELDS = ("provider", "booking_reference")
+
+
+def provenance_violations(session: Session, item: TripItem) -> list[str]:
+    """Source-derived fields of the item that no observation supports
+    (gate: every resolved field points to evidence). `kind` is parser
+    metadata (the document format), not a claim, and is not checked."""
+    obs = list(session.scalars(select(TripObservation).where(TripObservation.item_id == item.id)))
+    by_field: dict[str, list[TripObservation]] = {}
+    for o in obs:
+        by_field.setdefault(o.field, []).append(o)
+    bad = []
+    for f in SOURCE_FIELDS:
+        if getattr(item, f) is not None and not any(o.value == getattr(item, f) for o in by_field.get(f, [])):
+            bad.append(f)
+    if item.status != "unknown" and not by_field.get("status_event"):
+        bad.append("status")
+    for k, v in (item.details or {}).items():
+        if k == "service_date":
+            if not by_field.get("departs"):
+                bad.append(k)
+        elif not any(o.value == v for o in by_field.get(k, [])):
+            bad.append(k)
+    ids = {o.id for o in by_field.get("departs", []) + by_field.get("arrives", [])}
+    for k, rec in (item.times or {}).items():
+        if rec.get("evidence") not in ids:
+            bad.append(k)
+    return sorted(bad)
 
 
 def import_document(session: Session, trip_id: str, *, kind: str, raw: str, source_id: str,
@@ -133,14 +223,19 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
         return ImportReport(record, True, None, issues=["unparsed_document"])
 
     values = {f: v for f, v, _ in parsed.observations}
-    identity = "|".join([parsed.kind, parsed.provider or "", parsed.booking_reference or "",
-                         values.get("flight_number", ""), f"{values.get('origin', '')}-{values.get('destination', '')}"])
-    item = session.scalar(select(TripItem).where(TripItem.trip_id == trip_id, TripItem.identity == identity))
+    item, prefix, outcome = _segment(session, trip_id, parsed, values)
+    if outcome == "ambiguous":                             # never guess which segment a change is about
+        _issue(session, trip_id, None, "ambiguous_segment_identity",
+               {"record_id": record.id, "segment": prefix, "doc_type": parsed.doc_type})
+        session.flush()
+        return ImportReport(record, True, None, issues=["ambiguous_segment_identity"])
     item_new = item is None
     if item_new:
-        item = TripItem(trip_id=trip_id, kind=parsed.kind, identity=identity, provider=parsed.provider,
-                        booking_reference=parsed.booking_reference, status="unknown", details={}, times={},
-                        current_revision=0, revisions=[])
+        original = values.get("original_departure") or values["departs"]
+        anchor = datetime.strptime(original["raw"], _RAW_TIME).date().isoformat()
+        item = TripItem(trip_id=trip_id, kind=parsed.kind, identity=f"{prefix}|{anchor}", provider=parsed.provider,
+                        booking_reference=parsed.booking_reference, status="unknown", times={},
+                        current_revision=0, revisions=[], details={"service_date": anchor})
         session.add(item)
         session.flush()
 
@@ -158,7 +253,7 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
     times, issues = {}, []
     for o in obs_rows:
         if o.field in _TIME_FIELDS:
-            local = datetime.strptime(o.value["raw"], "%d %b %Y %H:%M")
+            local = datetime.strptime(o.value["raw"], _RAW_TIME)
             rec, problem = timeinfo.time_record(o.value["raw"], local, o.value["place"], o.value["place_kind"],
                                                 evidence=o.id)
             times[o.field] = rec
@@ -206,7 +301,10 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
     current = revisions[-1]                                # the one the provider issued last
     item.revisions = revisions
     item.current_revision = current["revision"]
+    anchor = item.details.get("service_date")
     item.details, item.times = effective(revisions)
+    item.details = {**item.details, "service_date": anchor}
+    validate_details(parsed.kind, item.details)
     session.flush()
     item.status = _resolve_status(session, item)
     session.flush()
@@ -224,7 +322,7 @@ def accept_proposals(session: Session, record_id: str, item_id: str,
     out = ProposalResult()
     for p in proposals:
         evidence = p.get("evidence")
-        if p.get("field") == "status":
+        if p.get("field") in ("status", "status_event"):
             out.rejected.append((p, "status needs provider evidence read by a deterministic parser"))
         elif not evidence or evidence not in record.raw:
             out.rejected.append((p, "evidence not found in the source record"))

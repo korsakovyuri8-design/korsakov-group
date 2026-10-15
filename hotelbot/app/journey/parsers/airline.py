@@ -11,20 +11,26 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-_PROVIDER = re.compile(r"^(?P<p>[A-Z][\w .&'-]+?)\s+-\s+(?:booking confirmation|schedule change|cancellation)\s*$", re.I)
+_PROVIDER = re.compile(r"^(?P<p>[A-Z][\w .&'-]+?)\s+-\s+(?P<t>booking confirmation|schedule change|cancellation)\s*$",
+                       re.I)
+_DOC_TYPE = {"booking confirmation": "confirmation", "schedule change": "change", "cancellation": "cancellation"}
 _REF = re.compile(r"^Booking reference:\s*(?P<v>[A-Z0-9]{5,8})\s*$")
 _ISSUED = re.compile(r"^Issued:\s*(?P<d>\d{4}-\d{2}-\d{2})\s+(?P<t>\d{2}:\d{2})\s+(?P<o>[+-]\d{2}:\d{2})\s*$")
 _FLIGHT = re.compile(r"^Flight\s+(?P<c>[A-Z0-9]{2})\s*(?P<n>\d{1,4})\s*$")
 _LEG = re.compile(r"^(?P<w>Depart|Arrive):\s*(?P<name>.+?)\s*\((?P<code>[A-Z]{3})\)\s+(?P<d>\d{1,2}\s+\w{3}\s+\d{4})"
                   r"\s+(?P<t>\d{2}:\d{2})\s*$")
+_ORIGINAL = re.compile(r"^Originally scheduled:\s*(?P<d>\d{1,2}\s+\w{3}\s+\d{4})\s+(?P<t>\d{2}:\d{2})\s*$")
 _CABIN = re.compile(r"^Cabin:\s*(?P<v>\w[\w ]*?)\s*$")
-_STATUS = [(re.compile(r"\b(?:booking|reservation)\s+(?:is|remains)\s+confirmed\b", re.I), "confirmed"),
-           (re.compile(r"\b(?:booking|reservation)\s+(?:has been|is|was)\s+cancell?ed\b", re.I), "cancelled")]
+# status EVENTS (D-081), first match per line: an explicit reinstatement, a cancellation, a confirmation
+_STATUS = [(re.compile(r"\b(?:booking|reservation)\s+has been\s+(?:reinstated|rebooked)\b", re.I), "reinstate"),
+           (re.compile(r"\b(?:booking|reservation)\s+(?:has been|is|was)\s+cancell?ed\b", re.I), "cancel"),
+           (re.compile(r"\b(?:booking|reservation)\s+(?:is|remains)\s+confirmed\b", re.I), "confirm")]
 
 
 @dataclass
 class Parsed:
     kind: str
+    doc_type: str | None = None        # confirmation | change | cancellation
     provider: str | None = None
     booking_reference: str | None = None
     issued_at: datetime | None = None
@@ -58,7 +64,10 @@ def parse(raw: str) -> Parsed | None:
                 continue
             in_passengers = None
         if m := _PROVIDER.match(flat):
-            out.provider = out.provider or m.group("p").strip().lower()
+            if out.provider is None:
+                out.provider = m.group("p").strip().lower()
+                out.doc_type = _DOC_TYPE[m.group("t").lower()]
+                out.observations.append(("provider", out.provider, line))
         elif m := _REF.match(flat):
             out.booking_reference = m.group("v")
             out.observations.append(("booking_reference", m.group("v"), line))
@@ -72,13 +81,17 @@ def parse(raw: str) -> Parsed | None:
             out.observations.append(("origin" if name == "departs" else "destination", m.group("code"), line))
             raw_value = f"{re.sub(chr(32) + '+', ' ', m.group('d'))} {m.group('t')}"
             out.observations.append((name, {"raw": raw_value, "place": m.group("code"), "place_kind": "airport"}, line))
+        elif m := _ORIGINAL.match(flat):
+            raw_value = f"{re.sub(chr(32) + '+', ' ', m.group('d'))} {m.group('t')}"
+            out.observations.append(("original_departure", {"raw": raw_value}, line))
         elif m := _CABIN.match(flat):
             out.observations.append(("cabin", m.group("v"), line))
         elif flat == "Passengers:":
             in_passengers = line
-        for pattern, status in _STATUS:
+        for pattern, event in _STATUS:
             if pattern.search(flat):
-                out.observations.append(("status", status, line))
+                out.observations.append(("status_event", event, line))
+                break
     if passengers:
         start = lines.index(next(raw_line for raw_line in lines if _unquote(raw_line).strip() == "Passengers:"))
         block = "\n".join(lines[start:start + 1 + len(passengers)])

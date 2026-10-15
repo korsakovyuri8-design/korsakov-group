@@ -106,7 +106,7 @@ An LLM extractor may be added later behind the same interface. It is a *proposer
 | class | detection | handling |
 |---|---|---|
 | `duplicate_confirmation` | same provider + booking ref + same resolved fields from another record | merged into one TripItem; the record is linked as a duplicate, no issue shown |
-| `updated_booking` | same provider + booking ref, a newer provider document with different fields | a new observation set: fields resolved by the provider document's issue time; old values kept; status `changed` only if the document says so |
+| `updated_booking` | same provider + booking ref, a newer provider document with different fields | a new observation set: a new **revision** of the item's fields (current = last issued by the provider); old revisions kept; the status is unchanged (D-081) |
 | `contradictory_times` | two sources disagree on a field of the same item and neither is an explicit update | field `contested`; issue shown; the timeline uses neither as certain |
 | `overlapping_bookings` | two occupying items (stay / segment / reservation) overlap for the same traveller | issue; both kept |
 | `impossible_connection` | arrival of segment A after departure of segment B, or less than the minimum connection time (configurable per mode) | issue |
@@ -118,7 +118,7 @@ An LLM extractor may be added later behind the same interface. It is a *proposer
 
 ## 6. Idempotency and item identity
 
-- **Record level.** The same `normalized_sha256` → the same record. It is not stored twice; it is linked as a re-delivery.
+- **Record level.** The same **raw** bytes (`raw_sha256`) → the same record, stored once. A forwarded or reformatted copy has another raw hash and is a **new record**. `normalized_sha256` only helps recognise copies; the item is found by semantic identity (§13).
 - **Item level.** The item key is `(provider_normalised, booking_ref)` when present, plus a segment discriminator (flight number + date of departure) for multi-segment bookings.
 - **Without a booking ref** (a guest statement), the key is `(kind, normalised place, local date)`. A statement plus a later provider document for the same kind/place/date is **linked**, not merged: the document upgrades the evidence, and the statement stays as an observation.
 - **Tests cover:**
@@ -312,3 +312,42 @@ All names and contacts are fictitious; the carrier is "Demo Air", code DM.
 **Deviations, recorded.**
 1. **D-079 time-zone registry.** OurAirports' `airports.csv` has coordinates but **no time-zone column**, and this environment has no network. Slice 1 therefore uses a small, explicitly versioned, hand-curated registry (`data/trips/tz_registry.yaml`, version `2026-10-15.1`) covering the fixture airports. A full airport snapshot needs a coordinate → IANA resolver: a separate, later step.
 2. **Migration test.** The world-fabric migration test assumed 0008 was the head. It now compares the models at `head`, the convention the 0007 test already used. Its data assertions are unchanged.
+
+
+## 16. Slice 1.1 — hardening (before hotel / restaurant)
+
+**Commits.** Tests first, then the code; see the git log for "slice 1.1".
+
+**1. Provider provenance.**
+- The parser emits a `provider` observation whose evidence is the provider's own line, e.g. `Demo Air - booking confirmation`.
+- `ingest.provenance_violations(item)` checks every source-derived field of a `TripItem` against an observation: `provider`, `booking_reference`, status (status events), every `details` key, and every time record. `kind` is parser metadata, the document format, and is not checked.
+- Gate: deleting the provider (or booking reference) observation makes the check fail.
+
+**2. Segment anchor identity.**
+- The identity is `flight | provider | ref | carrier+number | origin-destination | service_date`.
+- `service_date` is the original local departure date. It is fixed when the segment is first seen and never moves with a revision.
+- A document finds its segment in this order:
+  1. by `Originally scheduled: <date>`, when the document gives it;
+  2. by a departure date equal to the anchor or to any revision's departure date;
+  3. for a change or cancellation, the single candidate under the same ref, flight and route.
+- A confirmation for another date under the same ref is a **new segment**.
+- More than one candidate with no discriminator → `ambiguous_segment_identity`. The record is kept, and no item is merged or changed.
+
+**3. Status from events (D-081).**
+- The parser emits `status_event ∈ {confirm, cancel, reinstate}`, matching the first status sentence on a line, and nothing else.
+- The resolver walks events in the provider's issue order: confirm → confirmed; cancel → cancelled; reinstate → confirmed.
+- A confirm after a cancel never revives the booking. That covers an old confirmation forwarded again as well as a newer ordinary one, and the latter is surfaced as `confirmation_after_cancellation`.
+- Only an explicit "reinstated / rebooked" sentence revives.
+- Every event observation stays in the history.
+- A model may not propose `status` or `status_event`.
+
+**New fixtures.**
+
+| fixture | what it is |
+|---|---|
+| F8 | cancellation |
+| F8c | ordinary confirmation issued after the cancellation |
+| F8b | explicit reinstatement |
+| F12a / F12b | the same ref, flight and route on 18 Oct and 25 Oct |
+| F12c | a change of the 18 Oct segment over midnight, with "Originally scheduled" |
+| F12d | a change with no original date |
