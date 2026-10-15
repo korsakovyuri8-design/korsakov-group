@@ -1,0 +1,15 @@
+# Iteration 7, slice 1 - place -> IANA time zone, explicitly versioned (D-079).
+# Hand-curated for the fixture set only: OurAirports' airports.csv carries
+# coordinates but no time-zone column, so a full airport snapshot needs a
+# coordinate -> IANA resolver (a later, separate step). A code not listed
+# here has an UNKNOWN zone - never guessed, never the user's device zone.
+version: "2026-10-15.1"
+airports:            # IATA -> IANA
+  LGW: Europe/London
+  LHR: Europe/London
+  TGD: Europe/Podgorica
+  TIV: Europe/Podgorica
+  DBV: Europe/Zagreb
+  FCO: Europe/Rome
+stations: {}
+ports: {}
