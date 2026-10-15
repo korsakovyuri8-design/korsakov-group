@@ -297,6 +297,11 @@ def rank(place: Place, f: Facts, q: DiscoveryQuery, signals: Signals | None) -> 
            for n in ("opening_hours", "kitchen_hours", "temporary_closure")) \
             or (resolution.get("_existence") or {}).get("state") == "unconfirmed" or f.contested:
         reliability = max(reliability, 3)       # disputed, contested or unconfirmed data ranks like stale data
+    hours = place.hours or {}
+    if not (hours.get("weekly") or hours.get("seasonal") or hours.get("special")):
+        # no schedule at all: in the RANK only it weighs like stale hours - an absent
+        # schedule must not look more reliable than a real old one (the data still says unknown)
+        reliability = max(reliability, FRESH_RANK[Freshness.STALE])
     rating = -int(float(attrs.get("rating", 0)) * 2)
     value = 0
     if q.price_pref == "low" and place.price_range is not None:
