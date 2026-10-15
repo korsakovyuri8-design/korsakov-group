@@ -658,3 +658,60 @@ Snapshot hashes stored in earlier runs were computed the old way and are not com
 - Observed in "eat late" before the NLU fix: Konoba Galeb (0.08 km, no hours) above Astoria (0.10 km, open, hours checked 186 days ago).
 
 **Proposed rule, not implemented.** A fact that is absent is not "fresh". For a place without hours, the `hours` fact contributes the **STALE rank (3)**: it can never look more reliable than an existing schedule, however old. Absence is not penalised beyond that. With an equal distance bucket the tie then goes to availability, so the known-open place comes first. With a different distance bucket, distance still decides, so an unnamed ATM with no hours at 40 m stays first. Other facts (kitchen, closure) already count only when present.
+
+### Hours reliability: no schedule ranks like stale (ranking only)
+
+**Commits.**
+- b52a139 — tests first: 2 of the new tests fail before the fix.
+- 693d415 — the fix: in `rank()` only, a place with no `weekly` / `seasonal` / `special` schedule gets `reliability = max(reliability, FRESH_RANK[STALE])`.
+
+What does not change: `place_facts()`, `FactFreshness`, the open state (still UNKNOWN), the caveats, and the wording ("no opening-hours data").
+
+**What the tests pin.**
+- No schedule with a fresh record → 3.
+- Real schedules keep their rank: fresh 0, aging 1, stale 3.
+- The data and the wording are untouched.
+- Equal distance bucket: Astoria (real hours, 186 days old) beats Galeb (no hours).
+- Distance still beats reliability: an ATM at 40 m without hours beats one at 780 m that is open.
+- The open state and the unknown-padding hard rule are unchanged.
+
+**One earlier test of this iteration was restated.** `test_availability_still_breaks_ties_at_the_same_distance` had places with *fresh* hours tie against one with no hours. Its intent is a tie-break by availability alone, so it now uses stale schedules: equal reliability, same expected order.
+
+A new test pins the consequence of the approved key: at the same distance, with no time asked, a **fresh real schedule that says CLOSED ranks before no schedule at all**, because reliability comes before availability.
+
+**All 2078 places, reliability component.** Neutral query, old vs new engine:
+
+| change | places |
+|---|---:|
+| no schedule: 0 → 3 | 40 |
+| no schedule: 1 → 3 | 58 |
+| no schedule: 2 → 3 | 938 |
+| **artificial rank 3, total** | **1036** |
+| no schedule, already 3 (stale record) | 630 |
+| real schedule, already STALE (3) | 383 |
+| HoursStatus changed | **0** |
+| rendered line (wording) changed | **0** |
+
+**Run `out/reliability_fix_v1/`.** Code 693d415, clean.
+- Non-discovery metrics are identical.
+- The snapshot hash is again `9aeca030…`: same world, same hash.
+- All 5087 ER pair decisions are unchanged.
+
+**Ties broken by reliability in the frozen queries.** Each change below is a reorder inside one distance bucket.
+
+| query | before | after |
+|---|---|---|
+| "Where can we eat?" (Budva, no time) — the Galeb case | **Konoba Galeb** (0.08, no hours), Astoria (0.10, open), Old Fisherman's Pub, Regina E, Rivijera | **Astoria**, Old Fisherman's Pub, Regina E, Rivijera, Punta Konoba (0.04, opens later) |
+| nearest pharmacy (0.1 km buckets) | ATM-like order: `node/…` 0.08 U, Vegapharm 0.12 O, … | Vegapharm 0.12 O, Pharmacy 0.08 U, Tea Medica 0.44 O, Pharmacy 0.39 U, Dobrota 1.37 U |
+| ATM nearby | `node/…` 0.04, Euronet 0.04, … | Euronet 0.04, ATM 0.04, … (same set) |
+| beach in Budva | City beach, Ričardova glava, Pizana, Mogren, Greco | City beach, Pizana, Ričardova glava, Greco, Mogren (same set) |
+| cocktails in Budva | Strix, Rakia & Wine Bar, Blues Brothers, Mañana, Old Town Pub | Strix, Mañana, Old Town Pub, Blue Cat, Blues Brothers |
+| **something interesting near the Old Town** | Church of Our Lady of Remedy, Kotorska katedrala, Kotorska tvrđava, Pima Palace, Saint Anne | Muzej mačaka (open), Galerija nives (open), **Anton Luković, Bastion Bembo, Bastion Korner** |
+
+**Finding, not fixed: ties broken by name.** Normal queries bucket distance at 0.5 km. Inside that bucket, with equal reliability and availability, the rest of the key is empty for most real places: no rating, no price, no relationship. So the final tie-break is `place.name`, in alphabetical order.
+
+For sights, Kotor Cathedral and the Fortress (both Wikidata-linked) drop out of the top 5 in favour of alphabetically early bastions. Before this fix the same ties were decided by the record's edit date, which was no better grounded.
+
+What is missing is a **prominence / notability signal**: Wikidata presence, `tourism=attraction`, multi-source agreement. That is a new ranking feature, so it is proposed for the next iteration rather than squeezed into 6.1.
+
+**Tests.** All green except the pre-existing date-dependent test, which is next.
