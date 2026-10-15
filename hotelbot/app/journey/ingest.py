@@ -25,17 +25,10 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Trip, TripIssue, TripItem, TripObservation, TripSourceRecord
 from app.journey import timeinfo
+from app.journey.kinds import KINDS
 from app.journey.parsers import airline
 
 PARSERS = {"airline_email": ("parser:airline", airline.parse)}
-
-# kind -> allowed details keys and their types (D-078: kind-validated details)
-DETAILS = {"flight": {"carrier": str, "flight_number": str, "origin": str, "destination": str,
-                      "cabin": (str, type(None)), "passengers": list,
-                      "service_date": str}}            # the segment anchor: original local departure date
-_DETAIL_FIELDS = {"flight": ("carrier", "flight_number", "origin", "destination", "cabin", "passengers")}
-_TIME_FIELDS = ("departs", "arrives")
-_RAW_TIME = "%d %b %Y %H:%M"
 
 
 @dataclass
@@ -82,7 +75,7 @@ def normalized_text(raw: str) -> str:
 
 
 def validate_details(kind: str, details: dict[str, Any]) -> None:
-    spec = DETAILS[kind]
+    spec = KINDS[kind].details
     unknown = set(details) - set(spec)
     if unknown:
         raise ValueError(f"{kind}: unknown details {sorted(unknown)}")
@@ -138,40 +131,6 @@ def _aware(dt: datetime | None) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def _segment(session: Session, trip_id: str, parsed, values: dict[str, Any]) -> tuple[TripItem | None, str, str]:  # noqa: ANN001
-    """Find the segment a document is about. The anchor - original local
-    departure date - is fixed at first sight and never moves with a
-    revision. Returns (item or None, identity prefix, outcome) with outcome
-    'existing' | 'new' | 'ambiguous'."""
-    prefix = "|".join([parsed.kind, parsed.provider or "", parsed.booking_reference or "",
-                       values.get("flight_number", ""), f"{values.get('origin', '')}-{values.get('destination', '')}"])
-    candidates = list(session.scalars(select(TripItem).where(TripItem.trip_id == trip_id,
-                                                             TripItem.identity.like(f"{prefix}|%"))))
-    dep = values.get("departs")
-    doc_date = datetime.strptime(dep["raw"], _RAW_TIME).date().isoformat() if dep else None
-    original = values.get("original_departure")
-    if original:                                           # the document names the segment it changes
-        want = datetime.strptime(original["raw"], _RAW_TIME).date().isoformat()
-        hit = [c for c in candidates if c.details.get("service_date") == want]
-        return (hit[0], prefix, "existing") if len(hit) == 1 else (None, prefix, "ambiguous" if candidates else "new")
-
-    def dates(c: TripItem) -> set[str]:
-        out = {c.details.get("service_date")}
-        for r in c.revisions:
-            if (r["times"].get("departs") or {}).get("local"):
-                out.add(r["times"]["departs"]["local"][:10])
-        return out
-
-    exact = [c for c in candidates if doc_date in dates(c)]
-    if len(exact) == 1:
-        return exact[0], prefix, "existing"
-    if len(exact) > 1:
-        return None, prefix, "ambiguous"
-    if parsed.doc_type in ("change", "cancellation") and candidates:
-        return (candidates[0], prefix, "existing") if len(candidates) == 1 else (None, prefix, "ambiguous")
-    return None, prefix, "new"
-
-
 SOURCE_FIELDS = ("provider", "booking_reference")
 
 
@@ -189,13 +148,14 @@ def provenance_violations(session: Session, item: TripItem) -> list[str]:
             bad.append(f)
     if item.status != "unknown" and not by_field.get("status_event"):
         bad.append("status")
+    spec = KINDS[item.kind]
     for k, v in (item.details or {}).items():
-        if k == "service_date":
-            if not by_field.get("departs"):
+        if k in spec.anchor_evidence:
+            if not by_field.get(spec.anchor_evidence[k]):
                 bad.append(k)
         elif not any(o.value == v for o in by_field.get(k, [])):
             bad.append(k)
-    ids = {o.id for o in by_field.get("departs", []) + by_field.get("arrives", [])}
+    ids = {o.id for f in spec.time_fields for o in by_field.get(f, [])}
     for k, rec in (item.times or {}).items():
         if rec.get("evidence") not in ids:
             bad.append(k)
@@ -222,20 +182,19 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
         session.flush()
         return ImportReport(record, True, None, issues=["unparsed_document"])
 
+    spec = KINDS[parsed.kind]
     values = {f: v for f, v, _ in parsed.observations}
-    item, prefix, outcome = _segment(session, trip_id, parsed, values)
-    if outcome == "ambiguous":                             # never guess which segment a change is about
+    item, identity, outcome = spec.resolve(session, trip_id, parsed, values)
+    if outcome == "ambiguous":                             # never guess which item a document is about
         _issue(session, trip_id, None, "ambiguous_segment_identity",
-               {"record_id": record.id, "segment": prefix, "doc_type": parsed.doc_type})
+               {"record_id": record.id, "segment": identity, "doc_type": parsed.doc_type})
         session.flush()
         return ImportReport(record, True, None, issues=["ambiguous_segment_identity"])
     item_new = item is None
     if item_new:
-        original = values.get("original_departure") or values["departs"]
-        anchor = datetime.strptime(original["raw"], _RAW_TIME).date().isoformat()
-        item = TripItem(trip_id=trip_id, kind=parsed.kind, identity=f"{prefix}|{anchor}", provider=parsed.provider,
+        item = TripItem(trip_id=trip_id, kind=parsed.kind, identity=identity, provider=parsed.provider,
                         booking_reference=parsed.booking_reference, status="unknown", times={},
-                        current_revision=0, revisions=[], details={"service_date": anchor})
+                        current_revision=0, revisions=[], details=spec.anchors(values))
         session.add(item)
         session.flush()
 
@@ -248,14 +207,12 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
         obs_rows.append(o)
     session.flush()
 
-    details = {f: values.get(f) for f in _DETAIL_FIELDS[parsed.kind] if f in values}
+    details = {f: values.get(f) for f in spec.detail_fields if f in values}
     validate_details(parsed.kind, details)
     times, issues = {}, []
     for o in obs_rows:
-        if o.field in _TIME_FIELDS:
-            local = datetime.strptime(o.value["raw"], _RAW_TIME)
-            rec, problem = timeinfo.time_record(o.value["raw"], local, o.value["place"], o.value["place_kind"],
-                                                evidence=o.id)
+        if o.field in spec.time_fields:
+            rec, problem = timeinfo.record_from_value(o.value, evidence=o.id)
             times[o.field] = rec
             if problem:
                 issues.append(problem)
@@ -301,9 +258,9 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
     current = revisions[-1]                                # the one the provider issued last
     item.revisions = revisions
     item.current_revision = current["revision"]
-    anchor = item.details.get("service_date")
+    anchored = {k: item.details[k] for k in spec.anchors(values) if k in item.details}   # never moves
     item.details, item.times = effective(revisions)
-    item.details = {**item.details, "service_date": anchor}
+    item.details = {**item.details, **anchored}
     validate_details(parsed.kind, item.details)
     session.flush()
     item.status = _resolve_status(session, item)

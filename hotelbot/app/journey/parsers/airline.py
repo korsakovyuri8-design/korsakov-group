@@ -37,6 +37,10 @@ class Parsed:
     observations: list[tuple[str, Any, str]] = field(default_factory=list)   # (field, value, evidence)
 
 
+def _local(raw_value: str) -> str:
+    return datetime.strptime(raw_value, "%d %b %Y %H:%M").strftime("%Y-%m-%dT%H:%M")
+
+
 def _unquote(line: str) -> str:
     """Drop one level of e-mail quoting ("> "), keep the rest as written."""
     if line.startswith(">"):
@@ -80,10 +84,11 @@ def parse(raw: str) -> Parsed | None:
             name = "departs" if m.group("w") == "Depart" else "arrives"
             out.observations.append(("origin" if name == "departs" else "destination", m.group("code"), line))
             raw_value = f"{re.sub(chr(32) + '+', ' ', m.group('d'))} {m.group('t')}"
-            out.observations.append((name, {"raw": raw_value, "place": m.group("code"), "place_kind": "airport"}, line))
+            out.observations.append((name, {"raw": raw_value, "local": _local(raw_value), "place": m.group("code"),
+                                            "place_kind": "airport"}, line))
         elif m := _ORIGINAL.match(flat):
             raw_value = f"{re.sub(chr(32) + '+', ' ', m.group('d'))} {m.group('t')}"
-            out.observations.append(("original_departure", {"raw": raw_value}, line))
+            out.observations.append(("original_departure", {"raw": raw_value, "local": _local(raw_value)}, line))
         elif m := _CABIN.match(flat):
             out.observations.append(("cabin", m.group("v"), line))
         elif flat == "Passengers:":
