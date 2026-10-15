@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from app.discovery.engine import Candidate, EventCandidate, walking
@@ -250,8 +251,29 @@ def _caveat_labels(c: Candidate, locale: str) -> list[str]:
     return out
 
 
+# An OSM element id used as a fallback name: an internal identifier, never shown.
+_TECHNICAL_NAME = re.compile(r"(node|way|relation)/\d+")
+
+
+def _unnamed(place) -> bool:  # noqa: ANN001
+    return not place.name or _TECHNICAL_NAME.fullmatch(place.name.strip()) is not None
+
+
+def display_name(place, locale: str) -> str:  # noqa: ANN001
+    """What the traveller sees as the place's name. A real name as is; with no
+    name (or only an OSM id) the localised kind, plus the source's address if
+    it has one. Nothing is invented; Place.name itself is not changed."""
+    if not _unnamed(place):
+        return place.name
+    kind = label(place.subcategory, locale)
+    kind = kind[:1].upper() + kind[1:]
+    address = getattr(place, "address", None)
+    return f"{kind}, {address}" if address else kind
+
+
 def candidate_line(i: int, c: Candidate, locale: str, anchor: str = "the hotel", *, now: bool = False) -> str:
-    parts = [f"{i}. {c.place.name} ({label(c.place.subcategory, locale)})"]
+    name = display_name(c.place, locale)
+    parts = [f"{i}. {name}" if _unnamed(c.place) else f"{i}. {name} ({label(c.place.subcategory, locale)})"]
     detail = [status_text(c, locale, now=now)]
     if c.distance_km is not None:
         detail.append(L("walk", locale, km=f"{c.distance_km:.1f}", m=c.walk_minutes or walking(c.distance_km),
@@ -262,7 +284,7 @@ def candidate_line(i: int, c: Candidate, locale: str, anchor: str = "the hotel",
 
 def event_line(i: int, e: EventCandidate, locale: str, tz_fmt) -> str:
     title = e.event.title.get(locale.split("-")[0]) or e.event.title.get("en") or e.event.slug
-    where = f" @ {e.place.name}" if e.place else ""
+    where = f" @ {display_name(e.place, locale)}" if e.place else ""
     if e.event.ticket_required and e.event.ticket_price is not None:
         price = L("ticket", locale, p=f"{e.event.ticket_price:.2f}", c=e.event.currency or "")
     elif (e.event.attributes or {}).get("ticketing") == "unknown":
