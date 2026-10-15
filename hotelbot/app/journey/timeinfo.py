@@ -64,3 +64,11 @@ def record_from_value(value: dict[str, Any], *, evidence: str | None) -> tuple[d
     if value.get("approximate"):
         rec["approximate"] = True
     return rec, issue
+
+
+def airport_city(code: str | None) -> str | None:
+    """The registered city an airport serves (its locality), else None."""
+    for city, entry in sorted((_REGISTRY.get("cities") or {}).items()):
+        if isinstance(entry, dict) and code in (entry.get("airports") or []):
+            return city
+    return None

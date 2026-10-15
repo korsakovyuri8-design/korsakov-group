@@ -27,12 +27,12 @@ from app.db.models import Trip, TripItem, TripObservation, TripSourceRecord
 from app.journey import timeinfo
 from app.journey.issues import raise_issue
 from app.journey.kinds import KINDS
-from app.journey.parsers import airline, guest, hotel, restaurant
+from app.journey.parsers import airline, guest, hotel, restaurant, transfer
 from app.journey.reconcile import reconcile
 
 PARSERS = {"airline_email": ("parser:airline", airline.parse), "hotel_email": ("parser:hotel", hotel.parse),
            "restaurant_email": ("parser:restaurant", restaurant.parse),
-           "guest_statement": ("parser:guest", guest.parse)}
+           "transfer_email": ("parser:transfer", transfer.parse), "guest_statement": ("parser:guest", guest.parse)}
 
 
 @dataclass

@@ -92,6 +92,8 @@ class DiscoveryQuery:
     traveller: dict[str, Any] = field(default_factory=dict)    # persisted traveller preferences (soft)
     # context
     near: Point | None = None
+    end_near: Point | None = None        # where the window ENDS (a trip window's end anchor): the visit must fit
+                                         # start -> candidate -> end; None = back to `near` (2 x walk)
     anchor_label: str | None = None
     essential: bool = False
     limit: int = 3
@@ -152,6 +154,7 @@ class Facts:
     walk: int | None
     fresh: dict[str, FactFreshness]
     contested: dict[str, list[str]] = field(default_factory=dict)   # fact -> [winner claim, other claims]
+    walk_end: int | None = None          # candidate -> q.end_near
 
 
 # high-dynamic place facts: resolution field -> (fact name, how a value enters place.hours)
@@ -213,11 +216,14 @@ def normalize(place: Place, q: DiscoveryQuery, now_utc: datetime, tz: str,
     if q.near is not None and place.latitude is not None and place.longitude is not None:
         p = Point(place.latitude, place.longitude)
         dist, walk = distance_km(q.near, p), estimator.walking_minutes(q.near, p)
+    walk_end = None
+    if q.end_near is not None and place.latitude is not None and place.longitude is not None:
+        walk_end = estimator.walking_minutes(Point(place.latitude, place.longitude), q.end_near)
     facts_needed = ["hours"] + (["kitchen"] if (place.hours or {}).get("kitchen") else [])
     if (place.hours or {}).get("closed"):
         facts_needed.append("closure")
     return Facts(local, venue, food, until, window_ok, dist, walk, place_facts(place, now_utc, tuple(facts_needed)),
-                 contested_claims(place, local))
+                 contested_claims(place, local), walk_end)
 
 
 # ============================================================== HARD FILTER
@@ -268,7 +274,9 @@ def hard_filter(place: Place, f: Facts, q: DiscoveryQuery) -> str | None:
     if f.window_ok is False:
         return "closes_before_window_ends"
     if q.visit_minutes and q.window_end is not None and q.at is not None:
-        need = int(attrs.get("typical_visit_minutes") or attrs.get("estimated_visit_minutes") or 0) + 2 * (f.walk or 0)
+        back = f.walk_end if q.end_near is not None else f.walk      # to the window's end, else back again
+        need = int(attrs.get("typical_visit_minutes") or attrs.get("estimated_visit_minutes") or 0) + \
+            (f.walk or 0) + (back or 0)
         if need > (q.window_end - q.at).total_seconds() / 60:
             return "does_not_fit_window"
     return None

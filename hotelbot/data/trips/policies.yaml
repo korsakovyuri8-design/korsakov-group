@@ -1,8 +1,17 @@
 # Iteration 7 trip policies (D-080). Versioned: every derived result records
 # the version it used. HARD = operational, SOFT = traveller (overridable).
-version: "2026-10-16.1"
-hard: {}          # buffers / minimum connection times / check-in handling (slice 3)
-soft: {}          # waking hours (slice 3)
+version: "2026-10-16.2"
+hard:                              # minutes; every one a window applies is recorded on it
+  airport_exit_minutes: 45         # flight arrival -> out of the airport
+  min_connection_minutes: 45       # flight arrival -> next flight from the same airport
+  airport_arrival_minutes: 120     # at the airport before a departure
+  check_in_handling_minutes: 30    # at the hotel desk after arrival
+  check_out_handling_minutes: 15   # before the check-out deadline
+  reservation_buffer_minutes: 30   # be on the way / there before a fixed-time booking
+  restaurant_default_minutes: 120  # ASSUMED length of a table booking with no end time
+soft:
+  waking_hours: {start: "08:00", end: "23:00"}
+  min_window_minutes: 90
 # Guest statement vs a provider-owned fact (D-082): the provider value stands;
 # a difference larger than the tolerance is a TripIssue. Status has no tolerance.
 tolerances:

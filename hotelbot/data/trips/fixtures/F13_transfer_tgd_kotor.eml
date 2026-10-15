@@ -1,0 +1,17 @@
+Message-ID: <tr551-1@demo-transfers.example>
+From: Demo Transfers <bookings@demo-transfers.example>
+To: traveller@example.org
+Subject: Transfer confirmed - TR551
+Date: Sat, 05 Sep 2026 09:00:00 +0200
+
+Demo Transfers - transfer confirmation
+
+Your booking is confirmed.
+Booking reference: TR551
+Issued: 2026-09-05 09:00 +02:00
+
+Pickup: Podgorica Airport (TGD) 18 Oct 2026 15:00
+Drop-off: Stari grad 1, Kotor, Montenegro 18 Oct 2026 16:00
+Passengers: 2
+
+All times are local.

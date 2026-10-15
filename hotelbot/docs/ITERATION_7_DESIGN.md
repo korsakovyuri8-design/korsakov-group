@@ -411,3 +411,86 @@ Evidence
     2026-10-10 10:00 UTC cancel: "Your reservation has been cancelled."
     2026-10-12 07:00 UTC reinstate: "Your reservation has been reinstated and is confirmed."
 ```
+
+## 18. Slice 3 — timeline, issues, free windows, the Discovery bridge
+
+Three design corrections were accepted before any code was written. They supersede §8 where the two differ.
+
+1. **Stable tie-breaker.** The timeline is ordered by `(start UTC, end UTC, TripItem.identity, role)`. `identity` is the semantic key (§6), so the order never depends on a database UUID or on the order documents arrived in. The timeline reads a *snapshot* of the items that leaves out ids and evidence ids altogether.
+2. **Unknown movement breaks the certainty of downstream location.** Two consecutive located points in different localities, with no booked movement between them, raise one `missing_transfer` issue. That gap is never a window. A hotel-anchored point (check-in handling) exists only when arrival at the hotel is proven by a booked drop-off at the hotel's address. The E2E is split:
+   - **E2E-A:** F1 + F2 + F3, with no transfer → exactly one `missing_transfer` (TGD → Kotor) and no window on 18 Oct.
+   - **E2E-B:** E2E-A plus `F13_transfer_tgd_kotor` (confirmed, 15:00–16:00) → no `missing_transfer`, check-in handling 16:00–16:30, and the window 18 Oct 16:30–19:30 (hotel → Konoba Demo).
+3. **A window has two anchors.** Every `TripWindow` carries `start_anchor` and `end_anchor` (item identity, role, place). Discovery gets an optional `end_near`. With it, the fit check is travel(start → candidate) + visit + travel(candidate → end) ≤ window; without it, the old `2 × walk` check is unchanged.
+
+**Timeline rules** (`app/journey/timeline.py`, a pure function of item snapshots plus the policy):
+- CONFIRMED and BOOKED items are authoritative and occupy time.
+- CANCELLED items stay in `history` and occupy nothing.
+- STATED and UNKNOWN items are `tentative`. They never block a window.
+- An item with a time that has no UTC (unknown zone, a DST problem, a date only) is `floating`. It stays off the absolute timeline.
+- Accommodation is a **base location**, not an occupied interval. It contributes:
+  - check-in handling (when arrival is proven) and check-out handling, which occupy time;
+  - a sleep point and a wake point for every night it covers. These are located and occupy nothing.
+- A booked fixed-place entry (restaurant, transfer, flight) re-anchors the location. Unknown movement only removes the certainty of the gap that leads into that entry.
+
+**Issues** are derived output of the timeline, recomputed on every build and never fixed automatically:
+- `missing_transfer`: see correction 2.
+- `impossible_connection`: a flight's arrival is followed by a departure from the same place sooner than the policy allows. Both bookings stay as they are.
+- `overlapping_bookings`: two occupying entries intersect. Both are kept.
+
+**Policies** (`data/trips/policies.yaml`). HARD (operational):
+- `airport_exit_minutes`
+- `min_connection_minutes`
+- `airport_arrival_minutes`
+- `check_in_handling_minutes`
+- `check_out_handling_minutes`
+- `reservation_buffer_minutes`
+- `restaurant_default_minutes` (assumed)
+
+SOFT (traveller): `waking_hours`, `min_window_minutes`. Every window records the policy version and each assumed buffer it applied.
+
+**The bridge** lives in `app/trip/journey_bridge.py`, outside `app/journey`. It turns a window into a `DiscoveryQuery`, using a `locate(anchor) -> Point | None` callback and a fixture world. World links never change booking truth, and `app/journey` imports neither `app.discovery` nor `app.trip`.
+
+**Done.**
+- *New code:*
+  - `app/journey/timeline.py`: `snapshot()` and a pure `build()`.
+  - `app/journey/parsers/transfer.py` with the `transfer` KindSpec, and the fixture F13.
+  - `app/trip/journey_bridge.py`.
+- *Changed:*
+  - `DiscoveryQuery.end_near` and `Facts.walk_end`.
+  - `policies.yaml` `2026-10-16.2`: the hard and soft values are filled in.
+  - `tz_registry.yaml` `2026-10-16.2`: adds the cities London, Kotor and Dubrovnik, so an airport has a locality.
+
+**Gates** (`tests/test_journey_slice3.py`, 22 tests):
+- all 24 orders of the E2E-B documents give a byte-identical timeline;
+- neither the snapshot nor the timeline carries a database id;
+- equal times are ordered by identity;
+- a cancelled restaurant is in history and cuts no window (18 Oct 16:30–23:00);
+- STATED and floating items never change the windows;
+- an unknown zone stays off the absolute timeline;
+- E2E-A: exactly one `missing_transfer` and no window on 18 Oct;
+- E2E-B: no issues, and 16:30–19:30 with both anchors;
+- 19 and 20 Oct run 08:00–23:00; 21 Oct runs 08:00–10:45, and after check-out the location is not proven;
+- an overlap keeps both tables;
+- an impossible connection (20 min, 45 required) leaves the transfer where it was booked and proves no arrival, so there is no check-in and no window that day;
+- the old Discovery fit check is unchanged without `end_near`, and with it every survivor fits start → candidate → end;
+- moving a World link changes only the measurement;
+- `app/journey` imports neither Discovery, `app.trip` nor `app.world`.
+
+**E2E-B, as built:**
+
+```
+18 Oct  09:15-12:55  flight DM1432 LGW -> TGD
+        15:00-16:00  transfer TR551 TGD -> Stari grad 1, Kotor
+        16:00-16:30  check-in handling (assumed 30 min)
+        16:30-19:30  FREE  hotel -> Konoba Demo   (reservation buffer 30 min)
+        20:00-22:00  Konoba Demo (assumed 120 min)
+19 Oct  08:00-23:00  FREE  hotel -> hotel
+20 Oct  08:00-23:00  FREE  hotel -> hotel
+21 Oct  08:00-10:45  FREE  hotel -> check-out handling 10:45-11:00
+```
+
+**Two choices to review:**
+- **A booking re-anchors location.** In E2E-A the restaurant at 20:00 places the guest in Kotor, so the nights at the hotel, and the windows on 19 and 20 Oct, still exist. Only the gap that leads into the restaurant is uncertain.
+- **The whole window must be open.** Discovery still requires a place to be open throughout the window (`open_throughout`), not only for the visit. A museum that closes in the middle of the window is rejected. Changing that is a Discovery decision, outside this slice.
+
+Timeline issues are derived output, recomputed on every build. They are not yet persisted as `TripIssue` rows or shown in `view.story()`.

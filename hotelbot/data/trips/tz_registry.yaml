@@ -3,7 +3,7 @@
 # coordinates but no time-zone column, so a full airport snapshot needs a
 # coordinate -> IANA resolver (a later, separate step). A code not listed
 # here has an UNKNOWN zone - never guessed, never the user's device zone.
-version: "2026-10-16.1"
+version: "2026-10-16.2"
 airports:            # IATA -> IANA
   LGW: Europe/London
   LHR: Europe/London
@@ -19,5 +19,8 @@ countries:
   Montenegro: Europe/Podgorica
   Croatia: Europe/Zagreb
   United Kingdom: Europe/London
-cities:            # a city a guest names -> its zone and airports (statement matching)
+cities:            # a city -> its zone and airports (statement matching, an airport's locality)
   Podgorica: {tz: Europe/Podgorica, airports: [TGD]}
+  London: {tz: Europe/London, airports: [LGW, LHR]}
+  Kotor: {tz: Europe/Podgorica, airports: []}
+  Dubrovnik: {tz: Europe/Zagreb, airports: [DBV]}

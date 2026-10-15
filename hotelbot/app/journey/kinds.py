@@ -114,6 +114,15 @@ RESTAURANT = KindSpec(
 )
 
 
+TRANSFER = KindSpec(
+    kind="transfer",
+    details={"pickup": str, "pickup_place_kind": str, "dropoff": str, "dropoff_place_kind": str, "passengers": int},
+    detail_fields=("pickup", "pickup_place_kind", "dropoff", "dropoff_place_kind", "passengers"),
+    time_fields=("pickup_at", "dropoff_at"),
+    resolve=resolve_by_reference,
+)
+
+
 # ------------------------------------------------------------------ guest statement
 def resolve_statement(session: Session, trip_id: str, parsed, values: dict[str, Any]):  # noqa: ANN001, ANN201
     """A guest statement is its own item - never merged into a booking it
@@ -134,4 +143,4 @@ STATEMENT = KindSpec(
     derived=("related",),
 )
 
-KINDS: dict[str, KindSpec] = {s.kind: s for s in (FLIGHT, ACCOMMODATION, RESTAURANT, STATEMENT)}
+KINDS: dict[str, KindSpec] = {s.kind: s for s in (FLIGHT, ACCOMMODATION, RESTAURANT, TRANSFER, STATEMENT)}
