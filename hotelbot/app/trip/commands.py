@@ -15,6 +15,7 @@ from app.agent.intents import Intent
 from app.clock import as_utc
 from app.db.models import Event, ItemStatus, Place
 from app.marketplace import bridge
+from app.places.naming import display_name
 from app.observability import log_event
 from app.schemas.messages import ActionTaken
 from app.text import contains_phrase, fold
@@ -93,7 +94,7 @@ class PlanCommands:
     def _title(self, turn: _Turn, place: Place | None, event: Event | None) -> str:
         if event is not None:
             return event.title.get(turn.language.split("-")[0]) or event.title.get("en") or event.slug
-        return place.name if place else ""
+        return display_name(place, turn.language) if place else ""
 
     def _save(self, turn: _Turn, entry: dict[str, Any], status: ItemStatus) -> bool:
         """SAVE / SHORTLIST: a plan item with a non-transactional status. No
@@ -141,11 +142,12 @@ class PlanCommands:
             when = datetime.fromisoformat(entry["at"]).replace(tzinfo=tz) if entry.get("at") else None
             if day is not None and (when is None or when.date() != day):
                 when = None
-            item = itinerary.add(turn.session, stay_id=turn.stay.id, kind=place.category, title=place.name,
+            title = display_name(place, turn.language)
+            item = itinerary.add(turn.session, stay_id=turn.stay.id, kind=place.category, title=title,
                                  status=ItemStatus.PLANNED, starts_at=when, place_id=place.id,
                                  details={"day": day.isoformat()} if day and when is None else {})
-            turn.reply = T("planned", turn.language, when=self._fmt(turn, when), title=place.name, tickets="") \
-                if when else T("planned_no_time", turn.language, title=place.name)
+            turn.reply = T("planned", turn.language, when=self._fmt(turn, when), title=title, tickets="") \
+                if when else T("planned_no_time", turn.language, title=title)
         turn.actions.append(ActionTaken(kind="plan_item", id=item.id, detail={"status": "planned", "title": item.title}))
         turn.succeeded = True
         self._outcome(turn, "SAVE")
@@ -174,7 +176,7 @@ class PlanCommands:
                 self._outcome(turn, "TRANSACTION")
             return started
         walkin = msg.t("walk_in_ok", turn.language) if (place.attributes or {}).get("walk_in_supported") else ""
-        turn.reply = msg.t("not_bookable", turn.language, title=place.name, walkin=walkin)
+        turn.reply = msg.t("not_bookable", turn.language, title=display_name(place, turn.language), walkin=walkin)
         turn.succeeded = True
         self._outcome(turn, "ANSWER")
         return True
@@ -184,7 +186,7 @@ class PlanCommands:
         ticket offering is never "booked"."""
         place, event = self._entry_target(turn, entry)
         if event is None:
-            turn.reply = T("not_an_event", turn.language, title=place.name if place else "")
+            turn.reply = T("not_an_event", turn.language, title=display_name(place, turn.language) if place else "")
             self._outcome(turn, "ANSWER")
             return True
         title = self._title(turn, place, event)

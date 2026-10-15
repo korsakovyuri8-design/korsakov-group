@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 
 from app.discovery.engine import Candidate, EventCandidate, walking
 from app.places.hours import OpenState, always_open
+from app.places.naming import display_name, is_unnamed
 from app.places.taxonomy import label
 from app.agent.messages import to_cyrillic_template
 
@@ -251,29 +251,9 @@ def _caveat_labels(c: Candidate, locale: str) -> list[str]:
     return out
 
 
-# An OSM element id used as a fallback name: an internal identifier, never shown.
-_TECHNICAL_NAME = re.compile(r"(node|way|relation)/\d+")
-
-
-def _unnamed(place) -> bool:  # noqa: ANN001
-    return not place.name or _TECHNICAL_NAME.fullmatch(place.name.strip()) is not None
-
-
-def display_name(place, locale: str) -> str:  # noqa: ANN001
-    """What the traveller sees as the place's name. A real name as is; with no
-    name (or only an OSM id) the localised kind, plus the source's address if
-    it has one. Nothing is invented; Place.name itself is not changed."""
-    if not _unnamed(place):
-        return place.name
-    kind = label(place.subcategory, locale)
-    kind = kind[:1].upper() + kind[1:]
-    address = getattr(place, "address", None)
-    return f"{kind}, {address}" if address else kind
-
-
 def candidate_line(i: int, c: Candidate, locale: str, anchor: str = "the hotel", *, now: bool = False) -> str:
     name = display_name(c.place, locale)
-    parts = [f"{i}. {name}" if _unnamed(c.place) else f"{i}. {name} ({label(c.place.subcategory, locale)})"]
+    parts = [f"{i}. {name}" if is_unnamed(c.place) else f"{i}. {name} ({label(c.place.subcategory, locale)})"]
     detail = [status_text(c, locale, now=now)]
     if c.distance_km is not None:
         detail.append(L("walk", locale, km=f"{c.distance_km:.1f}", m=c.walk_minutes or walking(c.distance_km),

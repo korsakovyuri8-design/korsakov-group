@@ -14,6 +14,7 @@ from app.agent import messages as msg
 from app.db.models import ExternalProvider, ItemStatus, Quote
 from app.discovery.nlu import understand
 from app.observability import log_event
+from app.places.naming import display_name
 from app.places.taxonomy import FAMILIES, label
 from app.text import contains_phrase, fold
 from app.transactions.catalog import SERVICE_CATALOG, VENUE_CATEGORIES, detect_services, keyword_positions, rental_label
@@ -132,6 +133,12 @@ def split_requests(text: str) -> list[str]:
         parts = [sentence[a:b].strip(" ,") for a, b in zip(cuts, cuts[1:], strict=False)]
         out += [p for p in parts if p]
     return out
+
+
+def shortlist_names(results, language: str) -> str:  # noqa: ANN001
+    """The shortlist title: the first result's display name (+ how many more)."""
+    return ", ".join(display_name(c.place, language) for c in results[:1]) + (
+        f" (+{len(results) - 1})" if len(results) > 1 else "")
 
 
 class TripPlanner:
@@ -419,8 +426,7 @@ class TripPlanner:
             shown.append(sec)
             if sec.results and not (sec.request and sec.request.essential):
                 first = sec.results[0].place
-                names = ", ".join(c.place.name for c in sec.results[:1]) + (
-                    f" (+{len(sec.results) - 1})" if len(sec.results) > 1 else "")
+                names = shortlist_names(sec.results, turn.language)
                 itinerary.add(turn.session, stay_id=turn.stay.id, kind=first.category, title=f"{title}: {names}",
                               status=ItemStatus.SHORTLISTED,
                               starts_at=q.at.replace(tzinfo=self._tz(turn)) if q and q.at else None,
