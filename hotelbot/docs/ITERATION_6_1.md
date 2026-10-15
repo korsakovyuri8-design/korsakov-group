@@ -616,3 +616,45 @@ The address is source text and is not transliterated.
 - 2078 places rendered in 4 locales: 0 lines with a technical id.
 
 **Tests.** All green except the pre-existing date-dependent test.
+
+### Snapshot content_hash: reproducible across builds
+
+**Reproduced.** Two builds of the frozen Kotor/Budva world from the same dumps, same code (77b8a4a), gave different `content_hash` values: `27d820b5…` and `cfc244ee…`.
+- **The only differing values** are runtime UUID columns: `id` in every table, plus the references to them (`canonical_entity_id`, `source_entity_id`, `merged_into_id`, …).
+- **Nested UUIDs inside JSON** are also references: `match_reviews.candidates[].canonical_entity_id` (9) and `entity_links.evidence.also_similar[].canonical_entity_id` (4).
+- **One nested UUID is source content:** `source_entities.raw.tags.panoramax` (1), an OSM photo id. It must stay.
+- **Natural keys are unique and identical across both builds:** `(source_id, source_record_id)` and `canonical_slug`. The links compared under these keys are identical.
+
+**Fix.**
+- 7a24824 — tests first. The two-builds test fails before the fix. The guards (a semantic difference and a UUID in source content both change the hash) pass before and after. The direct representation test fails before the fix.
+- fc796a2 — `_evidence` hashes a stable representation:
+  - an entity is identified by its natural key: `source_entity:<source>/<record>`, `canonical:<slug>`, `area:<code>`; `world_sources.id` already is the source id;
+  - every reference to a runtime row id is rewritten to that key, wherever it appears, nested JSON included;
+  - ids of rows without a natural key are dropped;
+  - rows are sorted by content;
+  - values that merely look like UUIDs are kept.
+
+The stored snapshot content and `restore()` are unchanged, and the round-trip test (`evidence_hash` after restore == `content_hash`) still passes.
+
+**Result.** Two independent builds of the frozen world → `9aeca030…` both times. Run `out/snapshot_fix_v1/` (code fc796a2) → `9aeca030770c663d…` as well. All other metrics are identical to `display_name_fix_v2`.
+
+Snapshot hashes stored in earlier runs were computed the old way and are not comparable with these.
+
+## 4. Hours reliability when a place has no hours — classification (no code changed)
+
+**Mechanism.** `rank()` sets `reliability = max(FRESH_RANK[f.state] for f in place_facts(...))` with FRESH 0 < AGING 1 < UNKNOWN 2 < STALE 3. The `hours` fact is classified even when the place **has no hours**. Its date is then the record's own date (`last_verified_at`), not an hours verification.
+
+**Frozen world, all 2078 active places.** Freshness of the "hours" fact:
+
+| | FRESH | AGING | UNKNOWN | STALE | dated by |
+|---|---:|---:|---:|---:|---|
+| has hours (412) | 9 | 20 | 0 | 383 | the hours' own `check_date` / verification |
+| **no hours** (1666) | **40** | **58** | **938** | 630 | the record's date (no hours to verify) |
+
+**Defect class.** The reliability of a fact that does not exist.
+- 98 places without hours rank as FRESH or AGING "hours", and 938 as UNKNOWN. All of them come before every place whose real schedule is STALE, the state of 383 of the 412 places that have hours.
+- So among places tied on distance, having *no* schedule beats having an old one.
+- This is a reliability-component defect, not an availability one. The venue state stays UNKNOWN, correctly. The caveat text is already right: `explain()` drops the hours freshness caveat when the state is UNKNOWN.
+- Observed in "eat late" before the NLU fix: Konoba Galeb (0.08 km, no hours) above Astoria (0.10 km, open, hours checked 186 days ago).
+
+**Proposed rule, not implemented.** A fact that is absent is not "fresh". For a place without hours, the `hours` fact contributes the **STALE rank (3)**: it can never look more reliable than an existing schedule, however old. Absence is not penalised beyond that. With an equal distance bucket the tie then goes to availability, so the known-open place comes first. With a different distance bucket, distance still decides, so an unnamed ATM with no hours at 40 m stays first. Other facts (kitchen, closure) already count only when present.
