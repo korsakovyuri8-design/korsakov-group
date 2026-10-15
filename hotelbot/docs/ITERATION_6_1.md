@@ -554,3 +554,42 @@ Each fix was committed tests-first. After every code commit all **5087 ER pair d
 **Known limit (data, not NLU).** The pilot's Kotor box `[42.400, 18.690, 42.470, 18.790]` also covers Tivat's Porto Montenegro. So Naval Heritage (Tivat) counts as "in Kotor". It ranks below the three old-town museums.
 
 **Tests.** All green except the pre-existing date-dependent `test_staff_can_read_a_guest_plan`. Discovery gates are unchanged and pass.
+
+### Unnamed entities: display name in the renderer only
+
+**Commits.**
+- ec05b89 — tests first: the import of `display_name` fails before the fix.
+- 7886cd0 — the fix.
+
+**The rule.** `render.display_name(place, locale)` handles two cases:
+- **Real name:** shown unchanged. Names like "Node Cafe", "node/abc" and "Way Out Bar" stay as they are.
+- **Missing name, or exactly `node|way|relation/<digits>`:** the localised kind from `taxonomy.label()`, capitalised, plus `, <address>` when the source has one. Nothing else is invented.
+
+`candidate_line` drops the redundant "(kind)" for such places. `event_line` uses the same rule for the venue.
+
+`Place.name`, the projection, ER and ranking are unchanged. Unnamed places are not demoted.
+
+**Run `out/display_name_fix_v1/`.** Code 7886cd0, clean.
+- The `discovery` results (ids and order) are byte-identical to `nlu_fix_v2`, and so is every other metric.
+- All 5087 ER pair decisions are unchanged.
+- Technical ids in `discovery_sample.md`: **7 → 0**.
+
+**All 2078 active places rendered** with `candidate_line` in en / cnr / ru / cnr-Cyrl:
+- 968 of them have a technical or empty name, 23 of those with an address;
+- lines containing `node/…`, `way/…` or `relation/…`: **0** in every locale.
+
+Examples:
+
+    1. ATM - no opening-hours data; 0.0 km from budva old town (straight line, ~1 min walk)
+    1. Museum, Zanatska ulica 313,314 - no opening-hours data; 0.1 km from kotor old town ...
+    1. Muzej, Zanatska ulica 313,314 - nema podataka o radnom vremenu; ...
+    1. Музей, Zanatska ulica 313,314 - нет данных о часах работы; ...
+    1. Музеј, Zanatska ulica 313,314 - нема података о радном времену; ...
+
+The address is source text and is not transliterated.
+
+**Not covered: other paths that put `place.name` into guest-facing text.** Both are outside `render.py`, and both would write the shown name into the guest's plan, so a decision is needed:
+- `app/trip/commands.py::_title`: the "planned / saved" replies and the itinerary item title;
+- `app/trip/planner.py`: the shortlist itinerary title, `"{title}: {names}"`.
+
+**Tests.** All green except the pre-existing date-dependent `test_staff_can_read_a_guest_plan`.
