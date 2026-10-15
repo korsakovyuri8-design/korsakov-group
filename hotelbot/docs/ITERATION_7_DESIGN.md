@@ -1,6 +1,6 @@
 # Iteration 7 — Trip Intelligence / Journey Graph — DESIGN (for review, nothing implemented)
 
-Status: proposal. No code, schema or fixture is created until this document is reviewed.
+Status: **reviewed and accepted with corrections** (§13, decisions D-077–D-083). The corrections supersede the earlier text where they differ. Implementation proceeds in slices (§14).
 Iteration 6.1 is closed (`ITERATION_6_1.md`). The Kotor/Budva pilot is not tuned further unless a defect blocks this iteration.
 
 ## 0. Goal and non-goals
@@ -86,19 +86,18 @@ An LLM extractor may be added later behind the same interface. It is a *proposer
 
 ## 4. Status: evidence, not inference
 
-`TripItem.status ∈ {stated, booked, confirmed, changed, cancelled, unknown}`. Each state needs an observation of a specific kind:
+`TripItem.status ∈ {stated, booked, confirmed, cancelled, unknown}` (D-081: a change is a **revision**, not a state). Each state needs an observation of a specific kind:
 
 | status | required evidence |
 |---|---|
 | `stated` | a guest statement only, no booking document |
 | `booked` / `confirmed` | a provider document with a booking reference, e.g. "Booking confirmed, ref ABC123"; the parser records which phrase |
-| `changed` | a provider document for the **same booking reference** that states a change (new time / segment) |
 | `cancelled` | a provider document for the same reference that states cancellation |
 | `unknown` | anything else; this is the default |
 
 **Rules (hard gates):**
 1. **No invented state.** A status comes only from an observation whose evidence span contains the status phrase. An LLM-proposed status without such a span is dropped.
-2. **Never newest-wins blindly for status.** Status follows the precedence `cancelled > changed > confirmed > booked > stated`, *for the same booking reference and provider*, using the provider document's own issue time. An older "confirmed" never revives a "cancelled". A newer guest statement never downgrades a provider-confirmed booking: it is recorded as a contradiction (§5).
+2. **Never newest-wins blindly for status.** For the same booking reference and provider: `cancelled` dominates every earlier or re-forwarded confirmation. Only explicit new evidence of reinstatement or rebooking (a provider document issued after the cancellation that says so) returns the item to `confirmed`. Otherwise `confirmed > booked > stated`. A provider "schedule changed" notice does not change the status: it creates a new **revision** of the item's fields (D-081). A guest statement never downgrades provider evidence; a disagreement is a `TripIssue` (§5, D-082).
 3. **Atlas-made bookings.** If a TripItem links to an `Action`, its status is **read from the Action**, exactly as `ItineraryItem` does today. The trip layer never writes transaction state, and a confirmation email for an Atlas booking is an observation that must agree with it; disagreement is an issue.
 4. **Payments.** "Paid" is never a trip status. A payment claim is a field observation (`payment_claim`) with evidence and is shown hedged. Payment truth belongs to the transaction layer.
 
@@ -211,3 +210,63 @@ Fixtures are in `data/trips/fixtures/`. Each has a raw input plus an expected-ob
 7. **Scope of the E2E Discovery step.** Proposed: a small frozen World fixture, not the Kotor/Budva pilot world, to keep this iteration independent of 6.1 data.
 
 Decision ids D-077 onward are assigned when these are accepted.
+
+
+## 13. Accepted review decisions (supersede the text above where they differ)
+
+- **D-077: a Trip is a separate entity above Stay.** Stay stays the property / PMS context of one stay. The relation is Trip ↔ Stay only: the trip layer never writes Stay's authoritative fields.
+
+- **D-078: one `TripItem` table with a common core.**
+  - The core columns are kind, start/end time records, status, provider, booking_reference, world_entity_id and provenance.
+  - Kind-specific fields go in a typed `details` JSON. Each kind has a validator; unknown keys and wrong types are rejected.
+  - There are no per-kind nullable columns.
+
+- **D-079: time-zone registry.**
+  - **Airports:** a frozen, dated snapshot of OurAirports (public domain), IATA → IANA zone.
+  - **Stations and ports:** a small, explicitly versioned registry of the fixtures' own stations and ports.
+  - There is no global station database in this iteration. A deterministic coordinate → IANA resolver may be added later.
+  - **Invariant:** a zone that is not proven stays UNKNOWN. The user's device zone is never used as a fact's zone.
+
+- **D-080: policies are versioned and split into hard and soft** (`data/trips/policies.yaml`).
+  - **Hard (operational):** minimum connection times, travel buffers, check-in / check-out handling.
+  - **Soft (traveller):** waking hours, e.g. "no museum at 06:00". The user may override these.
+  - Every derived window records the policy version and the values it used in its provenance.
+
+- **D-081: "changed" is a revision, not a lifecycle state.**
+  - **States:** STATED / BOOKED / CONFIRMED / CANCELLED / UNKNOWN.
+  - **Revisions:** a provider change notice for the same booking creates a new revision of the item's field values, linked to its evidence. The status (e.g. CONFIRMED) is unchanged, and earlier revisions are kept.
+  - **Cancellation:** CANCELLED dominates older confirmations. Only explicit, newer reinstatement or rebooking evidence brings the item back, never a re-forwarded old confirmation.
+
+- **D-082: provider evidence is authoritative for provider-owned facts.**
+  - These are times, segments, status, cancellation and the booking reference. A guest statement is kept but does not override them.
+  - **Disagreement:** a `TripIssue`, with fact-specific tolerances in policy. For example, transport times have a strict tolerance, while a guest's approximate hotel arrival has a loose one.
+  - **Status:** there is no tolerance. "Guest says confirmed" against "provider says cancelled" is an issue immediately.
+
+- **D-083: a separate, small fixture world for the E2E demo.** It is not the Kotor/Budva pilot world. The real World Fabric is connected later, in a separate integration test.
+
+**Additions accepted before the first migration.**
+
+- **Two-level idempotency.**
+  - `TripSourceRecord` keeps the raw SHA256: proof that this exact document was seen. A forwarded copy has a different raw hash and creates a **new source record**.
+  - The `TripItem` is found by its **semantic identity**: provider + booking reference + segment identity (carrier + number + scheduled local departure date). So the forwarded copy adds observations to the existing item and never creates a second one.
+
+- **A time record, not just UTC.** Every authoritative time is stored as `{raw, local (wall time), tz (IANA), utc, evidence}`:
+  - `raw` is the text as written;
+  - `tz` is null when it is not proven;
+  - `utc` is null unless `tz` is proven;
+  - `evidence` is the observation id.
+
+  An **ambiguous local time** (the DST fall-back hour) or a **non-existent** one (spring-forward) produces a `TripIssue` and no UTC. Nothing is silently chosen with `fold=0/1`.
+
+## 14. Implementation slices
+
+1. **Slice 1 (narrow).**
+   - Build `Trip`, `TripSourceRecord`, `TripObservation`, `TripItem` (with revisions), the migration, and the airline confirmation parser for fixture F1.
+   - Prove four things:
+     - provenance;
+     - time zones (London → Podgorica, with the time record);
+     - idempotent re-import (identical file, forwarded copy, formatting change);
+     - an update as a revision (F1c), with the status unchanged.
+   - Nothing else is built until this is green.
+2. **Slice 2.** Hotel, restaurant and cancellation fixtures (F2, F3, F8, F9), with status precedence and provider-vs-guest issues (F6).
+3. **Slice 3.** Timeline, windows, policies, overlaps, missing transfer; then the E2E fixture world and the Discovery bridge.
