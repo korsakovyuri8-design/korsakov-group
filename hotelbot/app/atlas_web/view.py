@@ -16,8 +16,10 @@ from datetime import datetime
 from typing import Any
 
 from app.db.models import TripItem
+from app.atlas_web import view_v2
+from app.journey import policies, timeline
 from app.journey.ingest import ImportReport
-from app.trip.atlas_demo import (NOW, booking_rows, build_timeline, city, display_name, entry_of, fitting_activities,
+from app.trip.atlas_demo import (NOW, booking_rows, city, display_name, entry_of, fitting_activities,
                                  hm, items_of, itinerary, span)
 
 SAMPLE_FLIGHT = "flight|demo air|DMX7Q2|DM1432|LGW-TGD|2026-10-18"
@@ -146,14 +148,18 @@ def _next(out: dict[str, Any], items: dict[str, TripItem]) -> list[dict[str, str
 
 
 def picture(db, trip_id: str, world: dict[str, Any]) -> dict[str, Any]:  # noqa: ANN001
-    out = build_timeline(db, trip_id)
+    snapshot = timeline.snapshot(db, trip_id)
+    out = timeline.build(snapshot, policies.load())
     items = {k: v for k, v in items_of(db, trip_id).items() if v.kind != "statement"}
     return {"route": _route(out), "dates": _dates(out), "bookings": booking_rows(items),
             "attention": _attention(out, items), "days": _days(out, items),
             "activities": _activities(db, out, items, world), "next": _next(out, items),
             "off_timeline": [{"kind": f["kind"], "reason": "Atlas can't place this in time yet (unknown time zone)."}
                              for f in out["floating"]],
-            "policy_version": out["policy_version"]}
+            "policy_version": out["policy_version"],
+            # v2 (view_v2.py): structured, additive; every v1 field above is unchanged
+            "context": view_v2.context(out, NOW), "next_item": view_v2.next_item(out, NOW),
+            "items": view_v2.items(items), "disruption": view_v2.disruption(snapshot, out, items)}
 
 
 # ------------------------------------------------------------------ the import card

@@ -1,0 +1,837 @@
+{
+ "flight_change": {
+  "trip": {
+   "activities": {
+    "considered": 6,
+    "day": "19 Oct",
+    "headline": "You have free time on 19 Oct, 08:00–23:00. Here are 3 things that actually fit.",
+    "left_out": 1,
+    "left_out_reasons": {
+     "does_not_fit_window": 1,
+     "state_unknown": 0
+    },
+    "suggestions": [
+     {
+      "arrive_dinner": "09:38",
+      "kind": "viewpoint",
+      "leave_hotel": "08:00",
+      "name": "City Walls Lookout",
+      "visit_from": "08:04",
+      "visit_minutes": 90,
+      "visit_to": "09:34",
+      "walk_on": 4,
+      "walk_there": 4
+     },
+     {
+      "arrive_dinner": "12:32",
+      "kind": "viewpoint",
+      "leave_hotel": "08:00",
+      "name": "Mountain Mausoleum",
+      "visit_from": "09:46",
+      "visit_minutes": 60,
+      "visit_to": "10:46",
+      "walk_on": 106,
+      "walk_there": 106
+     },
+     {
+      "arrive_dinner": "10:47",
+      "kind": "gallery",
+      "leave_hotel": "09:58",
+      "name": "Icon Gallery",
+      "visit_from": "10:00",
+      "visit_minutes": 45,
+      "visit_to": "10:45",
+      "walk_on": 2,
+      "walk_there": 2
+     }
+    ],
+    "window": {
+     "assumptions": [],
+     "ends_at": "sleep",
+     "from": "Stari grad 1, Kotor, Montenegro",
+     "minutes": 900,
+     "time": "08:00–23:00",
+     "to": "Stari grad 1, Kotor, Montenegro"
+    }
+   },
+   "attention": [
+    {
+     "headline": "A connection may no longer work",
+     "kind": "impossible_connection",
+     "lines": [
+      "You land in Podgorica at 14:55.",
+      "Your transfer from TGD leaves at 15:00 — 5 min after landing; you need about 45.",
+      "Your existing transfer may no longer fit."
+     ],
+     "plan": "By your plan you are still due at Konoba Demo at 20:00.",
+     "severity": "error",
+     "status": "Transfer needs rebooking"
+    }
+   ],
+   "bookings": [
+    {
+     "kind": "flight",
+     "provider": "demo air",
+     "reference": "DMX7Q2",
+     "status": "confirmed",
+     "title": "Flight DM1432 London → Podgorica",
+     "when": "2026-10-18 11:15 → 14:55"
+    },
+    {
+     "kind": "accommodation",
+     "provider": "hotel demo kotor",
+     "reference": "HK20931",
+     "status": "confirmed",
+     "title": "Hotel Demo Kotor",
+     "when": "2026-10-18 → 2026-10-21"
+    },
+    {
+     "kind": "transfer",
+     "provider": "demo transfers",
+     "reference": "TR551",
+     "status": "confirmed",
+     "title": "Transfer TGD → Kotor",
+     "when": "2026-10-18 15:00–16:00"
+    },
+    {
+     "kind": "restaurant",
+     "provider": "demotable",
+     "reference": "R4417",
+     "status": "confirmed",
+     "title": "Dinner at Konoba Demo",
+     "when": "2026-10-18 20:00"
+    }
+   ],
+   "dates": "18–21 October",
+   "days": [
+    {
+     "date": "2026-10-18",
+     "itinerary": [
+      {
+       "detail": "11:15 London time · 14:55 Podgorica time · 2 h 40 min in the air",
+       "kind": "flight",
+       "label": "Flight DM1432 London (LGW) → Podgorica (TGD)",
+       "time": "11:15–14:55"
+      },
+      {
+       "kind": "transfer",
+       "label": "Transfer from TGD",
+       "time": "15:00–16:00"
+      },
+      {
+       "kind": "restaurant",
+       "label": "Dinner at Konoba Demo",
+       "time": "20:00"
+      }
+     ],
+     "label": "Sun 18 Oct"
+    },
+    {
+     "date": "2026-10-19",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 900,
+       "time": "08:00–23:00"
+      }
+     ],
+     "label": "Mon 19 Oct"
+    },
+    {
+     "date": "2026-10-20",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 900,
+       "time": "08:00–23:00"
+      }
+     ],
+     "label": "Tue 20 Oct"
+    },
+    {
+     "date": "2026-10-21",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 165,
+       "time": "08:00–10:45"
+      },
+      {
+       "kind": "check_out",
+       "label": "Check-out — Hotel Demo Kotor",
+       "time": "11:00"
+      }
+     ],
+     "label": "Wed 21 Oct"
+    }
+   ],
+   "next": [],
+   "off_timeline": [],
+   "policy_version": "2026-10-16.2",
+   "route": [
+    "London",
+    "Podgorica",
+    "Kotor"
+   ]
+  },
+  "understood": {
+   "changes": [
+    "Departure moved from 09:15 to 11:15.",
+    "Arrival moved from 12:55 to 14:55."
+   ],
+   "kind": "flight",
+   "outcome": "updated",
+   "provider": "Demo Air",
+   "route": "London → Podgorica",
+   "status": "Confirmed",
+   "title": "Flight DM1432",
+   "when": "18 Oct"
+  }
+ },
+ "paste_f1": {
+  "trip": {
+   "activities": null,
+   "attention": [],
+   "bookings": [
+    {
+     "kind": "flight",
+     "provider": "demo air",
+     "reference": "DMX7Q2",
+     "status": "confirmed",
+     "title": "Flight DM1432 London → Podgorica",
+     "when": "2026-10-18 09:15 → 12:55"
+    }
+   ],
+   "dates": "18 October",
+   "days": [
+    {
+     "date": "2026-10-18",
+     "itinerary": [
+      {
+       "detail": "09:15 London time · 12:55 Podgorica time · 2 h 40 min in the air",
+       "kind": "flight",
+       "label": "Flight DM1432 London (LGW) → Podgorica (TGD)",
+       "time": "09:15–12:55"
+      }
+     ],
+     "label": "Sun 18 Oct"
+    }
+   ],
+   "next": [],
+   "off_timeline": [],
+   "policy_version": "2026-10-16.2",
+   "route": [
+    "London",
+    "Podgorica"
+   ]
+  },
+  "understood": {
+   "changes": [],
+   "kind": "flight",
+   "outcome": "new",
+   "provider": "Demo Air",
+   "route": "London → Podgorica",
+   "status": "Confirmed",
+   "title": "Flight DM1432",
+   "when": "18 Oct"
+  }
+ },
+ "sample": {
+  "trip": {
+   "activities": {
+    "considered": 6,
+    "day": "19 Oct",
+    "headline": "You have free time on 19 Oct, 08:00–23:00. Here are 3 things that actually fit.",
+    "left_out": 1,
+    "left_out_reasons": {
+     "does_not_fit_window": 1,
+     "state_unknown": 0
+    },
+    "suggestions": [
+     {
+      "arrive_dinner": "09:38",
+      "kind": "viewpoint",
+      "leave_hotel": "08:00",
+      "name": "City Walls Lookout",
+      "visit_from": "08:04",
+      "visit_minutes": 90,
+      "visit_to": "09:34",
+      "walk_on": 4,
+      "walk_there": 4
+     },
+     {
+      "arrive_dinner": "12:32",
+      "kind": "viewpoint",
+      "leave_hotel": "08:00",
+      "name": "Mountain Mausoleum",
+      "visit_from": "09:46",
+      "visit_minutes": 60,
+      "visit_to": "10:46",
+      "walk_on": 106,
+      "walk_there": 106
+     },
+     {
+      "arrive_dinner": "10:47",
+      "kind": "gallery",
+      "leave_hotel": "09:58",
+      "name": "Icon Gallery",
+      "visit_from": "10:00",
+      "visit_minutes": 45,
+      "visit_to": "10:45",
+      "walk_on": 2,
+      "walk_there": 2
+     }
+    ],
+    "window": {
+     "assumptions": [],
+     "ends_at": "sleep",
+     "from": "Stari grad 1, Kotor, Montenegro",
+     "minutes": 900,
+     "time": "08:00–23:00",
+     "to": "Stari grad 1, Kotor, Montenegro"
+    }
+   },
+   "attention": [
+    {
+     "headline": "Missing transport",
+     "kind": "missing_transfer",
+     "lines": [
+      "You land in Podgorica at 12:55.",
+      "Your next confirmed place is dinner at Konoba Demo in Kotor at 20:00.",
+      "There is no transport between them."
+     ],
+     "severity": "warning"
+    }
+   ],
+   "bookings": [
+    {
+     "kind": "flight",
+     "provider": "demo air",
+     "reference": "DMX7Q2",
+     "status": "confirmed",
+     "title": "Flight DM1432 London → Podgorica",
+     "when": "2026-10-18 09:15 → 12:55"
+    },
+    {
+     "kind": "accommodation",
+     "provider": "hotel demo kotor",
+     "reference": "HK20931",
+     "status": "confirmed",
+     "title": "Hotel Demo Kotor",
+     "when": "2026-10-18 → 2026-10-21"
+    },
+    {
+     "kind": "restaurant",
+     "provider": "demotable",
+     "reference": "R4417",
+     "status": "confirmed",
+     "title": "Dinner at Konoba Demo",
+     "when": "2026-10-18 20:00"
+    }
+   ],
+   "dates": "18–21 October",
+   "days": [
+    {
+     "date": "2026-10-18",
+     "itinerary": [
+      {
+       "detail": "09:15 London time · 12:55 Podgorica time · 2 h 40 min in the air",
+       "kind": "flight",
+       "label": "Flight DM1432 London (LGW) → Podgorica (TGD)",
+       "time": "09:15–12:55"
+      },
+      {
+       "kind": "restaurant",
+       "label": "Dinner at Konoba Demo",
+       "time": "20:00"
+      }
+     ],
+     "label": "Sun 18 Oct"
+    },
+    {
+     "date": "2026-10-19",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 900,
+       "time": "08:00–23:00"
+      }
+     ],
+     "label": "Mon 19 Oct"
+    },
+    {
+     "date": "2026-10-20",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 900,
+       "time": "08:00–23:00"
+      }
+     ],
+     "label": "Tue 20 Oct"
+    },
+    {
+     "date": "2026-10-21",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 165,
+       "time": "08:00–10:45"
+      },
+      {
+       "kind": "check_out",
+       "label": "Check-out — Hotel Demo Kotor",
+       "time": "11:00"
+      }
+     ],
+     "label": "Wed 21 Oct"
+    }
+   ],
+   "next": [
+    {
+     "hint": "Adds the sample Demo Transfers confirmation: 15:00 from Podgorica airport.",
+     "id": "transfer",
+     "label": "Arrange transfer"
+    }
+   ],
+   "off_timeline": [],
+   "policy_version": "2026-10-16.2",
+   "route": [
+    "London",
+    "Podgorica",
+    "Kotor"
+   ]
+  },
+  "understood": [
+   {
+    "changes": [],
+    "kind": "flight",
+    "outcome": "new",
+    "provider": "Demo Air",
+    "route": "London → Podgorica",
+    "status": "Confirmed",
+    "title": "Flight DM1432",
+    "when": "18 Oct"
+   },
+   {
+    "changes": [],
+    "kind": "accommodation",
+    "outcome": "new",
+    "provider": "Hotel Demo Kotor",
+    "route": "Kotor",
+    "status": "Confirmed",
+    "title": "Hotel Demo Kotor",
+    "when": "18–21 Oct"
+   },
+   {
+    "changes": [],
+    "kind": "restaurant",
+    "outcome": "new",
+    "provider": "Demotable",
+    "route": "Kotor",
+    "status": "Confirmed",
+    "title": "Dinner at Konoba Demo",
+    "when": "18 Oct · 20:00"
+   }
+  ]
+ },
+ "transfer": {
+  "trip": {
+   "activities": {
+    "considered": 6,
+    "day": "18 Oct",
+    "headline": "You have 3 hours before dinner. Here are 3 things that actually fit.",
+    "left_out": 3,
+    "left_out_reasons": {
+     "does_not_fit_window": 3,
+     "state_unknown": 0
+    },
+    "suggestions": [
+     {
+      "arrive_dinner": "18:11",
+      "kind": "viewpoint",
+      "leave_hotel": "16:30",
+      "name": "City Walls Lookout",
+      "visit_from": "16:34",
+      "visit_minutes": 90,
+      "visit_to": "18:04",
+      "walk_on": 7,
+      "walk_there": 4
+     },
+     {
+      "arrive_dinner": "17:33",
+      "kind": "museum",
+      "leave_hotel": "16:30",
+      "name": "Maritime Museum",
+      "visit_from": "16:31",
+      "visit_minutes": 60,
+      "visit_to": "17:31",
+      "walk_on": 2,
+      "walk_there": 1
+     },
+     {
+      "arrive_dinner": "17:04",
+      "kind": "religious site",
+      "leave_hotel": "16:30",
+      "name": "Old Town Cathedral",
+      "visit_from": "16:32",
+      "visit_minutes": 30,
+      "visit_to": "17:02",
+      "walk_on": 2,
+      "walk_there": 2
+     }
+    ],
+    "window": {
+     "assumptions": [
+      {
+       "at": "end",
+       "minutes": 30,
+       "policy": "reservation_buffer_minutes"
+      }
+     ],
+     "ends_at": "reservation",
+     "from": "Stari grad 1, Kotor, Montenegro",
+     "minutes": 180,
+     "time": "16:30–19:30",
+     "to": "Stari grad 210, Kotor, Montenegro"
+    }
+   },
+   "attention": [],
+   "bookings": [
+    {
+     "kind": "flight",
+     "provider": "demo air",
+     "reference": "DMX7Q2",
+     "status": "confirmed",
+     "title": "Flight DM1432 London → Podgorica",
+     "when": "2026-10-18 09:15 → 12:55"
+    },
+    {
+     "kind": "accommodation",
+     "provider": "hotel demo kotor",
+     "reference": "HK20931",
+     "status": "confirmed",
+     "title": "Hotel Demo Kotor",
+     "when": "2026-10-18 → 2026-10-21"
+    },
+    {
+     "kind": "transfer",
+     "provider": "demo transfers",
+     "reference": "TR551",
+     "status": "confirmed",
+     "title": "Transfer TGD → Kotor",
+     "when": "2026-10-18 15:00–16:00"
+    },
+    {
+     "kind": "restaurant",
+     "provider": "demotable",
+     "reference": "R4417",
+     "status": "confirmed",
+     "title": "Dinner at Konoba Demo",
+     "when": "2026-10-18 20:00"
+    }
+   ],
+   "dates": "18–21 October",
+   "days": [
+    {
+     "date": "2026-10-18",
+     "itinerary": [
+      {
+       "detail": "09:15 London time · 12:55 Podgorica time · 2 h 40 min in the air",
+       "kind": "flight",
+       "label": "Flight DM1432 London (LGW) → Podgorica (TGD)",
+       "time": "09:15–12:55"
+      },
+      {
+       "kind": "transfer",
+       "label": "Transfer from TGD",
+       "time": "15:00–16:00"
+      },
+      {
+       "kind": "arrival",
+       "label": "Hotel arrival — Hotel Demo Kotor",
+       "time": "16:00"
+      },
+      {
+       "assumed": true,
+       "kind": "check_in",
+       "label": "Check-in",
+       "time": "16:00–16:30"
+      },
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 180,
+       "time": "16:30–19:30"
+      },
+      {
+       "kind": "restaurant",
+       "label": "Dinner at Konoba Demo",
+       "time": "20:00"
+      }
+     ],
+     "label": "Sun 18 Oct"
+    },
+    {
+     "date": "2026-10-19",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 900,
+       "time": "08:00–23:00"
+      }
+     ],
+     "label": "Mon 19 Oct"
+    },
+    {
+     "date": "2026-10-20",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 900,
+       "time": "08:00–23:00"
+      }
+     ],
+     "label": "Tue 20 Oct"
+    },
+    {
+     "date": "2026-10-21",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 165,
+       "time": "08:00–10:45"
+      },
+      {
+       "kind": "check_out",
+       "label": "Check-out — Hotel Demo Kotor",
+       "time": "11:00"
+      }
+     ],
+     "label": "Wed 21 Oct"
+    }
+   ],
+   "next": [
+    {
+     "hint": "Adds the sample Demo Air schedule change for DM1432.",
+     "id": "flight_change",
+     "label": "Simulate a flight change"
+    }
+   ],
+   "off_timeline": [],
+   "policy_version": "2026-10-16.2",
+   "route": [
+    "London",
+    "Podgorica",
+    "Kotor"
+   ]
+  },
+  "understood": {
+   "changes": [],
+   "kind": "transfer",
+   "outcome": "new",
+   "provider": "Demo Transfers",
+   "route": "TGD → Kotor",
+   "status": "Confirmed",
+   "title": "Transfer TGD → Kotor",
+   "when": "18 Oct · 15:00"
+  }
+ },
+ "trip": {
+  "trip": {
+   "activities": {
+    "considered": 6,
+    "day": "19 Oct",
+    "headline": "You have free time on 19 Oct, 08:00–23:00. Here are 3 things that actually fit.",
+    "left_out": 1,
+    "left_out_reasons": {
+     "does_not_fit_window": 1,
+     "state_unknown": 0
+    },
+    "suggestions": [
+     {
+      "arrive_dinner": "09:38",
+      "kind": "viewpoint",
+      "leave_hotel": "08:00",
+      "name": "City Walls Lookout",
+      "visit_from": "08:04",
+      "visit_minutes": 90,
+      "visit_to": "09:34",
+      "walk_on": 4,
+      "walk_there": 4
+     },
+     {
+      "arrive_dinner": "12:32",
+      "kind": "viewpoint",
+      "leave_hotel": "08:00",
+      "name": "Mountain Mausoleum",
+      "visit_from": "09:46",
+      "visit_minutes": 60,
+      "visit_to": "10:46",
+      "walk_on": 106,
+      "walk_there": 106
+     },
+     {
+      "arrive_dinner": "10:47",
+      "kind": "gallery",
+      "leave_hotel": "09:58",
+      "name": "Icon Gallery",
+      "visit_from": "10:00",
+      "visit_minutes": 45,
+      "visit_to": "10:45",
+      "walk_on": 2,
+      "walk_there": 2
+     }
+    ],
+    "window": {
+     "assumptions": [],
+     "ends_at": "sleep",
+     "from": "Stari grad 1, Kotor, Montenegro",
+     "minutes": 900,
+     "time": "08:00–23:00",
+     "to": "Stari grad 1, Kotor, Montenegro"
+    }
+   },
+   "attention": [
+    {
+     "headline": "A connection may no longer work",
+     "kind": "impossible_connection",
+     "lines": [
+      "You land in Podgorica at 14:55.",
+      "Your transfer from TGD leaves at 15:00 — 5 min after landing; you need about 45.",
+      "Your existing transfer may no longer fit."
+     ],
+     "plan": "By your plan you are still due at Konoba Demo at 20:00.",
+     "severity": "error",
+     "status": "Transfer needs rebooking"
+    }
+   ],
+   "bookings": [
+    {
+     "kind": "flight",
+     "provider": "demo air",
+     "reference": "DMX7Q2",
+     "status": "confirmed",
+     "title": "Flight DM1432 London → Podgorica",
+     "when": "2026-10-18 11:15 → 14:55"
+    },
+    {
+     "kind": "accommodation",
+     "provider": "hotel demo kotor",
+     "reference": "HK20931",
+     "status": "confirmed",
+     "title": "Hotel Demo Kotor",
+     "when": "2026-10-18 → 2026-10-21"
+    },
+    {
+     "kind": "transfer",
+     "provider": "demo transfers",
+     "reference": "TR551",
+     "status": "confirmed",
+     "title": "Transfer TGD → Kotor",
+     "when": "2026-10-18 15:00–16:00"
+    },
+    {
+     "kind": "restaurant",
+     "provider": "demotable",
+     "reference": "R4417",
+     "status": "confirmed",
+     "title": "Dinner at Konoba Demo",
+     "when": "2026-10-18 20:00"
+    }
+   ],
+   "dates": "18–21 October",
+   "days": [
+    {
+     "date": "2026-10-18",
+     "itinerary": [
+      {
+       "detail": "11:15 London time · 14:55 Podgorica time · 2 h 40 min in the air",
+       "kind": "flight",
+       "label": "Flight DM1432 London (LGW) → Podgorica (TGD)",
+       "time": "11:15–14:55"
+      },
+      {
+       "kind": "transfer",
+       "label": "Transfer from TGD",
+       "time": "15:00–16:00"
+      },
+      {
+       "kind": "restaurant",
+       "label": "Dinner at Konoba Demo",
+       "time": "20:00"
+      }
+     ],
+     "label": "Sun 18 Oct"
+    },
+    {
+     "date": "2026-10-19",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 900,
+       "time": "08:00–23:00"
+      }
+     ],
+     "label": "Mon 19 Oct"
+    },
+    {
+     "date": "2026-10-20",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 900,
+       "time": "08:00–23:00"
+      }
+     ],
+     "label": "Tue 20 Oct"
+    },
+    {
+     "date": "2026-10-21",
+     "itinerary": [
+      {
+       "kind": "free",
+       "label": "Free time",
+       "minutes": 165,
+       "time": "08:00–10:45"
+      },
+      {
+       "kind": "check_out",
+       "label": "Check-out — Hotel Demo Kotor",
+       "time": "11:00"
+      }
+     ],
+     "label": "Wed 21 Oct"
+    }
+   ],
+   "next": [],
+   "off_timeline": [],
+   "policy_version": "2026-10-16.2",
+   "route": [
+    "London",
+    "Podgorica",
+    "Kotor"
+   ]
+  }
+ },
+ "unreadable": {
+  "session": null,
+  "trip": null,
+  "understood": {
+   "detail": "No trip data was changed.",
+   "message": "Atlas can't read this booking format yet.",
+   "outcome": "unreadable"
+  }
+ }
+}

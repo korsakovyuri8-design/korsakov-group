@@ -111,3 +111,17 @@ Until DNS is ready, the `*.run.app` URL is the public demo.
 - **Instances.** One instance. Sessions do not survive a restart, a redeploy or scale-to-zero.
 - **The demo World.** It is synthetic and covers Kotor Old Town only. Free windows elsewhere are computed, but no activities are suggested.
 - **Fonts.** They load from Google Fonts. Without them the page falls back to system faces.
+
+## Public View API v2 (additive)
+
+v2 adds four fields inside `trip`. Everything that existed in v1 stays byte-identical: `tests/golden/atlas_web_v1.json` pins it, and `tests/test_atlas_view_v2.py` checks it. The fields are structured data (ISO times, IANA zones, item keys, reason codes); presenting them is the frontend's job. No Journey Graph rule changed. The code is in `app/atlas_web/view_v2.py`.
+
+| Field | What it holds |
+|---|---|
+| `context.now` | `{utc, local, timezone, clock: "demo"}`. This is the demo clock (18 Oct 2026, 11:00 UTC), in the zone of the planned location. |
+| `context.planned_location` | Where the **plan** puts the traveller at `now`. `basis` is always `"planned"`, never an observed position. `status` is one of `arrived`, `at`, `in_transit` or `unknown` (with a `reason`, e.g. `connection_not_proven`). Also: `place`, `locality`, `timezone`, `since`/`until` and the entry it comes from (`by`). |
+| `next_item` | The next booked, time-occupying entry after `now`, chosen by the backend in timeline order: `key`, `kind`, `role`, `starts`, `place`, `locality`, `minutes_from_now`. Its `issues` list says when it is at risk. |
+| `items` | One detail view per booking, built from resolved TripItems, with a `revision` summary (`current`, `count`, `changed_fields`). Passengers appear only as a count. No evidence, documents, record ids or issue times. |
+| `disruption` | `null` until a provider revises a booking. After that, the trip is rebuilt with that booking one revision back, using the same pure timeline. It contains: `cause` (the previous and current values of the changed fields), `issues_added`, `windows_no_longer_provable` (each with a `reason`: `start_anchor_not_proven`, `end_anchor_not_proven` or `gap_no_longer_provable`), `windows_changed` and `windows_still_provable`. |
+
+**Real responses** for the whole sample path, a pasted e-mail and an unreadable one are in `docs/atlas_api/*.json`. Each file holds the request and the unedited response; only the session token is replaced. Regenerate them with `python tools/atlas_api_examples.py`. A frontend adapter should be tested against these files.

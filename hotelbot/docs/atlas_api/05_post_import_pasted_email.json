@@ -1,0 +1,119 @@
+{
+  "request": "POST /demo/import {\"text\": <Demo Air confirmation body>}",
+  "response": {
+    "session": "<session-token>",
+    "trip": {
+      "activities": null,
+      "attention": [],
+      "bookings": [
+        {
+          "kind": "flight",
+          "provider": "demo air",
+          "reference": "DMX7Q2",
+          "status": "confirmed",
+          "title": "Flight DM1432 London → Podgorica",
+          "when": "2026-10-18 09:15 → 12:55"
+        }
+      ],
+      "context": {
+        "now": {
+          "clock": "demo",
+          "local": "2026-10-18T13:00",
+          "timezone": "Europe/Podgorica",
+          "utc": "2026-10-18T11:00:00+00:00"
+        },
+        "planned_location": {
+          "basis": "planned",
+          "by": {
+            "key": "flight|demo air|DMX7Q2|DM1432|LGW-TGD|2026-10-18",
+            "role": "flight"
+          },
+          "locality": "Podgorica",
+          "place": "TGD",
+          "since": {
+            "local": "2026-10-18T12:55",
+            "utc": "2026-10-18T10:55:00+00:00"
+          },
+          "status": "arrived",
+          "timezone": "Europe/Podgorica"
+        }
+      },
+      "dates": "18 October",
+      "days": [
+        {
+          "date": "2026-10-18",
+          "itinerary": [
+            {
+              "detail": "09:15 London time · 12:55 Podgorica time · 2 h 40 min in the air",
+              "kind": "flight",
+              "label": "Flight DM1432 London (LGW) → Podgorica (TGD)",
+              "time": "09:15–12:55"
+            }
+          ],
+          "label": "Sun 18 Oct"
+        }
+      ],
+      "disruption": null,
+      "items": [
+        {
+          "detail": {
+            "arrives": {
+              "local": "2026-10-18T12:55",
+              "timezone": "Europe/Podgorica",
+              "utc": "2026-10-18T10:55:00+00:00"
+            },
+            "cabin": "Economy",
+            "carrier": "DM",
+            "departs": {
+              "local": "2026-10-18T09:15",
+              "timezone": "Europe/London",
+              "utc": "2026-10-18T08:15:00+00:00"
+            },
+            "destination": {
+              "city": "Podgorica",
+              "code": "TGD",
+              "timezone": "Europe/Podgorica"
+            },
+            "duration_minutes": 160,
+            "flight_number": "DM1432",
+            "origin": {
+              "city": "London",
+              "code": "LGW",
+              "timezone": "Europe/London"
+            },
+            "passengers": 0,
+            "service_date": "2026-10-18"
+          },
+          "key": "flight|demo air|DMX7Q2|DM1432|LGW-TGD|2026-10-18",
+          "kind": "flight",
+          "provider": "demo air",
+          "reference": "DMX7Q2",
+          "revision": {
+            "changed_fields": [],
+            "count": 1,
+            "current": 1
+          },
+          "status": "confirmed"
+        }
+      ],
+      "next": [],
+      "next_item": null,
+      "off_timeline": [],
+      "policy_version": "2026-10-16.2",
+      "route": [
+        "London",
+        "Podgorica"
+      ]
+    },
+    "understood": {
+      "changes": [],
+      "kind": "flight",
+      "outcome": "new",
+      "provider": "Demo Air",
+      "route": "London → Podgorica",
+      "status": "Confirmed",
+      "title": "Flight DM1432",
+      "when": "18 Oct"
+    }
+  }
+}

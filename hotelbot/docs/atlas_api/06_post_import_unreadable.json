@@ -1,0 +1,12 @@
+{
+  "request": "POST /demo/import {\"text\": \"not a booking\"}",
+  "response": {
+    "session": null,
+    "trip": null,
+    "understood": {
+      "detail": "No trip data was changed.",
+      "message": "Atlas can't read this booking format yet.",
+      "outcome": "unreadable"
+    }
+  }
+}
