@@ -67,8 +67,8 @@ class RateLimiter:
 
 
 def _visitor(request: Request) -> str:
-    """The address Google's front end saw. It APPENDS that to X-Forwarded-For, so the
-    last entry is the one a visitor cannot forge (the first one they can)."""
+    """The rate-limit key: the last X-Forwarded-For hop as Cloud Run passes it on.
+    Best effort against casual overuse of the demo - not a security boundary."""
     fwd = request.headers.get("x-forwarded-for")
     return fwd.split(",")[-1].strip() if fwd else (request.client.host if request.client else "unknown")
 
