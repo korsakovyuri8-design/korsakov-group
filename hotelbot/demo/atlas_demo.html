@@ -96,7 +96,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); font-
 .timeline .assumed { font-size: 12px; color: var(--muted); }
 @media (max-width: 460px) { .timeline li { grid-template-columns: 92px minmax(0, 1fr); } }
 
-.headline { font-family: var(--display); font-size: 24px; margin: 0; text-wrap: balance; font-weight: 400; }
+.headline { font-family: var(--display); font-size: clamp(26px, 4vw, 34px); line-height: 1.2; margin: 0; text-wrap: balance; font-weight: 400; }
 .picks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 900px) { .picks { grid-template-columns: minmax(0, 1fr); } }
 .pick { border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 10px; align-content: start; }
@@ -118,6 +118,18 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); font-
 .finale .brand { font-size: clamp(28px, 6vw, 44px); }
 .finale p { margin: 0; font-size: 18px; }
 .finale .cta { color: var(--accent); font-weight: 600; }
+.imported { font-size: 13px; font-weight: 600; color: var(--accent); margin: 0 0 6px; letter-spacing: .02em; }
+.detail { display: block; font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 2px; }
+.status { justify-self: start; font-size: 13px; font-weight: 600; color: var(--warn); border: 1px solid var(--warn);
+  border-radius: 999px; padding: 4px 12px; }
+.results { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.results li { border-top: 2px solid var(--accent); padding-top: 8px; display: grid; gap: 2px; }
+.results b { font-family: var(--display); font-weight: 400; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+.results span { font-size: 13px; color: var(--muted); }
+.positioning { margin: 0; max-width: 62ch; }
+.narration { margin: 0; border-left: 3px solid var(--accent); padding: 6px 0 6px 16px; font-family: var(--display);
+  font-size: 19px; line-height: 1.4; color: var(--ink); }
+.toggle { margin-top: 20px; font-size: 13px; }
 
 @media (prefers-reduced-motion: no-preference) {
   .card-body > * { animation: rise .32s ease both; }
@@ -130,6 +142,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); font-
     <h1 class="brand">KORSAKOV ATLAS</h1>
     <p class="tagline" id="tagline">Your entire trip, understood.</p>
     <ol class="steps" id="steps"></ol>
+    <button class="btn toggle" id="narrate" type="button" aria-pressed="false">Show narration</button>
     <p class="rail-note" id="rail-note"></p>
   </aside>
   <main class="card" aria-live="polite">
@@ -151,7 +164,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); font-
   </main>
 </div>
 
-<!--ATLAS-DATA--><script type="application/json" id="atlas-data">{"brand": {"cta": "Forward your bookings. Atlas handles the rest.", "name": "KORSAKOV ATLAS", "tagline": "Your entire trip, understood."}, "policy_version": "2026-10-16.2", "registry": "2026-10-16.2", "scenes": [{"bookings": [{"kind": "flight", "provider": "demo air", "reference": "DMX7Q2", "status": "confirmed", "title": "Flight DM1432 London → Podgorica", "when": "2026-10-18 09:15 → 12:55"}, {"kind": "accommodation", "provider": "hotel demo kotor", "reference": "HK20931", "status": "confirmed", "title": "Hotel Demo Kotor", "when": "2026-10-18 → 2026-10-21"}, {"kind": "restaurant", "provider": "demotable", "reference": "R4417", "status": "confirmed", "title": "Dinner at Konoba Demo", "when": "2026-10-18 20:00"}], "dates": "18–21 October", "documents": ["Demo Air booking confirmation", "Hotel Demo Kotor booking confirmation", "DemoTable reservation"], "id": "bookings", "route": ["London", "Podgorica", "Kotor"], "title": "Here are my bookings"}, {"action": "Arrange transfer", "free_time": [], "id": "problem", "issues": [{"kind": "missing_transfer", "severity": "warning", "text": "No transport from Podgorica to Kotor."}], "lines": ["You land in Podgorica at 12:55.", "Your next confirmed place is dinner at Konoba Demo in Kotor at 20:00.", "There is no transport between them."], "title": "Atlas notices a problem"}, {"day": "Sunday 18 October", "documents": ["Demo Transfers confirmation"], "id": "rebuilt", "issues": [], "itinerary": [{"kind": "flight", "label": "Flight DM1432 London (LGW) → Podgorica (TGD)", "time": "09:15–12:55"}, {"kind": "transfer", "label": "Transfer from TGD", "time": "15:00–16:00"}, {"kind": "arrival", "label": "Hotel arrival — Hotel Demo Kotor", "time": "16:00"}, {"assumed": true, "kind": "check_in", "label": "Check-in", "time": "16:00–16:30"}, {"kind": "free", "label": "Free time", "minutes": 180, "time": "16:30–19:30"}, {"kind": "restaurant", "label": "Dinner at Konoba Demo", "time": "20:00"}], "title": "Atlas rebuilds the day"}, {"considered": 6, "headline": "You have 3 hours before dinner. Here are 3 things that actually fit.", "id": "suggestions", "left_out": 3, "left_out_reasons": {"does_not_fit_window": 3, "state_unknown": 0}, "suggestions": [{"arrive_dinner": "18:11", "kind": "viewpoint", "leave_hotel": "16:30", "name": "City Walls Lookout", "visit_from": "16:34", "visit_minutes": 90, "visit_to": "18:04", "walk_on": 7, "walk_there": 4}, {"arrive_dinner": "17:33", "kind": "museum", "leave_hotel": "16:30", "name": "Maritime Museum", "visit_from": "16:31", "visit_minutes": 60, "visit_to": "17:31", "walk_on": 2, "walk_there": 1}, {"arrive_dinner": "17:04", "kind": "religious site", "leave_hotel": "16:30", "name": "Old Town Cathedral", "visit_from": "16:32", "visit_minutes": 30, "visit_to": "17:02", "walk_on": 2, "walk_there": 2}], "title": "Atlas uses the World", "window": {"assumptions": [{"at": "end", "minutes": 30, "policy": "reservation_buffer_minutes"}], "from": "Stari grad 1, Kotor, Montenegro", "time": "16:30–19:30", "to": "Stari grad 210, Kotor, Montenegro"}}, {"action": "Contact Demo Transfers", "documents": ["Demo Air schedule change"], "free_time": [], "headline": "Demo Air changed your flight.", "id": "change", "issues": [{"kind": "impossible_connection", "severity": "error", "text": "5 min between landing and the transfer; about 45 min are needed."}], "itinerary": [{"kind": "flight", "label": "Flight DM1432 London (LGW) → Podgorica (TGD)", "time": "11:15–14:55"}, {"kind": "transfer", "label": "Transfer from TGD", "time": "15:00–16:00"}, {"kind": "restaurant", "label": "Dinner at Konoba Demo", "time": "20:00"}], "lines": ["Departure moved from 09:15 to 11:15.", "You now land in Podgorica at 14:55.", "Your transfer from TGD leaves at 15:00 — 5 min after landing; getting out of the airport takes about 45.", "Your existing transfer may no longer fit."], "plan": "By your plan you are still due at Konoba Demo at 20:00; the free time before it is on hold until the transfer is sorted.", "title": "A flight change arrives"}], "world": "synthetic demo world (data/trips/demo_world.yaml)"}</script><!--/ATLAS-DATA-->
+<!--ATLAS-DATA--><script type="application/json" id="atlas-data">{"brand": {"cta": "Forward your bookings. Atlas handles the rest.", "name": "KORSAKOV ATLAS", "tagline": "Your entire trip, understood."}, "policy_version": "2026-10-16.2", "registry": "2026-10-16.2", "scenes": [{"bookings": [{"kind": "flight", "provider": "demo air", "reference": "DMX7Q2", "status": "confirmed", "title": "Flight DM1432 London → Podgorica", "when": "2026-10-18 09:15 → 12:55"}, {"kind": "accommodation", "provider": "hotel demo kotor", "reference": "HK20931", "status": "confirmed", "title": "Hotel Demo Kotor", "when": "2026-10-18 → 2026-10-21"}, {"kind": "restaurant", "provider": "demotable", "reference": "R4417", "status": "confirmed", "title": "Dinner at Konoba Demo", "when": "2026-10-18 20:00"}], "dates": "18–21 October", "documents": ["Demo Air booking confirmation", "Hotel Demo Kotor booking confirmation", "DemoTable reservation"], "id": "bookings", "imported": {"bookings": 3, "documents": 3}, "route": ["London", "Podgorica", "Kotor"], "title": "Here are my bookings"}, {"action": "Arrange transfer", "free_time": [], "id": "problem", "issues": [{"kind": "missing_transfer", "severity": "warning", "text": "No transport from Podgorica to Kotor."}], "lines": ["You land in Podgorica at 12:55.", "Your next confirmed place is dinner at Konoba Demo in Kotor at 20:00.", "There is no transport between them."], "title": "Atlas notices a problem"}, {"day": "Sunday 18 October", "documents": ["Demo Transfers confirmation"], "id": "rebuilt", "issues": [], "itinerary": [{"detail": "09:15 London time · 12:55 Podgorica time · 2 h 40 min in the air", "kind": "flight", "label": "Flight DM1432 London (LGW) → Podgorica (TGD)", "time": "09:15–12:55"}, {"kind": "transfer", "label": "Transfer from TGD", "time": "15:00–16:00"}, {"kind": "arrival", "label": "Hotel arrival — Hotel Demo Kotor", "time": "16:00"}, {"assumed": true, "kind": "check_in", "label": "Check-in", "time": "16:00–16:30"}, {"kind": "free", "label": "Free time", "minutes": 180, "time": "16:30–19:30"}, {"kind": "restaurant", "label": "Dinner at Konoba Demo", "time": "20:00"}], "title": "Atlas rebuilds the day"}, {"considered": 6, "headline": "You have 3 hours before dinner. Here are 3 things that actually fit.", "id": "suggestions", "left_out": 3, "left_out_reasons": {"does_not_fit_window": 3, "state_unknown": 0}, "suggestions": [{"arrive_dinner": "18:11", "kind": "viewpoint", "leave_hotel": "16:30", "name": "City Walls Lookout", "visit_from": "16:34", "visit_minutes": 90, "visit_to": "18:04", "walk_on": 7, "walk_there": 4}, {"arrive_dinner": "17:33", "kind": "museum", "leave_hotel": "16:30", "name": "Maritime Museum", "visit_from": "16:31", "visit_minutes": 60, "visit_to": "17:31", "walk_on": 2, "walk_there": 1}, {"arrive_dinner": "17:04", "kind": "religious site", "leave_hotel": "16:30", "name": "Old Town Cathedral", "visit_from": "16:32", "visit_minutes": 30, "visit_to": "17:02", "walk_on": 2, "walk_there": 2}], "title": "Atlas uses the World", "window": {"assumptions": [{"at": "end", "minutes": 30, "policy": "reservation_buffer_minutes"}], "from": "Stari grad 1, Kotor, Montenegro", "time": "16:30–19:30", "to": "Stari grad 210, Kotor, Montenegro"}}, {"action": "Contact Demo Transfers", "documents": ["Demo Air schedule change"], "free_time": [], "headline": "Demo Air changed your flight.", "id": "change", "issues": [{"kind": "impossible_connection", "severity": "error", "text": "5 min between landing and the transfer; about 45 min are needed."}], "itinerary": [{"detail": "11:15 London time · 14:55 Podgorica time · 2 h 40 min in the air", "kind": "flight", "label": "Flight DM1432 London (LGW) → Podgorica (TGD)", "time": "11:15–14:55"}, {"kind": "transfer", "label": "Transfer from TGD", "time": "15:00–16:00"}, {"kind": "restaurant", "label": "Dinner at Konoba Demo", "time": "20:00"}], "lines": ["Departure moved from 09:15 to 11:15.", "You now land in Podgorica at 14:55.", "Your transfer from TGD leaves at 15:00 — 5 min after landing; getting out of the airport takes about 45.", "Your existing transfer may no longer fit."], "plan": "By your plan you are still due at Konoba Demo at 20:00; the free time before it is on hold until the transfer is sorted.", "status": "Transfer needs rebooking", "title": "A flight change arrives"}], "summary": {"activities_that_fit": 3, "bookings": 4, "disruptions": 1, "documents": 5, "missing_connections": 1}, "world": "synthetic demo world (data/trips/demo_world.yaml)"}</script><!--/ATLAS-DATA-->
 
 <script>
 (() => {
@@ -161,12 +174,22 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); font-
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmtDay = (iso) => { const d = new Date(iso + "T12:00:00Z"); return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }); };
   const when = (b) => b.when.replace(/(\d{4}-\d{2}-\d{2})/g, (m) => fmtDay(m));
+  const SAY = {
+    bookings: "Imagine you’re travelling from London to Montenegro. You forward Atlas three confirmations. Atlas understands the entire trip, not just the hotel.",
+    problem: "It catches something a booking site doesn’t: you land in Podgorica, but nothing gets you to Kotor.",
+    rebuilt: "Once transport is confirmed, Atlas rebuilds the day.",
+    suggestions: "Instead of suggesting random attractions, it finds only things you can actually reach, visit, and still make dinner.",
+    change: "Then your airline changes the flight. Atlas immediately understands what else may now break.",
+    summary: "Every screen you just saw was computed from the bookings themselves.",
+  };
+  let narrate = location.hash === "#narration";
+  try { narrate = narrate || localStorage.getItem("atlas-narration") === "1"; } catch (e) { /* storage unavailable */ }
   const NEXT = { problem: null, suggestions: "Flight change arrives", change: "See the summary" };
   let at = 0;
 
   const views = {
     bookings: (s) => `
-      <div><p class="route">${s.route.map(esc).join(' <span class="arrow">→</span> ')}</p>
+      <div>${s.imported ? `<p class="imported">${s.imported.documents} confirmations imported · Atlas understood ${s.imported.bookings} bookings</p>` : ""}<p class="route">${s.route.map(esc).join(' <span class="arrow">→</span> ')}</p>
       <p class="dates">${esc(s.dates)}</p></div>
       <ul class="list">${s.bookings.map((b) => `
         <li><span class="what">${esc(b.title)}</span><span class="pill">${esc(b.status)}</span>
@@ -178,7 +201,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); font-
       <p class="eyebrow">${esc(s.day)}</p>
       <ol class="timeline">${s.itinerary.map((i) => `
         <li class="${i.kind === "free" ? "free" : ""}"><time>${esc(i.time)}</time>
-        <span>${esc(i.label)}${i.assumed ? ' <span class="assumed">(estimated)</span>' : ""}</span></li>`).join("")}</ol>`,
+        <span>${esc(i.label)}${i.assumed ? ' <span class="assumed">(estimated)</span>' : ""}${i.detail ? `<span class="detail">${esc(i.detail)}</span>` : ""}</span></li>`).join("")}</ol>`,
     suggestions: (s) => `
       <p class="headline">${esc(s.headline)}</p>
       <div class="picks">${s.suggestions.map((x) => `
@@ -192,12 +215,19 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); font-
     change: (s) => `
       <div class="alert" role="alert"><h3>${esc(s.headline)}</h3>${s.lines.map((l) => `<p>${esc(l)}</p>`).join("")}</div>
       <p class="plan">${esc(s.plan || "")}</p>
-      <div><button class="btn" type="button" disabled title="Demo only">${esc(s.action)}</button></div>`,
+      ${s.status ? `<span class="status">${esc(s.status)}</span>` : ""}`,
   };
 
+  const RESULTS = [["documents", "documents read"], ["bookings", "bookings understood"],
+    ["missing_connections", "missing connection found"], ["activities_that_fit", "activities that fit"],
+    ["disruptions", "disruption detected"]];
   const finale = () => `
     <div class="finale"><p class="brand">${esc(data.brand.name)}</p><p>${esc(data.brand.tagline)}</p>
     <p class="cta">${esc(data.brand.cta)}</p></div>
+    <ul class="results">${RESULTS.filter(([k]) => data.summary && k in data.summary).map(([k, label]) =>
+      `<li><b>${data.summary[k]}</b><span>${label}</span></li>`).join("")}</ul>
+    <p class="positioning">Korsakov Atlas is the operating layer for a trip. It understands bookings, builds the journey,
+    catches broken connections, uses the real world around you, and keeps the plan coherent when something changes.</p>
     <p class="fineprint">Every screen here was computed by the Atlas pipeline from sample booking emails, offline.
     Places, hours and walking times come from a synthetic demo world. Trip policy ${esc(data.policy_version)}.</p>`;
 
@@ -210,7 +240,10 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); font-
     $("eyebrow").textContent = `Scene ${at + 1} of ${total}`;
     $("scene-title").textContent = s ? s.title : "Your entire trip, understood";
     $("docs").innerHTML = (s && s.documents ? s.documents : []).map((d) => `<span class="doc">+ ${esc(d)}</span>`).join("");
-    $("body").innerHTML = s ? views[s.id](s) : finale();
+    const line = narrate ? `<blockquote class="narration">${esc(SAY[s ? s.id : "summary"])}</blockquote>` : "";
+    $("body").innerHTML = line + (s ? views[s.id](s) : finale());
+    $("narrate").textContent = narrate ? "Hide narration" : "Show narration";
+    $("narrate").setAttribute("aria-pressed", String(narrate));
     $("where").textContent = s && s.id === "suggestions" ? `Free time ${s.window.time} · hotel to dinner` : "Kotor trip · 18–21 October";
     $("back").disabled = at === 0;
     const next = $("next");
@@ -220,6 +253,11 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); font-
   }
 
   $("steps").addEventListener("click", (e) => { const b = e.target.closest("button[data-i]"); if (b) { at = +b.dataset.i; render(); } });
+  $("narrate").addEventListener("click", () => {
+    narrate = !narrate;
+    try { localStorage.setItem("atlas-narration", narrate ? "1" : "0"); } catch (e) { /* storage unavailable */ }
+    render();
+  });
   $("next").addEventListener("click", () => { at = Math.min(at + 1, scenes.length); render(); });
   $("back").addEventListener("click", () => { at = Math.max(at - 1, 0); render(); });
   if (!scenes.length) { $("body").innerHTML = '<p class="plan">No scene data. Run: python -m app.trip.atlas_demo --html demo/atlas_demo.html</p>'; return; }

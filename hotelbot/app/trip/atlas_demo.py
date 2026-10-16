@@ -27,7 +27,7 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import TripItem
+from app.db.models import TripItem, TripSourceRecord
 from app.db.session import create_schema, make_engine
 from app.journey import ingest, policies, timeinfo, timeline
 from app.trip import journey_bridge
@@ -84,6 +84,10 @@ def _import(session: Session, trip_id: str, *names: str) -> None:
 
 def _build(session: Session, trip_id: str) -> dict[str, Any]:
     return timeline.build(timeline.snapshot(session, trip_id), policies.load())
+
+
+def _count(session: Session, model: Any, trip_id: str) -> int:
+    return len(session.scalars(select(model.id).where(model.trip_id == trip_id)).all())
 
 
 def _items(session: Session, trip_id: str) -> dict[str, TripItem]:
@@ -189,8 +193,11 @@ def _itinerary(out: dict[str, Any], items: dict[str, TripItem]) -> list[dict[str
             d = item.details
             label = (f"Flight {d['flight_number']} {_city(d['origin'])} ({d['origin']}) → "
                      f"{_city(d['destination'])} ({d['destination']})")
+            air = int((datetime.fromisoformat(e["end"]) - datetime.fromisoformat(e["start"])).total_seconds() // 60)
+            detail = (f"{_hm(e['local_start'])} {_city(d['origin'])} time · {_hm(e['local_end'])} "
+                      f"{_city(d['destination'])} time · {air // 60} h {air % 60} min in the air")
             rows.append((e["start"], 0, {"time": _span(e["local_start"], e["local_end"]), "label": label,
-                                         "kind": "flight"}))
+                                         "kind": "flight", "detail": detail}))
         elif e["role"] == "transfer":
             rows.append((e["start"], 0, {"time": _span(e["local_start"], e["local_end"]),
                                          "label": f"Transfer from {item.details['pickup']}", "kind": "transfer"}))
@@ -259,7 +266,8 @@ def _scene_change(out: dict[str, Any], items: dict[str, TripItem]) -> dict[str, 
     plan = (f"By your plan you are still due at {_name(dinner)} at {_hm(dinner.times['starts']['local'])}; "
             "the free time before it is on hold until the transfer is sorted.") if dinner else None
     return {"id": "change", "title": "A flight change arrives", "headline": f"{flight.provider.title()} changed your flight.",
-            "lines": lines, "plan": plan, "action": f"Contact {next(i for i in items.values() if i.kind == 'transfer').provider.title()}",
+            "lines": lines, "plan": plan, "status": "Transfer needs rebooking" if clash else None,
+            "action": f"Contact {next(i for i in items.values() if i.kind == 'transfer').provider.title()}",
             "issues": _issues(out, items), "free_time": _day_windows(out), "itinerary": _itinerary(out, items)}
 
 
@@ -272,7 +280,9 @@ def run() -> dict[str, Any]:
             trip = ingest.create_trip(s, title="London - Kotor")
             _import(s, trip.id, "F1", "F2", "F3")
             a, items = _build(s, trip.id), _items(s, trip.id)
-            scenes = [{**_scene_bookings(a, items), "documents": [DOC_LABELS[d] for d in ("F1", "F2", "F3")]},
+            imported = {"documents": _count(s, TripSourceRecord, trip.id), "bookings": len(items)}
+            scenes = [{**_scene_bookings(a, items), "documents": [DOC_LABELS[d] for d in ("F1", "F2", "F3")],
+                       "imported": imported},
                       _scene_problem(a, items)]
             _import(s, trip.id, "F13")
             b, items = _build(s, trip.id), _items(s, trip.id)
@@ -281,7 +291,12 @@ def run() -> dict[str, Any]:
             _import(s, trip.id, "F1c")
             c, items = _build(s, trip.id), _items(s, trip.id)
             scenes.append({**_scene_change(c, items), "documents": [DOC_LABELS["F1c"]]})
-            return {"brand": BRAND, "policy_version": b["policy_version"], "registry": b["registry"],
+            summary = {"documents": _count(s, TripSourceRecord, trip.id),
+                       "bookings": len([i for i in items.values() if i.kind != "statement"]),
+                       "missing_connections": sum(i["kind"] == "missing_transfer" for i in a["issues"]),
+                       "activities_that_fit": len(scenes[3]["suggestions"]),
+                       "disruptions": sum(i["kind"] == "impossible_connection" for i in c["issues"])}
+            return {"brand": BRAND, "summary": summary, "policy_version": b["policy_version"], "registry": b["registry"],
                     "world": "synthetic demo world (data/trips/demo_world.yaml)", "scenes": scenes}
     finally:
         eng.dispose()

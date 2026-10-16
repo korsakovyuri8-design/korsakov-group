@@ -74,3 +74,21 @@ def test_scene_5_a_flight_change_is_noticed_not_rewritten(demo):
 def test_the_brand_lines(demo):
     assert demo["brand"] == {"name": "KORSAKOV ATLAS", "tagline": "Your entire trip, understood.",
                              "cta": "Forward your bookings. Atlas handles the rest."}
+
+
+def test_the_import_is_visible_as_a_result(demo):
+    assert _scene(demo, "bookings")["imported"] == {"documents": 3, "bookings": 3}
+
+
+def test_a_flight_across_zones_says_both_local_times_and_the_real_duration(demo):
+    flight = _scene(demo, "rebuilt")["itinerary"][0]
+    assert flight["detail"] == "09:15 London time · 12:55 Podgorica time · 2 h 40 min in the air"
+
+
+def test_the_change_states_what_needs_doing_instead_of_a_dead_button(demo):
+    assert _scene(demo, "change")["status"] == "Transfer needs rebooking"
+
+
+def test_the_summary_counts_come_from_the_run(demo):
+    assert demo["summary"] == {"documents": 5, "bookings": 4, "missing_connections": 1, "activities_that_fit": 3,
+                               "disruptions": 1}
