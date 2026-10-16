@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Korsakov Atlas</title>
+<meta name="description" content="Forward your bookings. Atlas handles the rest.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b6b78'/%3E%3Cpath d='M9 24 16 7l7 17M11.5 18h9' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gloock&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: import first (the product), the 90-second walkthrough below (the explanation). */
+:root {
+  --bg: #eef1f0; --surface: #ffffff; --ink: #12222e; --muted: #5a6a73; --line: #d5dcdc;
+  --accent: #0b6b78; --accent-soft: #dcecee; --on-accent: #ffffff;
+  --warn: #9a5a00; --warn-soft: #fbefdc; --bad: #a23b2a; --bad-soft: #f8e3df; --free: #1f7a4d; --free-soft: #dff1e6;
+  --display: "Gloock", "Iowan Old Style", Georgia, serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1620; --surface: #142230; --ink: #e4ebee; --muted: #93a4ad; --line: #24384a;
+    --accent: #5cc3cf; --accent-soft: #163b45; --on-accent: #0d1620;
+    --warn: #f0b45a; --warn-soft: #3a2a12; --bad: #f08a76; --bad-soft: #3d1d18; --free: #6fd29d; --free-soft: #143525;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1620; --surface: #142230; --ink: #e4ebee; --muted: #93a4ad; --line: #24384a;
+  --accent: #5cc3cf; --accent-soft: #163b45; --on-accent: #0d1620;
+  --warn: #f0b45a; --warn-soft: #3a2a12; --bad: #f08a76; --bad-soft: #3d1d18; --free: #6fd29d; --free-soft: #143525;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+[hidden] { display: none !important; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { padding-block: 32px 8px; }
+.brand { font-family: var(--display); font-weight: 400; font-size: clamp(30px, 6vw, 48px); letter-spacing: .05em; line-height: 1.05; margin: 0; }
+.tagline { margin: 6px 0 0; font-size: 18px; color: var(--muted); }
+h2 { font-family: var(--display); font-weight: 400; font-size: clamp(24px, 4vw, 32px); margin: 0; line-height: 1.2; text-wrap: balance; }
+h3 { margin: 0; font-size: 17px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0; }
+section { padding-block: 28px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: grid; gap: 16px; min-width: 0; }
+textarea { width: 100%; min-height: 180px; resize: vertical; font: 13px/1.5 var(--mono); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { font: inherit; font-weight: 600; border-radius: 8px; padding: 10px 18px; cursor: pointer; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn:hover { filter: brightness(1.05); }
+.btn:focus-visible, .chip:focus-visible, .steps button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn[disabled] { opacity: .5; cursor: progress; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { font: inherit; font-size: 12.5px; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 999px; padding: 4px 11px; cursor: pointer; }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+.privacy { font-size: 12.5px; color: var(--muted); margin: 0; max-width: 70ch; }
+
+.result { display: grid; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 24px; display: grid; gap: 10px; min-width: 0; }
+.understood { border-color: var(--accent); }
+.understood .title { font-family: var(--display); font-size: 26px; line-height: 1.2; margin: 0; }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.pill { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; border-radius: 999px; padding: 2px 9px;
+  color: var(--free); background: var(--free-soft); justify-self: start; }
+.pill.cancelled { color: var(--bad); background: var(--bad-soft); }
+.changes { margin: 0; padding-left: 18px; }
+.alert { border-radius: 12px; padding: 16px 20px; display: grid; gap: 6px; background: var(--warn-soft); }
+.alert.error { background: var(--bad-soft); }
+.alert h3 { color: var(--warn); }
+.alert.error h3 { color: var(--bad); }
+.alert p { margin: 0; }
+.status { justify-self: start; font-size: 13px; font-weight: 600; color: var(--bad); border: 1px solid var(--bad); border-radius: 999px; padding: 3px 12px; }
+.unreadable { background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 16px 20px; }
+.unreadable p { margin: 0; }
+
+.trip-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: baseline; }
+.route { font-family: var(--display); font-size: clamp(24px, 4.5vw, 36px); line-height: 1.15; margin: 0; text-wrap: balance; }
+.route .arrow { color: var(--accent); }
+.dates { font-family: var(--mono); color: var(--muted); }
+.list { list-style: none; margin: 0; padding: 0; display: grid; }
+.list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 10px 0; border-top: 1px solid var(--line); align-items: baseline; }
+.list li:first-child { border-top: 0; }
+.list .what { font-weight: 600; min-width: 0; }
+.list .when { font-family: var(--mono); font-size: 12.5px; color: var(--muted); grid-column: 1; }
+.list .pill { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 820px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; }
+.timeline li { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.timeline li:first-child { border-top: 0; }
+.timeline time { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.timeline .free { background: var(--free-soft); border-radius: 8px; border-top-color: transparent; padding-inline: 10px; margin-inline: -10px; }
+.timeline .free time, .timeline .free span { color: var(--free); font-weight: 600; }
+.detail { display: block; font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 2px; }
+.assumed { font-size: 12px; color: var(--muted); }
+.days { display: grid; gap: 18px; }
+.headline { font-family: var(--display); font-size: clamp(22px, 3.5vw, 30px); line-height: 1.2; margin: 0; text-wrap: balance; font-weight: 400; }
+.picks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .picks { grid-template-columns: minmax(0, 1fr); } }
+.pick { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
+.pick h4 { margin: 0; font-size: 16px; }
+.pick .kind { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.legs { font-family: var(--mono); font-size: 12.5px; display: grid; gap: 3px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.legs b { color: var(--ink); font-weight: 600; }
+.next { display: grid; gap: 4px; }
+
+/* walkthrough */
+.walk { display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 760px) { .walk { grid-template-columns: minmax(0, 1fr); } }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.steps button { width: 100%; text-align: left; font: inherit; color: var(--muted); background: none; border: 0; padding: 9px 12px;
+  border-radius: 8px; cursor: pointer; display: grid; grid-template-columns: 28px 1fr; gap: 8px; }
+.steps button:hover { background: var(--accent-soft); color: var(--ink); }
+.steps button[aria-current="step"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--line); }
+.steps .n { font-family: var(--mono); font-size: 13px; padding-top: 2px; }
+@media (max-width: 760px) {
+  .steps { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .steps button { grid-template-columns: 1fr; text-align: center; padding: 8px 4px; }
+  .steps .label { display: none; }
+}
+.narration { margin: 0; border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; font-family: var(--display); font-size: 18px; line-height: 1.4; }
+.results-row { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.results-row li { border-top: 2px solid var(--accent); padding-top: 8px; display: grid; gap: 2px; }
+.results-row b { font-family: var(--display); font-weight: 400; font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; }
+.results-row span { font-size: 13px; color: var(--muted); }
+footer { padding-block: 24px 48px; color: var(--muted); font-size: 13.5px; }
+footer p { margin: 0 0 6px; max-width: 70ch; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="brand">KORSAKOV ATLAS</h1>
+    <p class="tagline">Your entire trip, understood.</p>
+  </header>
+
+  <section id="try" aria-labelledby="try-title">
+    <div class="panel">
+      <div>
+        <p class="eyebrow">Try Atlas</p>
+        <h2 id="try-title">Paste a booking confirmation</h2>
+      </div>
+      <label class="small muted" for="doc">Flight, hotel, restaurant or transfer confirmation e-mail, as text or HTML.</label>
+      <textarea id="doc" spellcheck="false" placeholder="Paste the e-mail here…"></textarea>
+      <div class="row">
+        <button class="btn primary" id="import" type="button">Import</button>
+        <button class="btn" id="sample" type="button">Use sample bookings</button>
+        <button class="btn" id="reset" type="button" hidden>Start over</button>
+      </div>
+      <div class="chips" id="sample-docs"><span class="small muted">Or paste one of ours:</span></div>
+      <p class="privacy">Demo privacy: imported documents are processed temporarily and are not retained after the demo session.
+        Atlas reads only the formats it knows; nothing is sent to an AI model.</p>
+    </div>
+  </section>
+
+  <section id="result" class="result" aria-live="polite" hidden></section>
+
+  <section id="walkthrough" aria-labelledby="walk-title">
+    <div class="row" style="justify-content: space-between">
+      <h2 id="walk-title">Watch the 90-second demo</h2>
+      <button class="btn" id="narrate" type="button" aria-pressed="false">Show narration</button>
+    </div>
+    <div class="walk" style="margin-top: 16px">
+      <ol class="steps" id="steps"></ol>
+      <div class="panel" id="scene"></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Korsakov Atlas is the operating layer for a trip. It understands bookings, builds the journey, catches broken
+      connections, uses the real world around you, and keeps the plan coherent when something changes.</p>
+    <p>Forward your bookings. Atlas handles the rest.</p>
+    <p class="small">Demo places, opening hours and walking times come from a synthetic world of Kotor Old Town.</p>
+  </footer>
+</div>
+
+<script type="application/json" id="atlas-playback">/*ATLAS-PLAYBACK*/{}</script>
+<script type="application/json" id="atlas-samples">/*ATLAS-SAMPLES*/[]</script>
+<script nonce="{{NONCE}}">
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const playback = JSON.parse($("atlas-playback").textContent);
+  const samples = JSON.parse($("atlas-samples").textContent);
+  const fmtDay = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  const when = (s) => String(s).replace(/(\d{4}-\d{2}-\d{2})/g, (m) => fmtDay(m));
+  let session = null;
+  try { session = sessionStorage.getItem("atlas-session"); } catch (e) { /* storage unavailable */ }
+  const keep = (s) => { session = s; try { s ? sessionStorage.setItem("atlas-session", s) : sessionStorage.removeItem("atlas-session"); } catch (e) { /* ignore */ } };
+
+  // ------------------------------------------------------------ live trip
+  async function call(method, url, body) {
+    const r = await fetch(url, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    let data = {};
+    try { data = await r.json(); } catch (e) { /* empty */ }
+    return { ok: r.ok, status: r.status, data };
+  }
+  const busy = (on) => ["import", "sample", "reset"].forEach((id) => { $(id).disabled = on; });
+
+  function cardView(u) {
+    if (!u) return "";
+    if (u.outcome === "unreadable" || u.outcome === "ambiguous")
+      return `<div class="unreadable"><p><strong>${esc(u.message)}</strong></p><p class="muted">${esc(u.detail)}</p></div>`;
+    const lead = { new: "Atlas understood this booking", updated: "Atlas understood this update", already_known: "Atlas already knows this booking" }[u.outcome];
+    return `<article class="card understood"><p class="eyebrow">${esc(lead)}</p>
+      <p class="title">${esc(u.provider)} · ${esc(u.title)}</p>
+      <div class="facts"><span>${esc(u.route)}</span><span>${esc(u.when)}</span></div>
+      <span class="pill ${u.status === "Cancelled" ? "cancelled" : ""}">${esc(u.status)}</span>
+      ${u.changes && u.changes.length ? `<ul class="changes">${u.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>` : ""}</article>`;
+  }
+  const alertView = (a) => `<div class="alert ${a.severity === "error" ? "error" : ""}" role="alert"><h3>${esc(a.headline)}</h3>
+    ${a.lines.map((l) => `<p>${esc(l)}</p>`).join("")}${a.plan ? `<p class="muted small">${esc(a.plan)}</p>` : ""}
+    ${a.status ? `<span class="status">${esc(a.status)}</span>` : ""}</div>`;
+  const itineraryView = (rows) => `<ol class="timeline">${rows.map((i) => `<li class="${i.kind === "free" ? "free" : ""}"><time>${esc(i.time)}</time>
+    <span>${esc(i.label)}${i.assumed ? ' <span class="assumed">(estimated)</span>' : ""}${i.detail ? `<span class="detail">${esc(i.detail)}</span>` : ""}</span></li>`).join("")}</ol>`;
+  const picksView = (a) => `<div class="picks">${a.suggestions.map((x) => `<article class="pick"><div><div class="kind">${esc(x.kind)}</div><h4>${esc(x.name)}</h4></div>
+    <div class="legs"><span>Walk there <b>${x.walk_there} min</b></span><span>Visit <b>${esc(x.visit_from)}–${esc(x.visit_to)}</b></span>
+    <span>Then <b>${x.walk_on} min</b> to ${a.window.ends_at === "reservation" ? "dinner" : "your next stop"}</span></div></article>`).join("")}</div>`;
+
+  function tripView(t) {
+    if (!t) return "";
+    const parts = [];
+    parts.push(`<div class="card"><div class="trip-head"><p class="route">${t.route.length ? t.route.map(esc).join(' <span class="arrow">→</span> ') : "Your trip"}</p>
+      ${t.dates ? `<span class="dates">${esc(t.dates)}</span>` : ""}</div>
+      <ul class="list">${t.bookings.map((b) => `<li><span class="what">${esc(b.title)}</span><span class="pill ${b.status === "cancelled" ? "cancelled" : ""}">${esc(b.status)}</span>
+      <span class="when">${esc(when(b.when))} · ${esc(b.reference)}</span></li>`).join("")}</ul></div>`);
+    if (t.attention.length || t.next.length)
+      parts.push(`<div class="card"><p class="eyebrow">${t.attention.length ? "Needs attention" : "Try next"}</p>${t.attention.map(alertView).join("")}
+        ${t.next.map((n) => `<div class="next"><div class="row"><button class="btn primary" type="button" data-sample="${esc(n.id)}">${esc(n.label)}</button></div>
+        <span class="small muted">Demo: ${esc(n.hint)}</span></div>`).join("")}</div>`);
+    if (t.activities && t.activities.suggestions.length)
+      parts.push(`<div class="card"><p class="eyebrow">Free time · ${esc(t.activities.day)} ${esc(t.activities.window.time)}</p>
+        <p class="headline">${esc(t.activities.headline)}</p>${picksView(t.activities)}
+        <p class="small muted">${t.activities.considered} places considered; ${t.activities.left_out} don't fit this window.</p></div>`);
+    if (t.days.length)
+      parts.push(`<div class="card"><p class="eyebrow">Day by day</p><div class="days">${t.days.map((d) => `<div><h3>${esc(d.label)}</h3>${itineraryView(d.itinerary)}</div>`).join("")}</div></div>`);
+    (t.off_timeline || []).forEach((f) => parts.push(`<div class="unreadable"><p>${esc(f.reason)}</p></div>`));
+    return parts.join("");
+  }
+
+  function show(data) {
+    const cards = Array.isArray(data.understood) ? data.understood : [data.understood];
+    $("result").innerHTML = (data.understood ? `<div class="grid2">${cards.map(cardView).join("")}</div>` : "") + tripView(data.trip);
+    $("result").hidden = false;
+    $("reset").hidden = !session;
+  }
+  function failed(r) {
+    $("result").innerHTML = `<div class="unreadable"><p><strong>${esc(r.data.message || "Something went wrong.")}</strong></p></div>`;
+    $("result").hidden = false;
+  }
+
+  async function run(promise, scroll = true) {
+    busy(true);
+    try {
+      const r = await promise;
+      if (r.status === 404) { keep(null); }
+      if (!r.ok) { failed(r); return; }
+      if ("session" in r.data && r.data.session) keep(r.data.session);
+      show(r.data);
+      if (scroll) $("result").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    } catch (e) {
+      failed({ data: { message: "Atlas can't be reached right now. Try again in a moment." } });
+    } finally { busy(false); }
+  }
+
+  $("import").addEventListener("click", () => {
+    const text = $("doc").value.trim();
+    if (!text) { failed({ data: { message: "Paste a booking confirmation first, or use the sample bookings." } }); return; }
+    run(call("POST", "/demo/import", { session, text }));
+  });
+  $("sample").addEventListener("click", () => run(call("GET", "/demo/sample")));
+  $("reset").addEventListener("click", async () => {
+    if (session) await call("POST", "/demo/reset", { session });
+    keep(null); $("result").hidden = true; $("result").innerHTML = ""; $("reset").hidden = true; $("doc").value = "";
+  });
+  $("result").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-sample]");
+    if (b) run(call("POST", "/demo/import", { session, sample: b.dataset.sample }), false);
+  });
+  samples.forEach((s) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = s.label;
+    b.addEventListener("click", () => { $("doc").value = s.text; $("doc").focus(); });
+    $("sample-docs").appendChild(b);
+  });
+  if (session) run(call("GET", `/demo/trip/${encodeURIComponent(session)}`), false);
+
+  // ------------------------------------------------------------ the 90-second walkthrough (playback of one run)
+  const scenes = playback.scenes || [];
+  const SAY = {
+    bookings: "Imagine you’re travelling from London to Montenegro. You forward Atlas three confirmations. Atlas understands the entire trip, not just the hotel.",
+    problem: "It catches something a booking site doesn’t: you land in Podgorica, but nothing gets you to Kotor.",
+    rebuilt: "Once transport is confirmed, Atlas rebuilds the day.",
+    suggestions: "Instead of suggesting random attractions, it finds only things you can actually reach, visit, and still make dinner.",
+    change: "Then your airline changes the flight. Atlas immediately understands what else may now break.",
+    summary: "Every screen you just saw was computed from the bookings themselves.",
+  };
+  const RESULTS = [["documents", "documents read"], ["bookings", "bookings understood"], ["missing_connections", "missing connection found"],
+    ["activities_that_fit", "activities that fit"], ["disruptions", "disruption detected"]];
+  let at = 0, narrate = location.hash === "#narration";
+  const views = {
+    bookings: (s) => `<p class="small" style="color:var(--accent);font-weight:600;margin:0">${s.imported.documents} confirmations imported · Atlas understood ${s.imported.bookings} bookings</p>
+      <p class="route">${s.route.map(esc).join(' <span class="arrow">→</span> ')}</p><span class="dates">${esc(s.dates)}</span>
+      <ul class="list">${s.bookings.map((b) => `<li><span class="what">${esc(b.title)}</span><span class="pill">${esc(b.status)}</span><span class="when">${esc(when(b.when))} · ${esc(b.reference)}</span></li>`).join("")}</ul>`,
+    problem: (s) => alertView({ headline: "Missing transport", lines: s.lines }),
+    rebuilt: (s) => `<p class="eyebrow">${esc(s.day)}</p>${itineraryView(s.itinerary)}`,
+    suggestions: (s) => `<p class="headline">${esc(s.headline)}</p>${picksView(s)}`,
+    change: (s) => alertView({ headline: s.headline, lines: s.lines, plan: s.plan, status: s.status, severity: "error" }),
+  };
+  function scene() {
+    const total = scenes.length + 1;
+    $("steps").innerHTML = [...scenes.map((s) => s.title), "Summary"].map((t, i) => `<li><button type="button" data-i="${i}" ${i === at ? 'aria-current="step"' : ""}>
+      <span class="n">${String(i + 1).padStart(2, "0")}</span><span class="label">${esc(t)}</span></button></li>`).join("");
+    const s = scenes[at];
+    const line = narrate ? `<blockquote class="narration">${esc(SAY[s ? s.id : "summary"])}</blockquote>` : "";
+    const body = s ? views[s.id](s) : `<p class="headline">Your entire trip, understood.</p>
+      <ul class="results-row">${RESULTS.map(([k, label]) => `<li><b>${playback.summary[k]}</b><span>${label}</span></li>`).join("")}</ul>`;
+    $("scene").innerHTML = `<p class="eyebrow">Scene ${at + 1} of ${total}${s && s.documents ? " · + " + s.documents.map(esc).join(", ") : ""}</p>${line}${body}
+      <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-step="-1" ${at === 0 ? "disabled" : ""}>Back</button>
+      ${at < total - 1 ? `<button class="btn primary" type="button" data-step="1">${s && s.id === "problem" ? "Arrange transfer" : "Next"}</button>` : ""}</div>`;
+    $("narrate").textContent = narrate ? "Hide narration" : "Show narration";
+    $("narrate").setAttribute("aria-pressed", String(narrate));
+  }
+  $("steps").addEventListener("click", (e) => { const b = e.target.closest("button[data-i]"); if (b) { at = +b.dataset.i; scene(); } });
+  $("scene").addEventListener("click", (e) => { const b = e.target.closest("button[data-step]"); if (b) { at = Math.max(0, Math.min(scenes.length, at + +b.dataset.step)); scene(); } });
+  $("narrate").addEventListener("click", () => { narrate = !narrate; scene(); });
+  if (scenes.length) scene();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Korsakov Atlas - public demo (Competition Release 1.0, docs/ATLAS_RELEASE.md).
+# One process on purpose: demo sessions live in memory, so the service runs
+# as a single instance with one worker (see the deploy script).
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8080
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY app ./app
+COPY data ./data
+COPY migrations ./migrations
+COPY alembic.ini .
+
+RUN useradd --create-home --uid 10001 atlas
+USER atlas
+
+EXPOSE 8080
+# --no-access-log: request lines are not needed for the demo, and a quiet log
+# keeps even session tokens out of it. Documents are never logged in any case.
+CMD ["sh", "-c", "exec uvicorn app.atlas_web.app:create_app --factory --host 0.0.0.0 --port ${PORT} --workers 1 --no-access-log"]

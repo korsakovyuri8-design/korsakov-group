@@ -53,7 +53,7 @@ DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
 # ------------------------------------------------------------------ the world and the trip
-def _world(session: Session) -> dict[str, Any]:
+def build_world(session: Session) -> dict[str, Any]:
     spec = yaml.safe_load(WORLD.read_text(encoding="utf-8"))
     r = spec["region"]
     verified = datetime(2026, 10, 10, tzinfo=timezone.utc)
@@ -82,47 +82,47 @@ def _import(session: Session, trip_id: str, *names: str) -> None:
                                source_id=name, received_at=RECEIVED)
 
 
-def _build(session: Session, trip_id: str) -> dict[str, Any]:
+def build_timeline(session: Session, trip_id: str) -> dict[str, Any]:
     return timeline.build(timeline.snapshot(session, trip_id), policies.load())
 
 
-def _count(session: Session, model: Any, trip_id: str) -> int:
+def count_rows(session: Session, model: Any, trip_id: str) -> int:
     return len(session.scalars(select(model.id).where(model.trip_id == trip_id)).all())
 
 
-def _items(session: Session, trip_id: str) -> dict[str, TripItem]:
+def items_of(session: Session, trip_id: str) -> dict[str, TripItem]:
     return {i.identity: i for i in session.scalars(select(TripItem).where(TripItem.trip_id == trip_id))}
 
 
 # ------------------------------------------------------------------ wording
-def _hm(local: str | None) -> str:
+def hm(local: str | None) -> str:
     return (local or "")[11:16]
 
 
-def _span(start: str, end: str) -> str:
-    return _hm(start) if start == end else f"{_hm(start)}–{_hm(end)}"
+def span(start: str, end: str) -> str:
+    return hm(start) if start == end else f"{hm(start)}–{hm(end)}"
 
 
-def _city(code: str) -> str:
+def city(code: str) -> str:
     return timeinfo.airport_city(code) or code
 
 
-def _name(item: TripItem) -> str:
+def display_name(item: TripItem) -> str:
     if item.kind == "restaurant":
         return item.details.get("venue") or item.provider
     return (item.provider or item.kind).title()
 
 
-def _entry(out: dict[str, Any], identity: str, role: str) -> dict[str, Any]:
+def entry_of(out: dict[str, Any], identity: str, role: str) -> dict[str, Any]:
     return next(e for e in out["entries"] if e["identity"] == identity and e["role"] == role)
 
 
-def _day_windows(out: dict[str, Any]) -> list[dict[str, Any]]:
-    return [{"time": _span(w["start"], w["end"]), "minutes": w["minutes"]}
-            for w in out["windows"] if w["start"].startswith(DAY)]
+def day_windows(out: dict[str, Any], day: str = DAY) -> list[dict[str, Any]]:
+    return [{"time": span(w["start"], w["end"]), "minutes": w["minutes"]}
+            for w in out["windows"] if w["start"].startswith(day)]
 
 
-def _issue_text(issue: dict[str, Any], out: dict[str, Any], items: dict[str, TripItem]) -> str:
+def issue_text(issue: dict[str, Any], out: dict[str, Any], items: dict[str, TripItem]) -> str:
     if issue["kind"] == "missing_transfer":
         return f"No transport from {issue['from']['locality']} to {issue['to']['locality']}."
     if issue["kind"] == "impossible_connection":
@@ -131,26 +131,26 @@ def _issue_text(issue: dict[str, Any], out: dict[str, Any], items: dict[str, Tri
     return issue["kind"].replace("_", " ")
 
 
-def _issues(out: dict[str, Any], items: dict[str, TripItem]) -> list[dict[str, Any]]:
-    return [{"kind": i["kind"], "severity": i["severity"], "text": _issue_text(i, out, items)} for i in out["issues"]]
+def issues_view(out: dict[str, Any], items: dict[str, TripItem]) -> list[dict[str, Any]]:
+    return [{"kind": i["kind"], "severity": i["severity"], "text": issue_text(i, out, items)} for i in out["issues"]]
 
 
-def _bookings(items: dict[str, TripItem]) -> list[dict[str, Any]]:
+def booking_rows(items: dict[str, TripItem]) -> list[dict[str, Any]]:
     order = {"flight": 0, "accommodation": 1, "transfer": 2, "restaurant": 3}
     rows = []
     for item in sorted(items.values(), key=lambda i: (order.get(i.kind, 9), i.identity)):
         d, t = item.details, item.times
         if item.kind == "flight":
-            title = f"Flight {d['flight_number']} {_city(d['origin'])} → {_city(d['destination'])}"
-            when = f"{t['departs']['local'][:10]} {_hm(t['departs']['local'])} → {_hm(t['arrives']['local'])}"
+            title = f"Flight {d['flight_number']} {city(d['origin'])} → {city(d['destination'])}"
+            when = f"{t['departs']['local'][:10]} {hm(t['departs']['local'])} → {hm(t['arrives']['local'])}"
         elif item.kind == "accommodation":
-            title, when = _name(item), f"{t['check_in']['local']} → {t['check_out']['local']}"
+            title, when = display_name(item), f"{t['check_in']['local']} → {t['check_out']['local']}"
         elif item.kind == "transfer":
             title = f"Transfer {d['pickup']} → {d['dropoff'].split(',')[1].strip()}"
-            when = f"{t['pickup_at']['local'][:10]} {_span(t['pickup_at']['local'], t['dropoff_at']['local'])}"
+            when = f"{t['pickup_at']['local'][:10]} {span(t['pickup_at']['local'], t['dropoff_at']['local'])}"
         else:
-            title = f"Dinner at {_name(item)}"
-            when = f"{t['starts']['local'][:10]} {_hm(t['starts']['local'])}"
+            title = f"Dinner at {display_name(item)}"
+            when = f"{t['starts']['local'][:10]} {hm(t['starts']['local'])}"
         rows.append({"kind": item.kind, "title": title, "when": when, "status": item.status,
                      "provider": item.provider, "reference": item.booking_reference})
     return rows
@@ -165,69 +165,76 @@ def _scene_bookings(out: dict[str, Any], items: dict[str, TripItem]) -> dict[str
     last = stay.times["check_out"]["local"]
     month = datetime.fromisoformat(first).strftime("%B")
     return {"id": "bookings", "title": "Here are my bookings",
-            "route": [_city(flight.details["origin"]), _city(flight.details["destination"]), hotel_town],
-            "dates": f"{int(first[8:])}–{int(last[8:])} {month}", "bookings": _bookings(items)}
+            "route": [city(flight.details["origin"]), city(flight.details["destination"]), hotel_town],
+            "dates": f"{int(first[8:])}–{int(last[8:])} {month}", "bookings": booking_rows(items)}
 
 
 def _scene_problem(out: dict[str, Any], items: dict[str, TripItem]) -> dict[str, Any]:
     gap = next(i for i in out["issues"] if i["kind"] == "missing_transfer")
-    before, after = _entry(out, gap["from"]["identity"], gap["from"]["role"]), \
-        _entry(out, gap["to"]["identity"], gap["to"]["role"])
+    before, after = entry_of(out, gap["from"]["identity"], gap["from"]["role"]), \
+        entry_of(out, gap["to"]["identity"], gap["to"]["role"])
     nxt = items[gap["to"]["identity"]]
-    what = f"dinner at {_name(nxt)}" if nxt.kind == "restaurant" else _name(nxt)
+    what = f"dinner at {display_name(nxt)}" if nxt.kind == "restaurant" else display_name(nxt)
     return {"id": "problem", "title": "Atlas notices a problem",
-            "lines": [f"You land in {gap['from']['locality']} at {_hm(before['local_end'])}.",
+            "lines": [f"You land in {gap['from']['locality']} at {hm(before['local_end'])}.",
                       f"Your next confirmed place is {what} in {gap['to']['locality']} at "
-                      f"{_hm(after['local_start'])}.",
+                      f"{hm(after['local_start'])}.",
                       "There is no transport between them."],
-            "action": "Arrange transfer", "issues": _issues(out, items), "free_time": _day_windows(out)}
+            "action": "Arrange transfer", "issues": issues_view(out, items), "free_time": day_windows(out)}
 
 
-def _itinerary(out: dict[str, Any], items: dict[str, TripItem]) -> list[dict[str, Any]]:
+def itinerary(out: dict[str, Any], items: dict[str, TripItem], day: str = DAY) -> list[dict[str, Any]]:
+    """One local day: what occupies time, plus the free windows, in time order."""
     rows: list[tuple[str, int, dict[str, Any]]] = []
     for e in out["entries"]:
-        if not e["local_start"] or not e["local_start"].startswith(DAY) or not e["occupies"]:
+        if not e["local_start"] or not e["local_start"].startswith(day) or not e["occupies"]:
             continue
         item = items[e["identity"]]
         if e["role"] == "flight":
             d = item.details
-            label = (f"Flight {d['flight_number']} {_city(d['origin'])} ({d['origin']}) → "
-                     f"{_city(d['destination'])} ({d['destination']})")
+            label = (f"Flight {d['flight_number']} {city(d['origin'])} ({d['origin']}) → "
+                     f"{city(d['destination'])} ({d['destination']})")
             air = int((datetime.fromisoformat(e["end"]) - datetime.fromisoformat(e["start"])).total_seconds() // 60)
-            detail = (f"{_hm(e['local_start'])} {_city(d['origin'])} time · {_hm(e['local_end'])} "
-                      f"{_city(d['destination'])} time · {air // 60} h {air % 60} min in the air")
-            rows.append((e["start"], 0, {"time": _span(e["local_start"], e["local_end"]), "label": label,
+            detail = (f"{hm(e['local_start'])} {city(d['origin'])} time · {hm(e['local_end'])} "
+                      f"{city(d['destination'])} time · {air // 60} h {air % 60} min in the air")
+            rows.append((e["start"], 0, {"time": span(e["local_start"], e["local_end"]), "label": label,
                                          "kind": "flight", "detail": detail}))
         elif e["role"] == "transfer":
-            rows.append((e["start"], 0, {"time": _span(e["local_start"], e["local_end"]),
+            rows.append((e["start"], 0, {"time": span(e["local_start"], e["local_end"]),
                                          "label": f"Transfer from {item.details['pickup']}", "kind": "transfer"}))
         elif e["role"] == "check_in":
-            stay = _name(item)
-            rows.append((e["start"], 1, {"time": _hm(e["local_start"]), "label": f"Hotel arrival — {stay}",
+            stay = display_name(item)
+            rows.append((e["start"], 1, {"time": hm(e["local_start"]), "label": f"Hotel arrival — {stay}",
                                          "kind": "arrival"}))
-            rows.append((e["start"], 2, {"time": _span(e["local_start"], e["local_end"]), "label": "Check-in",
+            rows.append((e["start"], 2, {"time": span(e["local_start"], e["local_end"]), "label": "Check-in",
                                          "kind": "check_in", "assumed": True}))
         elif e["role"] == "reservation":
-            rows.append((e["start"], 0, {"time": _hm(e["local_start"]), "label": f"Dinner at {_name(item)}",
+            rows.append((e["start"], 0, {"time": hm(e["local_start"]), "label": f"Dinner at {display_name(item)}",
                                          "kind": "restaurant"}))
+        elif e["role"] == "check_out":
+            rows.append((e["start"], 0, {"time": hm(e["local_end"]), "label": f"Check-out — {display_name(item)}",
+                                         "kind": "check_out"}))
     for w in out["windows"]:
-        if w["start"].startswith(DAY):
-            rows.append((w["start_utc"], 0, {"time": _span(w["start"], w["end"]), "label": "Free time",
+        if w["start"].startswith(day):
+            rows.append((w["start_utc"], 0, {"time": span(w["start"], w["end"]), "label": "Free time",
                                              "kind": "free", "minutes": w["minutes"]}))
     return [r for _, _, r in sorted(rows, key=lambda x: (x[0], x[1]))]
 
 
 def _scene_rebuilt(out: dict[str, Any], items: dict[str, TripItem]) -> dict[str, Any]:
     return {"id": "rebuilt", "title": "Atlas rebuilds the day", "day": "Sunday 18 October",
-            "itinerary": _itinerary(out, items), "issues": _issues(out, items)}
+            "itinerary": itinerary(out, items), "issues": issues_view(out, items)}
 
 
-def _scene_suggestions(session: Session, out: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
-    window = next(w for w in out["windows"] if w["start"].startswith(DAY))
+def fitting_activities(session: Session, window: dict[str, Any], spec: dict[str, Any], *, now_utc: datetime,
+                       limit: int = 3) -> dict[str, Any] | None:
+    """Places of the demo world that fit start -> place -> visit -> end inside
+    the window; None when the window's start is not a place the world knows."""
     region = spec["region"]["slug"]
     res = journey_bridge.suggest(session, window, journey_bridge.world_locator(session, spec["links"], region=region),
-                                 region=region, now_utc=NOW, categories=("CULTURE", "NATURE"), limit=3)
-    hours = window["minutes"] // 60
+                                 region=region, now_utc=now_utc, categories=("CULTURE", "NATURE"), limit=limit)
+    if res is None:
+        return None
     picks = []
     for c in res.candidates:
         start, end = c.visit_slot                           # naive local times at the place
@@ -238,12 +245,20 @@ def _scene_suggestions(session: Session, out: dict[str, Any], spec: dict[str, An
                       "leave_hotel": leave.strftime("%H:%M"), "visit_from": start.strftime("%H:%M"),
                       "visit_to": end.strftime("%H:%M"), "arrive_dinner": arrive.strftime("%H:%M"),
                       "visit_minutes": int((end - start).total_seconds() // 60)})
-    return {"id": "suggestions", "title": "Atlas uses the World",
-            "headline": f"You have {hours} hours before dinner. Here are {len(picks)} things that actually fit.",
-            "window": {"time": _span(window["start"], window["end"]), "from": window["start_anchor"]["place"],
-                       "to": window["end_anchor"]["place"], "assumptions": window["assumptions"]},
+    return {"window": {"time": span(window["start"], window["end"]), "from": window["start_anchor"]["place"],
+                       "to": window["end_anchor"]["place"], "minutes": window["minutes"],
+                       "ends_at": window["end_anchor"]["role"], "assumptions": window["assumptions"]},
             "suggestions": picks, "considered": res.retrieved, "left_out": sum(res.rejected.values()),
             "left_out_reasons": dict(sorted(res.rejected.items()))}
+
+
+def _scene_suggestions(session: Session, out: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
+    window = next(w for w in out["windows"] if w["start"].startswith(DAY))
+    found = fitting_activities(session, window, spec, now_utc=NOW)
+    hours = window["minutes"] // 60
+    return {"id": "suggestions", "title": "Atlas uses the World",
+            "headline": f"You have {hours} hours before dinner. Here are {len(found['suggestions'])} things that "
+                        "actually fit.", **found}
 
 
 def _scene_change(out: dict[str, Any], items: dict[str, TripItem]) -> dict[str, Any]:
@@ -253,22 +268,22 @@ def _scene_change(out: dict[str, Any], items: dict[str, TripItem]) -> dict[str, 
     for r in revs[:-1]:
         before.update(r["times"])
     now = flight.times
-    lines = [f"Departure moved from {_hm(before['departs']['local'])} to {_hm(now['departs']['local'])}.",
-             f"You now land in {_city(flight.details['destination'])} at {_hm(now['arrives']['local'])}."]
+    lines = [f"Departure moved from {hm(before['departs']['local'])} to {hm(now['departs']['local'])}.",
+             f"You now land in {city(flight.details['destination'])} at {hm(now['arrives']['local'])}."]
     clash = next((i for i in out["issues"] if i["kind"] == "impossible_connection"), None)
     if clash:
-        transfer = _entry(out, clash["before"]["identity"], clash["before"]["role"])
-        lines += [f"Your transfer from {clash['before']['place']} leaves at {_hm(transfer['local_start'])} — "
+        transfer = entry_of(out, clash["before"]["identity"], clash["before"]["role"])
+        lines += [f"Your transfer from {clash['before']['place']} leaves at {hm(transfer['local_start'])} — "
                   f"{clash['gap_minutes']} min after landing; getting out of the airport takes about "
                   f"{clash['required_minutes']}.",
                   "Your existing transfer may no longer fit."]
     dinner = next((i for i in items.values() if i.kind == "restaurant" and i.status == "confirmed"), None)
-    plan = (f"By your plan you are still due at {_name(dinner)} at {_hm(dinner.times['starts']['local'])}; "
+    plan = (f"By your plan you are still due at {display_name(dinner)} at {hm(dinner.times['starts']['local'])}; "
             "the free time before it is on hold until the transfer is sorted.") if dinner else None
     return {"id": "change", "title": "A flight change arrives", "headline": f"{flight.provider.title()} changed your flight.",
             "lines": lines, "plan": plan, "status": "Transfer needs rebooking" if clash else None,
             "action": f"Contact {next(i for i in items.values() if i.kind == 'transfer').provider.title()}",
-            "issues": _issues(out, items), "free_time": _day_windows(out), "itinerary": _itinerary(out, items)}
+            "issues": issues_view(out, items), "free_time": day_windows(out), "itinerary": itinerary(out, items)}
 
 
 def run() -> dict[str, Any]:
@@ -276,22 +291,22 @@ def run() -> dict[str, Any]:
     create_schema(eng)
     try:
         with sessionmaker(eng)() as s:
-            spec = _world(s)
+            spec = build_world(s)
             trip = ingest.create_trip(s, title="London - Kotor")
             _import(s, trip.id, "F1", "F2", "F3")
-            a, items = _build(s, trip.id), _items(s, trip.id)
-            imported = {"documents": _count(s, TripSourceRecord, trip.id), "bookings": len(items)}
+            a, items = build_timeline(s, trip.id), items_of(s, trip.id)
+            imported = {"documents": count_rows(s, TripSourceRecord, trip.id), "bookings": len(items)}
             scenes = [{**_scene_bookings(a, items), "documents": [DOC_LABELS[d] for d in ("F1", "F2", "F3")],
                        "imported": imported},
                       _scene_problem(a, items)]
             _import(s, trip.id, "F13")
-            b, items = _build(s, trip.id), _items(s, trip.id)
+            b, items = build_timeline(s, trip.id), items_of(s, trip.id)
             scenes += [{**_scene_rebuilt(b, items), "documents": [DOC_LABELS["F13"]]},
                        _scene_suggestions(s, b, spec)]
             _import(s, trip.id, "F1c")
-            c, items = _build(s, trip.id), _items(s, trip.id)
+            c, items = build_timeline(s, trip.id), items_of(s, trip.id)
             scenes.append({**_scene_change(c, items), "documents": [DOC_LABELS["F1c"]]})
-            summary = {"documents": _count(s, TripSourceRecord, trip.id),
+            summary = {"documents": count_rows(s, TripSourceRecord, trip.id),
                        "bookings": len([i for i in items.values() if i.kind != "statement"]),
                        "missing_connections": sum(i["kind"] == "missing_transfer" for i in a["issues"]),
                        "activities_that_fit": len(scenes[3]["suggestions"]),

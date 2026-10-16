@@ -1,0 +1,5 @@
+# Builds the public Atlas demo image (Dockerfile.atlas) in Cloud Build.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "Dockerfile.atlas", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]
