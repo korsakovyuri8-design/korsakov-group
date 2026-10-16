@@ -1,0 +1,22 @@
+# Atlas demo v1 - a SYNTHETIC Kotor Old Town world (names, coordinates, hours
+# and visit lengths are demo data, not facts about real places). Used only
+# by app/trip/atlas_demo.py; the pilot worlds are untouched.
+region: {slug: kotor-atlas-demo, name: Kotor (demo), timezone: Europe/Podgorica, center: [43.4247, 18.7712]}
+links:                       # trip item identity -> demo place (identity only: never booking truth)
+  "accommodation|hotel demo kotor|HK20931": hotel-demo-kotor
+  "restaurant|demotable|R4417": konoba-demo
+places:
+  - {slug: hotel-demo-kotor, name: Hotel Demo Kotor, subcategory: hotel, at: [43.4247, 18.7712]}
+  - {slug: konoba-demo, name: Konoba Demo, subcategory: konoba, at: [43.4235, 18.7697], hours: "12:00-23:00"}
+  - {slug: maritime-museum, name: Maritime Museum, subcategory: museum, at: [43.4243, 18.7705],
+     hours: "09:00-18:00", visit: 60, tags: [history, sea]}
+  - {slug: old-town-cathedral, name: Old Town Cathedral, subcategory: religious_site, at: [43.4239, 18.7708],
+     hours: "09:00-19:00", visit: 30, tags: [architecture]}
+  - {slug: city-walls-lookout, name: City Walls Lookout, subcategory: viewpoint, at: [43.4262, 18.7735],
+     hours: "08:00-20:00", visit: 90, tags: [view, sunset]}
+  - {slug: icon-gallery, name: Icon Gallery, subcategory: gallery, at: [43.4241, 18.7701],
+     hours: "10:00-16:00", visit: 45}                        # closed by 16:30
+  - {slug: palace-collection, name: Palace Collection, subcategory: museum, at: [43.4244, 18.7699],
+     hours: "18:00-19:00", visit: 75}                        # opens too late for a 75-minute visit
+  - {slug: mountain-mausoleum, name: Mountain Mausoleum, subcategory: viewpoint, at: [43.3986, 18.8381],
+     hours: "08:00-20:00", visit: 60}                        # too far to reach and still make dinner

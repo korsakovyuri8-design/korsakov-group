@@ -168,3 +168,34 @@ def open_throughout(place, start_local: datetime, end_local: datetime) -> bool |
         return False
     lim = (place.hours or {}).get("last_entry")
     return not (lim and st.closes_at is None)
+
+
+def visit_slot(place, earliest: datetime, latest: datetime,  # noqa: ANN001
+               minutes: int) -> tuple[bool | None, tuple[datetime, datetime] | None]:
+    """The earliest visit [s, s + minutes] inside [earliest, latest] during
+    which the place is open throughout (naive local times). It may open after
+    `earliest` and close before `latest`. (True, slot) / (False, None) when the
+    hours rule it out / (None, None) when there are no hours data."""
+    need = timedelta(minutes=minutes)
+    if earliest + need > latest:
+        return False, None
+    hours = place.hours or {}
+    known = False
+    day = earliest.date() - timedelta(days=1)          # a range opened yesterday may run past midnight
+    while day <= latest.date():
+        ranges = ranges_for(hours, day)
+        if ranges is not None:
+            known = True
+            for s, e in sorted(ranges):
+                lim = hours.get("last_entry")
+                start = max(s, earliest)
+                if lim:                                 # no entry after the last-entry time
+                    le = datetime.combine(s.date(), _t(lim))
+                    if le < s:
+                        le += timedelta(days=1)
+                    if start > le:
+                        continue
+                if start + need <= min(e, latest):
+                    return True, (start, start + need)
+        day += timedelta(days=1)
+    return (False, None) if known else (None, None)

@@ -494,3 +494,33 @@ SOFT (traveller): `waking_hours`, `min_window_minutes`. Every window records the
 - **The whole window must be open.** Discovery still requires a place to be open throughout the window (`open_throughout`), not only for the visit. A museum that closes in the middle of the window is rejected. Changing that is a Discovery decision, outside this slice.
 
 Timeline issues are derived output, recomputed on every build. They are not yet persisted as `TripIssue` rows or shown in `view.story()`.
+
+## 19. Closing Iteration 7: the visit-fit patch and Atlas demo v1
+
+**Restaurant re-anchoring is accepted as it stands, with one rule recorded for Iteration 8: planned location ≠ observed location.** A confirmed booking proves where the plan puts the guest, not where the guest is. The wording follows from that:
+- Atlas may say "by your plan you are due at Konoba Demo at 20:00".
+- It may not say "you are at Konoba Demo". The demo copy follows this.
+- Delays and disruption handling (Iteration 8) need the two kept apart in the model.
+
+**Visit-fit patch (Discovery).** A trip window is a *flexible visit window*. `DiscoveryQuery.fit_within_window` asks whether some visit `[s, s + visit]` lies inside `[window.start + travel(start → place), window.end − travel(place → end)]` while the place is open for that whole visit:
+- the place may open after the window starts, and close before it ends;
+- the visit length is the place's `typical_visit_minutes`, else the visit length the query asks for;
+- temporary closures and `last_entry` are respected;
+- the earliest fitting visit is returned on the candidate as `visit_slot`, with `walk_end_minutes`.
+
+`window_end` without the new flag keeps its old meaning: open for the whole window. The bridge now asks for a flexible visit and no longer sets `open_at`. Gates are in `tests/test_discovery_visit_fit.py`:
+- a place open 17:00–18:30 fits 16:30–19:30 with a 60-minute visit;
+- a place open 18:00–18:30 does not;
+- a place may open after the start and close before the end;
+- both travel legs count (a place on the wrong side of the hotel fits going there and back, not going onward);
+- a temporary closure leaves no slot;
+- old `window_end` queries are unchanged.
+
+**Atlas demo v1.** `app/trip/atlas_demo.py` runs the real pipeline offline, from the fixtures through Journey Graph, timeline, window and demo World to Discovery. It produces five scenes:
+1. Bookings → London → Podgorica → Kotor, 18–21 October.
+2. Missing transport between landing at 12:55 and the 20:00 dinner.
+3. F13 arrives → the day is rebuilt, with free time 16:30–19:30.
+4. Three places that fit hotel → place → visit → dinner.
+5. The F1c schedule change → the transfer may no longer fit, and the free time is on hold.
+
+The world is synthetic (`data/trips/demo_world.yaml`). `demo/atlas_demo.html` plays back the scene data that `python -m app.trip.atlas_demo --html demo/atlas_demo.html` embeds. The page contains no hand-typed trip facts. `tests/test_atlas_demo.py` pins what the viewer sees.

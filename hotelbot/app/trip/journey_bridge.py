@@ -39,15 +39,19 @@ def world_locator(session: Session, links: dict[str, str], *, region: str | None
 
 
 def window_query(window: dict[str, Any], locate: Locate, *, region: str,
-                 categories: Iterable[str] = ("CULTURE",), limit: int = 3) -> DiscoveryQuery | None:
+                 categories: Iterable[str] = ("CULTURE",), limit: int = 3,
+                 visit_minutes: int = 60) -> DiscoveryQuery | None:
     """None when the window's start cannot be located: there is nothing to measure from.
-    An unlocated end falls back to Discovery's own rule (back to the start)."""
+    An unlocated end falls back to Discovery's own rule (back to the start).
+    The window is a FLEXIBLE visit window: the place need only be open for one
+    visit that fits between the two travel legs (`visit_minutes` when the
+    place states no typical visit)."""
     start = locate(window["start_anchor"])
     if start is None:
         return None
     return DiscoveryQuery(region=region, categories=set(categories), at=datetime.fromisoformat(window["start"]),
-                          window_end=datetime.fromisoformat(window["end"]), open_at=True,
-                          visit_minutes=window["minutes"], near=start, end_near=locate(window["end_anchor"]),
+                          window_end=datetime.fromisoformat(window["end"]), fit_within_window=True,
+                          visit_minutes=visit_minutes, near=start, end_near=locate(window["end_anchor"]),
                           limit=limit)
 
 

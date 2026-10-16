@@ -54,7 +54,7 @@ from app.db.models import Event, Place
 from app.places.freshness import RANK as FRESH_RANK
 from app.places.freshness import FactFreshness, Freshness, classify, place_facts
 from app.places.hours import (HoursStatus, OpenState, always_open, food_state, local_at, open_throughout,
-                              status_at)
+                              status_at, visit_slot)
 from app.shared.geo import Point, StraightLineEstimator, TravelEstimator, distance_km, walking_minutes
 from app.text import contains_phrase, fold
 
@@ -82,6 +82,8 @@ class DiscoveryQuery:
     open_until: datetime | None = None   # still open at this time ("after midnight")
     window_end: datetime | None = None   # open throughout [at, window_end] ("for three hours")
     visit_minutes: int | None = None     # the visit must fit the window
+    fit_within_window: bool = False      # a TRIP window: some visit [s, s + visit] inside [at + travel there,
+                                         # window_end - travel on] while open - not open the whole window
     # SOFT preferences (ranking only)
     preferred: dict[str, Any] = field(default_factory=dict)
     tags_preferred: set[str] = field(default_factory=set)
@@ -112,6 +114,8 @@ class Candidate:
     freshness: dict[str, FactFreshness] = field(default_factory=dict)
     walk_minutes: int | None = None
     key: tuple = ()
+    visit_slot: tuple[datetime, datetime] | None = None   # fit_within_window: the earliest visit that fits
+    walk_end_minutes: int | None = None                    # candidate -> q.end_near
 
 
 @dataclass
@@ -155,6 +159,8 @@ class Facts:
     fresh: dict[str, FactFreshness]
     contested: dict[str, list[str]] = field(default_factory=dict)   # fact -> [winner claim, other claims]
     walk_end: int | None = None          # candidate -> q.end_near
+    slot_ok: bool | None = None          # fit_within_window: a visit fits (None = no hours data)
+    slot: tuple[datetime, datetime] | None = None
 
 
 # high-dynamic place facts: resolution field -> (fact name, how a value enters place.hours)
@@ -211,7 +217,8 @@ def normalize(place: Place, q: DiscoveryQuery, now_utc: datetime, tz: str,
     venue = status_at(place.hours, local)
     food = food_state(place, local) if (q.serving_at or place.category == "FOOD") else None
     until = status_at(place.hours, q.open_until) if q.open_until is not None else None
-    window_ok = open_throughout(place, local, q.window_end) if q.window_end is not None else None
+    window_ok = open_throughout(place, local, q.window_end) \
+        if q.window_end is not None and not q.fit_within_window else None
     dist = walk = None
     if q.near is not None and place.latitude is not None and place.longitude is not None:
         p = Point(place.latitude, place.longitude)
@@ -223,7 +230,25 @@ def normalize(place: Place, q: DiscoveryQuery, now_utc: datetime, tz: str,
     if (place.hours or {}).get("closed"):
         facts_needed.append("closure")
     return Facts(local, venue, food, until, window_ok, dist, walk, place_facts(place, now_utc, tuple(facts_needed)),
-                 contested_claims(place, local), walk_end)
+                 contested_claims(place, local), walk_end, *_slot(place, q, walk, walk_end))
+
+
+def _visit_minutes(place: Place, q: DiscoveryQuery) -> int:
+    attrs = place.attributes or {}
+    return int(attrs.get("typical_visit_minutes") or attrs.get("estimated_visit_minutes") or 0)
+
+
+def _slot(place: Place, q: DiscoveryQuery, walk: int | None,
+          walk_end: int | None) -> tuple[bool | None, tuple[datetime, datetime] | None]:
+    """fit_within_window: earliest arrival = at + travel there; latest departure =
+    window_end - travel on (to end_near, else back to near). The place's own
+    typical visit, else the asked visit_minutes."""
+    if not (q.fit_within_window and q.at is not None and q.window_end is not None):
+        return None, None
+    back = walk_end if q.end_near is not None else walk
+    earliest = q.at + timedelta(minutes=walk or 0)
+    latest = q.window_end - timedelta(minutes=back or 0)
+    return visit_slot(place, earliest, latest, _visit_minutes(place, q) or q.visit_minutes or 0)
 
 
 # ============================================================== HARD FILTER
@@ -273,7 +298,10 @@ def hard_filter(place: Place, f: Facts, q: DiscoveryQuery) -> str | None:
         return "closes_too_early"
     if f.window_ok is False:
         return "closes_before_window_ends"
-    if q.visit_minutes and q.window_end is not None and q.at is not None:
+    if q.fit_within_window:
+        if f.slot_ok is False:
+            return "does_not_fit_window"
+    elif q.visit_minutes and q.window_end is not None and q.at is not None:
         back = f.walk_end if q.end_near is not None else f.walk      # to the window's end, else back again
         need = int(attrs.get("typical_visit_minutes") or attrs.get("estimated_visit_minutes") or 0) + \
             (f.walk or 0) + (back or 0)
@@ -415,7 +443,8 @@ def run(session: Session, q: DiscoveryQuery, now_utc: datetime, tz: str, *, sign
         reasons, caveats = explain(place, f, q)
         survivors.append(Candidate(place, f.distance, f.venue, f.food, reasons, caveats,
                                    score=-float(comps["relevance"] + comps["preferences"]), components=comps,
-                                   freshness=f.fresh, walk_minutes=f.walk, key=key))
+                                   freshness=f.fresh, walk_minutes=f.walk, key=key, visit_slot=f.slot,
+                                   walk_end_minutes=f.walk_end))
     survivors.sort(key=lambda c: c.key)
     if any(c.components["availability"] == 0 for c in survivors) and (q.open_at or q.serving_at or q.window_end):
         # The guest asked for a time: places we KNOW are open/serving exist, so
