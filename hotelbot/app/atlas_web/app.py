@@ -37,6 +37,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.atlas_web import intake, view
 from app.atlas_web.sessions import DemoSession, SessionStore
+from app.config import get_settings
 from app.journey import ingest, plan_answers, route_planner
 from app.mobility import marketplace as mobility_marketplace
 from app.trip import atlas_demo

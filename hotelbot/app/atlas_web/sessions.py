@@ -166,7 +166,10 @@ class SessionStore:
                         return None
 
                     if now - row.touched_at_epoch > self.ttl:
-                        row.ended_at = _utcnow()
+                        purge_anonymous_trip(
+                            cached.db,
+                            cached.trip_id,
+                        )
                         cached.db.commit()
                         self._sessions.pop(token, None)
                         cached.close()
@@ -195,7 +198,10 @@ class SessionStore:
                     return None
 
                 if now - row.touched_at_epoch > self.ttl:
-                    row.ended_at = _utcnow()
+                    purge_anonymous_trip(
+                        db,
+                        row.trip_id,
+                    )
                     db.commit()
                     db.close()
                     return None

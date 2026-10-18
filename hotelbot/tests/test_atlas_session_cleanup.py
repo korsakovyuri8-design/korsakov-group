@@ -334,3 +334,40 @@ def test_ttl_physically_deletes_anonymous_trip(tmp_path):
 
     finally:
         store.close()
+
+
+def test_ttl_after_store_restart_physically_deletes_trip(
+    tmp_path,
+):
+    clock = ExpiryClock()
+    url = f"sqlite:///{tmp_path / 'atlas.db'}"
+
+    first = SessionStore(
+        database_url=url,
+        ttl_seconds=60,
+        clock=clock,
+    )
+
+    created = first.create()
+    token = created.token
+    trip_id = created.trip_id
+
+    first.close()
+
+    # Session is now absent from the new process cache.
+    clock.t += 61
+
+    second = SessionStore(
+        database_url=url,
+        ttl_seconds=60,
+        clock=clock,
+    )
+
+    try:
+        assert second.get(token) is None
+
+        with second.factory() as db:
+            assert db.get(Trip, trip_id) is None
+
+    finally:
+        second.close()
