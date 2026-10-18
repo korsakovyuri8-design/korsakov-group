@@ -42,6 +42,15 @@ const api = vi.hoisted(() => ({
         quoteCreated: false,
         bookingCreated: false,
       },
+      {
+        mode: "scheduled_bus" as const,
+        serviceType: "bus_ticket",
+        status: "unavailable" as const,
+        reason: "not_offered",
+        providers: [],
+        quoteCreated: false,
+        bookingCreated: false,
+      },
     ],
   })),
   getTransferQuote: vi.fn(async () => ({
@@ -135,6 +144,10 @@ describe("MobilityOptions quote party size", () => {
     );
 
     expect(
+      screen.getByText("Not connected"),
+    ).toBeInTheDocument();
+
+    expect(
       api.answerPartySize,
     ).not.toHaveBeenCalled();
 
@@ -165,5 +178,13 @@ describe("MobilityOptions quote party size", () => {
     ).toBeLessThan(
       api.getTransferQuote.mock.invocationCallOrder[0],
     );
+
+    await screen.findByText("65.00 EUR");
+
+    expect(
+      screen.queryByText(
+        "Confirmation will be added in the next transaction step.",
+      ),
+    ).not.toBeInTheDocument();
   });
 });

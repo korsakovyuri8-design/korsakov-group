@@ -286,11 +286,6 @@ export function MobilityOptions({
 
 
 
-  const privateTransfer =
-    comparison?.modes.find(
-      (m) => m.mode === "private_transfer",
-    );
-
   if (confirmed) {
     return (
       <section className="mx-5 mt-9 md:mx-10">
@@ -487,7 +482,11 @@ export function MobilityOptions({
                   <span className="eyebrow">
                     {available
                       ? "Available"
-                      : "Pending"}
+                      : mode.status === "needs_details"
+                        ? "Needs details"
+                        : mode.reason === "not_offered"
+                          ? "Not connected"
+                          : "Unavailable"}
                   </span>
                 </div>
 
@@ -681,13 +680,6 @@ export function MobilityOptions({
             </div>
           )}
 
-          {privateTransfer &&
-            privateTransfer.status === "available" &&
-            quote && (
-              <p className="px-1 text-xs text-muted-foreground">
-                Confirmation will be added in the next transaction step.
-              </p>
-            )}
         </div>
       )}
 
