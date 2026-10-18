@@ -212,7 +212,7 @@ export interface MobilityComparison {
   request: {
     origin: string;
     destination: string;
-    partySize: number;
+    partySize?: number | undefined;
     arriveByLocal: string;
     leaveByLocal?: string | undefined;
     timezone: string;

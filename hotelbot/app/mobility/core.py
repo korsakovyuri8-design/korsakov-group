@@ -84,7 +84,7 @@ class MobilityRequest:
     origin: str
     destination: str
     arrive_by_local: datetime
-    party_size: int
+    party_size: int | None
     timezone: str
     leave_by_local: datetime | None = None
 
@@ -93,7 +93,10 @@ class MobilityRequest:
             raise ValueError("origin is required")
         if not self.destination.strip():
             raise ValueError("destination is required")
-        if self.party_size < 1:
+        if (
+            self.party_size is not None
+            and self.party_size < 1
+        ):
             raise ValueError("party_size must be positive")
         if self.arrive_by_local.tzinfo is None:
             raise ValueError(
@@ -202,9 +205,11 @@ def search_constraints(
     common = {
         "origin": request.origin,
         "destination": request.destination,
-        "party_size": request.party_size,
         "arrive_by": request.arrive_by_local.isoformat(),
     }
+
+    if request.party_size is not None:
+        common["party_size"] = request.party_size
 
     if mode == MobilityMode.PRIVATE_TRANSFER:
         if request.leave_by_local is None:
@@ -212,12 +217,16 @@ def search_constraints(
                 "private transfer requires leave_by_local"
             )
 
-        return {
+        details = {
             "pickup": request.origin,
             "destination": request.destination,
-            "party_size": request.party_size,
             "pickup_time": request.leave_by_local.isoformat(),
         }
+
+        if request.party_size is not None:
+            details["party_size"] = request.party_size
+
+        return details
 
     if mode == MobilityMode.RENTAL_CAR:
         if request.leave_by_local is None:
@@ -255,6 +264,8 @@ def _local_datetime(value: str, timezone: str) -> datetime:
 
 def request_from_plan_details(
     details: Mapping[str, Any],
+    *,
+    require_party_size: bool = True,
 ) -> MobilityRequest:
     """Build mobility intent from deterministic Journey Graph data."""
 
@@ -292,10 +303,14 @@ def request_from_plan_details(
     if not arrive_raw:
         raise ValueError("arrive_by_missing")
 
-    if not isinstance(party_size, int) or isinstance(
-        party_size,
-        bool,
-    ) or party_size < 1:
+    if party_size is not None and (
+        not isinstance(party_size, int)
+        or isinstance(party_size, bool)
+        or party_size < 1
+    ):
+        raise ValueError("party_size_invalid")
+
+    if party_size is None and require_party_size:
         raise ValueError("party_size_missing")
 
     return MobilityRequest(

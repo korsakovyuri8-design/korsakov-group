@@ -421,20 +421,12 @@ def needs_for_plan(
                 arrival_by_local=arrival_by_local,
             )
         ):
-            if detail.get("party_size") is None:
-                needs.append({
-                    "code": "transport_party_size_unknown",
-                    "category": "clarification",
-                    "state": "needs_confirmation",
-                    "basis": "transport_needed_without_party_size",
-                })
-            else:
-                needs.append({
-                    "code": "arrival_transport_unconfirmed",
-                    "category": "transport",
-                    "state": "unconfirmed",
-                    "basis": "transport_details_known_without_confirmed_transfer",
-                })
+            needs.append({
+                "code": "arrival_transport_unconfirmed",
+                "category": "transport",
+                "state": "unconfirmed",
+                "basis": "route_known_without_confirmed_transport",
+            })
 
     return {
         "status": "needs_planning" if needs else "covered",

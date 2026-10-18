@@ -5,7 +5,6 @@ import {
   CarFront,
   CircleHelp,
   MapPin,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import type { PlanningNeed, PlanPlaceRole } from "@/lib/atlas/domain";
@@ -13,7 +12,6 @@ import {
   answerArrivalTime,
   answerPlanDate,
   answerOrigin,
-  answerPartySize,
   answerPlaceRole,
   answerStayIntent,
   canAnswerPlaceRole,
@@ -61,11 +59,6 @@ const COPY: Record<string, Copy> = {
     body: "Atlas knows where you are coming from and where you are going. Add the arrival deadline before it calculates transport.",
     Icon: CarFront,
   },
-  transport_party_size_unknown: {
-    title: "How many people are travelling?",
-    body: "Atlas needs the party size before it can look for a transfer.",
-    Icon: Users,
-  },
   arrival_transport_unconfirmed: {
     title: "Transport is not confirmed",
     body: "Atlas knows your origin and destination, but has no confirmed transfer connecting them.",
@@ -98,7 +91,6 @@ export function PlanningNeeds({
   const [origin, setOrigin] = useState("");
   const [planDate, setPlanDate] = useState("");
   const [arrivalTime, setArrivalTime] = useState("");
-  const [partySize, setPartySize] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   if (!needs?.length) return null;
@@ -295,49 +287,6 @@ export function PlanningNeeds({
                         {need.code === "arrival_origin_unresolved"
                           ? "Update"
                           : "Save"}
-                      </button>
-                    </div>
-                  )}
-
-                {need.code === "transport_party_size_unknown" &&
-                  need.planKey && (
-                    <div className="mt-3 flex gap-2">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        enterKeyHint="done"
-                        placeholder="1"
-                        maxLength={2}
-                        value={partySize}
-                        onChange={(e) =>
-                          setPartySize(
-                            e.target.value.replace(/\D/g, "").slice(0, 2),
-                          )
-                        }
-                        aria-label="Number of travellers"
-                        className="w-20 rounded-xl border border-border bg-background px-3 py-2 text-sm"
-                      />
-
-                      <button
-                        type="button"
-                        disabled={
-                          !partySize ||
-                          Number(partySize) < 1 ||
-                          Number(partySize) > 20 ||
-                          busy !== null
-                        }
-                        onClick={() =>
-                          void run("party-size", () =>
-                            answerPartySize(
-                              qc,
-                              need.planKey!,
-                              Number(partySize),
-                            ),
-                          )
-                        }
-                        className="rounded-xl bg-foreground px-4 py-2 text-xs font-medium text-background disabled:opacity-40"
-                      >
-                        Save
                       </button>
                     </div>
                   )}

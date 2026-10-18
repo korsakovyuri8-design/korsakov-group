@@ -107,7 +107,10 @@ def compare(
 
     ensure_transfer_provider(session)
 
-    request = request_from_plan_details(plan.details)
+    request = request_from_plan_details(
+        plan.details,
+        require_party_size=False,
+    )
     modes = []
 
     for mode in MobilityMode:
@@ -203,7 +206,12 @@ def active_transfer_quote(
     if context is None:
         return None
 
-    request = request_from_plan_details(plan.details)
+    try:
+        request = request_from_plan_details(plan.details)
+    except ValueError as exc:
+        if str(exc) == "party_size_missing":
+            return None
+        raise
     expected = search_constraints(
         request,
         MobilityMode.PRIVATE_TRANSFER,

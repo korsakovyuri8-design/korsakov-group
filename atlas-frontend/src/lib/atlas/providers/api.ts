@@ -434,7 +434,7 @@ export function mapMobilityComparison(raw: unknown): MobilityComparison {
     request: {
       origin: str(request["origin"]) ?? "",
       destination: str(request["destination"]) ?? "",
-      partySize: Number(request["party_size"] ?? 0),
+      partySize: num(request["party_size"]),
       arriveByLocal: str(request["arrive_by_local"]) ?? "",
       leaveByLocal: str(request["leave_by_local"]),
       timezone: str(request["timezone"]) ?? "UTC",

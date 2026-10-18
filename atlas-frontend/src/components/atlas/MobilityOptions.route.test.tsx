@@ -1,14 +1,31 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+vi.mock("@/lib/atlas/api", () => ({
+  answerPartySize: vi.fn(),
+  canCompareMobility: true,
+  canConfirmTransfer: true,
+  canGetActiveTransferQuote: false,
+  canGetTransferQuote: true,
+  compareMobility: vi.fn(),
+  getActiveTransferQuote: vi.fn(),
+  confirmTransfer: vi.fn(),
+  getTransferQuote: vi.fn(),
+}));
 
 import { MobilityOptions } from "./MobilityOptions";
 
 describe("MobilityOptions after route calculation", () => {
-  it("does not crash while party size is still missing", () => {
+  it("allows transport comparison while party size is still missing", () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -16,7 +33,7 @@ describe("MobilityOptions after route calculation", () => {
       },
     });
 
-    const { container } = render(
+    render(
       <QueryClientProvider client={queryClient}>
         <MobilityOptions
           route={{
@@ -42,10 +59,10 @@ describe("MobilityOptions after route calculation", () => {
           }}
           needs={[
             {
-              id: "party",
-              code: "transport_party_size_unknown",
-              category: "clarification",
-              state: "needs_confirmation",
+              id: "transport",
+              code: "arrival_transport_unconfirmed",
+              category: "transport",
+              state: "unconfirmed",
               planKey: "plan|test",
             },
           ]}
@@ -53,7 +70,20 @@ describe("MobilityOptions after route calculation", () => {
       </QueryClientProvider>,
     );
 
-    // Mobility comparison is not ready yet, but rendering must be safe.
-    expect(container.textContent).toBe("");
+    expect(
+      screen.getByText("Compare ways to get there."),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole("button", {
+        name: "Compare transport",
+      }),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByLabelText(
+        "Number of travellers for quote",
+      ),
+    ).not.toBeInTheDocument();
   });
 });

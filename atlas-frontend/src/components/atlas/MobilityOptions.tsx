@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
+  answerPartySize,
   canCompareMobility,
   canConfirmTransfer,
   canGetActiveTransferQuote,
@@ -79,6 +80,9 @@ export function MobilityOptions({
 
   const [transaction, setTransaction] =
     useState<MobilityTransaction | null>(null);
+
+  const [partySize, setPartySize] =
+    useState("");
 
   const [busy, setBusy] =
     useState<"compare" | "quote" | "confirm" | null>(null);
@@ -184,11 +188,57 @@ export function MobilityOptions({
       return;
     }
 
+    const knownPartySize =
+      comparison?.request.partySize;
+
+    const enteredPartySize =
+      Number(partySize);
+
+    const effectivePartySize =
+      knownPartySize ??
+      (
+        Number.isInteger(enteredPartySize)
+          ? enteredPartySize
+          : undefined
+      );
+
+    if (
+      !effectivePartySize ||
+      effectivePartySize < 1 ||
+      effectivePartySize > 20
+    ) {
+      setError(
+        "Choose between 1 and 20 travellers before getting a quote.",
+      );
+      return;
+    }
+
     setBusy("quote");
     setError(null);
 
     try {
-      const result = await getTransferQuote(planKey);
+      if (knownPartySize === undefined) {
+        await answerPartySize(
+          qc,
+          planKey,
+          effectivePartySize,
+        );
+
+        setComparison((current) =>
+          current
+            ? {
+                ...current,
+                request: {
+                  ...current.request,
+                  partySize: effectivePartySize,
+                },
+              }
+            : current,
+        );
+      }
+
+      const result =
+        await getTransferQuote(planKey);
 
       if (result) {
         setQuote(result);
@@ -461,21 +511,74 @@ export function MobilityOptions({
                 {mode.mode === "private_transfer" &&
                   available &&
                   !quote && (
-                    <button
-                      type="button"
-                      disabled={
-                        busy !== null ||
-                        !canGetTransferQuote
-                      }
-                      onClick={() =>
-                        void quoteTransfer()
-                      }
-                      className="mt-4 rounded-xl bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
-                    >
-                      {busy === "quote"
-                        ? "Getting quote…"
-                        : "Get quote"}
-                    </button>
+                    comparison.request.partySize !== undefined
+                      ? (
+                        <button
+                          type="button"
+                          disabled={
+                            busy !== null ||
+                            !canGetTransferQuote
+                          }
+                          onClick={() =>
+                            void quoteTransfer()
+                          }
+                          className="mt-4 rounded-xl bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+                        >
+                          {busy === "quote"
+                            ? "Getting quote…"
+                            : "Get quote"}
+                        </button>
+                      )
+                      : (
+                        <div className="mt-4">
+                          <p className="text-sm font-medium">
+                            How many travellers?
+                          </p>
+
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Atlas only needs this now to price the transfer.
+                          </p>
+
+                          <div className="mt-3 flex gap-2">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              enterKeyHint="done"
+                              maxLength={2}
+                              placeholder="1"
+                              aria-label="Number of travellers for quote"
+                              value={partySize}
+                              onChange={(e) =>
+                                setPartySize(
+                                  e.target.value
+                                    .replace(/\D/g, "")
+                                    .slice(0, 2),
+                                )
+                              }
+                              className="w-20 rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                            />
+
+                            <button
+                              type="button"
+                              disabled={
+                                !partySize ||
+                                Number(partySize) < 1 ||
+                                Number(partySize) > 20 ||
+                                busy !== null ||
+                                !canGetTransferQuote
+                              }
+                              onClick={() =>
+                                void quoteTransfer()
+                              }
+                              className="rounded-xl bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+                            >
+                              {busy === "quote"
+                                ? "Getting quote…"
+                                : "Get quote"}
+                            </button>
+                          </div>
+                        </div>
+                      )
                   )}
               </div>
             );

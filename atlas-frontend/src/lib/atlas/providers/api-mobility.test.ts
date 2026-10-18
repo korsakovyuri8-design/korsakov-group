@@ -28,7 +28,7 @@ describe("Atlas mobility API", () => {
             request: {
               origin: "Podgorica",
               destination: "One&Only Portonovi",
-              party_size: 1,
+              party_size: null,
               arrive_by_local:
                 "2026-10-20T09:00:00+02:00",
               leave_by_local:
@@ -79,6 +79,8 @@ describe("Atlas mobility API", () => {
     expect(result.modes[0]?.status).toBe(
       "available",
     );
+
+    expect(result.request.partySize).toBeUndefined();
 
     expect(
       result.modes[0]?.quoteCreated,

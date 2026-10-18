@@ -270,3 +270,47 @@ def test_confirm_transfer_requires_explicit_consent_and_is_idempotent():
     finally:
         session.close()
         engine.dispose()
+
+
+def test_compare_works_without_party_size_but_quote_does_not():
+    engine, session = make_session()
+
+    try:
+        trip, plan = add_plan(session)
+
+        details = dict(plan.details)
+        details.pop("party_size", None)
+        plan.details = details
+        session.flush()
+
+        comparison = marketplace.compare(
+            session,
+            plan,
+            now=NOW,
+        )
+
+        transfer = next(
+            mode
+            for mode in comparison["modes"]
+            if mode["mode"] == "private_transfer"
+        )
+
+        assert transfer["status"] == "available"
+        assert comparison["request"]["party_size"] is None
+
+        import pytest
+
+        with pytest.raises(
+            ValueError,
+            match="party_size_missing",
+        ):
+            marketplace.create_transfer_quote(
+                session,
+                trip.id,
+                plan,
+                now=NOW,
+            )
+
+    finally:
+        session.close()
+        engine.dispose()

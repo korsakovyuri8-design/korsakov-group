@@ -178,7 +178,7 @@ def test_confirmed_transfer_after_arrival_deadline_does_not_cover_plan():
     assert result["derived"]["arrival_by_local"] == "2026-10-20T09:00"
 
 
-def test_transport_asks_party_size_before_surfacing_unconfirmed_booking():
+def test_transport_gap_surfaces_without_party_size():
     result = planning.needs_for_plan(
         {
             **PLAN,
@@ -190,7 +190,7 @@ def test_transport_asks_party_size_before_surfacing_unconfirmed_booking():
         [],
     )
 
-    assert codes(result) == ["transport_party_size_unknown"]
+    assert codes(result) == ["arrival_transport_unconfirmed"]
 
 
 def test_party_size_completes_transport_request_shape():
