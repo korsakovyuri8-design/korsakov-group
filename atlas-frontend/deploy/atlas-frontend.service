@@ -1,0 +1,21 @@
+[Unit]
+Description=Korsakov Atlas Frontend
+After=network-online.target atlas.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atlasfrontend
+Group=atlasfrontend
+WorkingDirectory=/opt/atlas-frontend
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8092
+ExecStart=/usr/bin/node /opt/atlas-frontend/.output/server/index.mjs
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

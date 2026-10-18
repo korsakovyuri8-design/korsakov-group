@@ -1,0 +1,9 @@
+{
+  "session": "REDACTED",
+  "understood": {
+    "outcome": "unreadable",
+    "message": "Atlas can't read this booking format yet.",
+    "detail": "No trip data was changed."
+  },
+  "trip": null
+}

@@ -1,0 +1,243 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * KORSAKOV ATLAS — design language
+ * Limestone paper, Adriatic ink, a single sea-glass accent, amber for attention.
+ * Editorial serif for statements, neutral grotesk for UI, mono for times.
+ */
+
+@theme inline {
+  --font-display: "Newsreader", "Times New Roman", serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-ink-muted: var(--ink-muted);
+  --color-stone: var(--stone);
+  --color-sea: var(--sea);
+  --color-sea-soft: var(--sea-soft);
+  --color-confirmed: var(--confirmed);
+  --color-changed: var(--changed);
+  --color-changed-soft: var(--changed-soft);
+  --color-attention: var(--attention);
+  --color-attention-soft: var(--attention-soft);
+  --color-cancelled: var(--cancelled);
+  --color-free: var(--free);
+  --color-free-soft: var(--free-soft);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.75rem;
+
+  /* Limestone paper */
+  --background: oklch(0.963 0.011 84);
+  --foreground: oklch(0.215 0.035 245);
+  --card: oklch(0.985 0.006 84);
+  --card-foreground: oklch(0.215 0.035 245);
+  --popover: oklch(0.985 0.006 84);
+  --popover-foreground: oklch(0.215 0.035 245);
+  --stone: oklch(0.925 0.014 80);
+
+  /* Adriatic ink */
+  --primary: oklch(0.29 0.06 240);
+  --primary-foreground: oklch(0.97 0.01 84);
+  --ink: oklch(0.2 0.04 242);
+  --ink-foreground: oklch(0.95 0.012 84);
+  --ink-muted: oklch(0.72 0.025 230);
+
+  --secondary: oklch(0.935 0.013 82);
+  --secondary-foreground: oklch(0.215 0.035 245);
+  --muted: oklch(0.935 0.013 82);
+  --muted-foreground: oklch(0.5 0.025 240);
+  --accent: oklch(0.92 0.03 195);
+  --accent-foreground: oklch(0.29 0.06 240);
+
+  /* Sea glass — the one accent */
+  --sea: oklch(0.56 0.085 195);
+  --sea-soft: oklch(0.92 0.03 195);
+
+  /* Status — restrained */
+  --confirmed: oklch(0.5 0.07 180);
+  --changed: oklch(0.58 0.12 60);
+  --changed-soft: oklch(0.94 0.04 75);
+  --attention: oklch(0.66 0.14 68);
+  --attention-soft: oklch(0.94 0.05 80);
+  --cancelled: oklch(0.6 0.015 240);
+  --free: oklch(0.52 0.08 195);
+  --free-soft: oklch(0.945 0.025 190);
+  --destructive: oklch(0.55 0.17 30);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border: oklch(0.87 0.014 80);
+  --input: oklch(0.87 0.014 80);
+  --ring: oklch(0.56 0.085 195);
+
+  --shadow-sheet: 0 -20px 60px -30px oklch(0.2 0.04 242 / 0.35);
+  --shadow-lift: 0 1px 0 oklch(1 0 0 / 0.6) inset, 0 12px 30px -18px oklch(0.2 0.04 242 / 0.35);
+  --gradient-dusk: linear-gradient(180deg, oklch(0.22 0.045 242) 0%, oklch(0.3 0.06 225) 100%);
+
+  --chart-1: var(--sea);
+  --chart-2: var(--primary);
+  --chart-3: var(--attention);
+  --chart-4: var(--changed);
+  --chart-5: var(--cancelled);
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--secondary);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "tnum";
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+@utility eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+@utility time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+@utility surface {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+}
+
+@utility surface-ink {
+  background: var(--gradient-dusk);
+  color: var(--color-ink-foreground);
+  border-radius: var(--radius-2xl);
+}
+
+@utility shadow-lift {
+  box-shadow: var(--shadow-lift);
+}
+
+@utility shadow-sheet {
+  box-shadow: var(--shadow-sheet);
+}
+
+@utility rule-dashed {
+  background-image: linear-gradient(to bottom, var(--color-border) 50%, transparent 50%);
+  background-size: 1px 8px;
+}
+
+@utility paper-grain {
+  background-image: radial-gradient(oklch(0.2 0.04 242 / 0.035) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+@keyframes atlas-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes atlas-time-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0.45; transform: translateY(0); }
+}
+@keyframes atlas-grow {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 400px; }
+}
+@keyframes atlas-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-sea) 45%, transparent); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+
+@utility animate-rise {
+  animation: atlas-rise 520ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@utility animate-grow {
+  animation: atlas-grow 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  overflow: hidden;
+}
+@utility animate-beacon {
+  animation: atlas-pulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}
+
+@utility rule-dashed-x {
+  background-image: linear-gradient(to right, var(--color-muted-foreground) 50%, transparent 50%);
+  background-size: 6px 1px;
+  opacity: 0.6;
+}

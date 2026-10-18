@@ -1,0 +1,310 @@
+{
+  "session": "REDACTED",
+  "understood": {
+    "outcome": "unreadable",
+    "message": "Atlas can't read this booking format yet.",
+    "detail": "No trip data was changed."
+  },
+  "trip": {
+    "route": [
+      "London",
+      "Podgorica",
+      "Kotor"
+    ],
+    "dates": "18–21 October",
+    "bookings": [
+      {
+        "kind": "flight",
+        "title": "Flight DM1432 London → Podgorica",
+        "when": "2026-10-18 09:15 → 12:55",
+        "status": "confirmed",
+        "provider": "demo air",
+        "reference": "DMX7Q2"
+      },
+      {
+        "kind": "accommodation",
+        "title": "Hotel Demo Kotor",
+        "when": "2026-10-18 → 2026-10-21",
+        "status": "confirmed",
+        "provider": "hotel demo kotor",
+        "reference": "HK20931"
+      },
+      {
+        "kind": "restaurant",
+        "title": "Dinner at Konoba Demo",
+        "when": "2026-10-18 20:00",
+        "status": "confirmed",
+        "provider": "demotable",
+        "reference": "R4417"
+      }
+    ],
+    "attention": [
+      {
+        "kind": "missing_transfer",
+        "severity": "warning",
+        "headline": "Missing transport",
+        "lines": [
+          "You land in Podgorica at 12:55.",
+          "Your next confirmed place is dinner at Konoba Demo in Kotor at 20:00.",
+          "There is no transport between them."
+        ]
+      }
+    ],
+    "days": [
+      {
+        "date": "2026-10-18",
+        "label": "Sun 18 Oct",
+        "itinerary": [
+          {
+            "time": "09:15–12:55",
+            "label": "Flight DM1432 London (LGW) → Podgorica (TGD)",
+            "kind": "flight",
+            "detail": "09:15 London time · 12:55 Podgorica time · 2 h 40 min in the air"
+          },
+          {
+            "time": "20:00",
+            "label": "Dinner at Konoba Demo",
+            "kind": "restaurant"
+          }
+        ]
+      },
+      {
+        "date": "2026-10-19",
+        "label": "Mon 19 Oct",
+        "itinerary": [
+          {
+            "time": "08:00–23:00",
+            "label": "Free time",
+            "kind": "free",
+            "minutes": 900
+          }
+        ]
+      },
+      {
+        "date": "2026-10-20",
+        "label": "Tue 20 Oct",
+        "itinerary": [
+          {
+            "time": "08:00–23:00",
+            "label": "Free time",
+            "kind": "free",
+            "minutes": 900
+          }
+        ]
+      },
+      {
+        "date": "2026-10-21",
+        "label": "Wed 21 Oct",
+        "itinerary": [
+          {
+            "time": "08:00–10:45",
+            "label": "Free time",
+            "kind": "free",
+            "minutes": 165
+          },
+          {
+            "time": "11:00",
+            "label": "Check-out — Hotel Demo Kotor",
+            "kind": "check_out"
+          }
+        ]
+      }
+    ],
+    "activities": {
+      "window": {
+        "time": "08:00–23:00",
+        "from": "Stari grad 1, Kotor, Montenegro",
+        "to": "Stari grad 1, Kotor, Montenegro",
+        "minutes": 900,
+        "ends_at": "sleep",
+        "assumptions": []
+      },
+      "suggestions": [
+        {
+          "name": "City Walls Lookout",
+          "kind": "viewpoint",
+          "walk_there": 4,
+          "walk_on": 4,
+          "leave_hotel": "08:00",
+          "visit_from": "08:04",
+          "visit_to": "09:34",
+          "arrive_dinner": "09:38",
+          "visit_minutes": 90
+        },
+        {
+          "name": "Mountain Mausoleum",
+          "kind": "viewpoint",
+          "walk_there": 106,
+          "walk_on": 106,
+          "leave_hotel": "08:00",
+          "visit_from": "09:46",
+          "visit_to": "10:46",
+          "arrive_dinner": "12:32",
+          "visit_minutes": 60
+        },
+        {
+          "name": "Icon Gallery",
+          "kind": "gallery",
+          "walk_there": 2,
+          "walk_on": 2,
+          "leave_hotel": "09:58",
+          "visit_from": "10:00",
+          "visit_to": "10:45",
+          "arrive_dinner": "10:47",
+          "visit_minutes": 45
+        }
+      ],
+      "considered": 6,
+      "left_out": 1,
+      "left_out_reasons": {
+        "does_not_fit_window": 1,
+        "state_unknown": 0
+      },
+      "day": "19 Oct",
+      "headline": "You have free time on 19 Oct, 08:00–23:00. Here are 3 things that actually fit."
+    },
+    "next": [
+      {
+        "id": "transfer",
+        "label": "Arrange transfer",
+        "hint": "Adds the sample Demo Transfers confirmation: 15:00 from Podgorica airport."
+      }
+    ],
+    "off_timeline": [],
+    "policy_version": "2026-10-16.2",
+    "context": {
+      "now": {
+        "utc": "2026-10-18T11:00:00+00:00",
+        "local": "2026-10-18T13:00",
+        "timezone": "Europe/Podgorica",
+        "clock": "demo"
+      },
+      "planned_location": {
+        "basis": "planned",
+        "status": "arrived",
+        "place": "TGD",
+        "locality": "Podgorica",
+        "timezone": "Europe/Podgorica",
+        "since": {
+          "local": "2026-10-18T12:55",
+          "utc": "2026-10-18T10:55:00+00:00"
+        },
+        "by": {
+          "key": "flight|demo air|DMX7Q2|DM1432|LGW-TGD|2026-10-18",
+          "role": "flight"
+        }
+      }
+    },
+    "next_item": {
+      "key": "restaurant|demotable|R4417",
+      "kind": "restaurant",
+      "role": "reservation",
+      "starts": {
+        "local": "2026-10-18T20:00",
+        "utc": "2026-10-18T18:00:00+00:00",
+        "timezone": "Europe/Podgorica"
+      },
+      "place": "Stari grad 210, Kotor, Montenegro",
+      "locality": "Kotor",
+      "minutes_from_now": 420,
+      "issues": [
+        "missing_transfer"
+      ]
+    },
+    "items": [
+      {
+        "key": "flight|demo air|DMX7Q2|DM1432|LGW-TGD|2026-10-18",
+        "kind": "flight",
+        "provider": "demo air",
+        "reference": "DMX7Q2",
+        "status": "confirmed",
+        "revision": {
+          "current": 1,
+          "count": 1,
+          "changed_fields": []
+        },
+        "detail": {
+          "carrier": "DM",
+          "flight_number": "DM1432",
+          "cabin": "Economy",
+          "passengers": 2,
+          "service_date": "2026-10-18",
+          "origin": {
+            "code": "LGW",
+            "city": "London",
+            "timezone": "Europe/London"
+          },
+          "destination": {
+            "code": "TGD",
+            "city": "Podgorica",
+            "timezone": "Europe/Podgorica"
+          },
+          "departs": {
+            "local": "2026-10-18T09:15",
+            "utc": "2026-10-18T08:15:00+00:00",
+            "timezone": "Europe/London"
+          },
+          "arrives": {
+            "local": "2026-10-18T12:55",
+            "utc": "2026-10-18T10:55:00+00:00",
+            "timezone": "Europe/Podgorica"
+          },
+          "duration_minutes": 160
+        }
+      },
+      {
+        "key": "accommodation|hotel demo kotor|HK20931",
+        "kind": "accommodation",
+        "provider": "hotel demo kotor",
+        "reference": "HK20931",
+        "status": "confirmed",
+        "revision": {
+          "current": 1,
+          "count": 1,
+          "changed_fields": []
+        },
+        "detail": {
+          "address": "Stari grad 1, Kotor, Montenegro",
+          "locality": "Kotor",
+          "room": "Double room, sea view",
+          "guests": 2,
+          "check_in": {
+            "date": "2026-10-18",
+            "from": "14:00",
+            "timezone": "Europe/Podgorica"
+          },
+          "check_out": {
+            "date": "2026-10-21",
+            "until": "11:00",
+            "timezone": "Europe/Podgorica"
+          },
+          "nights": 3
+        }
+      },
+      {
+        "key": "restaurant|demotable|R4417",
+        "kind": "restaurant",
+        "provider": "demotable",
+        "reference": "R4417",
+        "status": "confirmed",
+        "revision": {
+          "current": 1,
+          "count": 1,
+          "changed_fields": []
+        },
+        "detail": {
+          "venue": "Konoba Demo",
+          "address": "Stari grad 210, Kotor, Montenegro",
+          "locality": "Kotor",
+          "party": 2,
+          "starts": {
+            "local": "2026-10-18T20:00",
+            "utc": "2026-10-18T18:00:00+00:00",
+            "timezone": "Europe/Podgorica"
+          }
+        }
+      }
+    ],
+    "disruption": null
+  }
+}
