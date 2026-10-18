@@ -89,3 +89,41 @@ def test_ttl_survives_store_restart(tmp_path):
     assert second.get(token) is None
 
     second.close()
+
+
+def test_default_app_store_uses_configured_database_url(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    from app.atlas_web import app as atlas_app
+
+    seen = {}
+
+    class FakeStore:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+    monkeypatch.setattr(
+        atlas_app,
+        "SessionStore",
+        FakeStore,
+    )
+    monkeypatch.setattr(
+        atlas_app,
+        "get_settings",
+        lambda: SimpleNamespace(
+            database_url="sqlite:///configured-atlas.db",
+        ),
+    )
+    monkeypatch.setattr(
+        atlas_app,
+        "_page_template",
+        lambda: "",
+    )
+
+    atlas_app.create_app()
+
+    assert seen == {
+        "database_url": "sqlite:///configured-atlas.db",
+    }

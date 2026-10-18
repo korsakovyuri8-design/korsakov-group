@@ -106,7 +106,9 @@ def _page_template() -> str:
 def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] = time.monotonic,
                utcnow: Callable[[], datetime] | None = None) -> FastAPI:
     if store is None:
-        store = SessionStore()
+        store = SessionStore(
+            database_url=get_settings().database_url,
+        )
     limiter = RateLimiter(clock)
     utcnow = utcnow or (lambda: datetime.now(timezone.utc))
     template = _page_template()
