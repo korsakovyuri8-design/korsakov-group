@@ -7,11 +7,11 @@ Wants=network-online.target
 Type=simple
 User=atlasfrontend
 Group=atlasfrontend
-WorkingDirectory=/opt/atlas-frontend
+WorkingDirectory=/opt/atlas-frontend/current
 Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=8092
-ExecStart=/usr/bin/node /opt/atlas-frontend/.output/server/index.mjs
+ExecStart=/usr/bin/node /opt/atlas-frontend/current/.output/server/index.mjs
 Restart=always
 RestartSec=3
 NoNewPrivileges=true

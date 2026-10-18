@@ -1,45 +1,75 @@
 # Korsakov Atlas frontend — server1 deployment
 
-This handoff keeps Atlas API on `127.0.0.1:8091` and runs the TanStack Start frontend on `127.0.0.1:8092`.
+Atlas API: 127.0.0.1:8091
+Frontend: 127.0.0.1:8092
 
-## Build
+## Production layout
 
-This copy pins Nitro to `node-server`, so `npm run build` emits a self-contained `.output/` tree and `npm start` launches `.output/server/index.mjs`.
+Live frontend releases are stored under:
 
-Recommended runtime: Node.js 22.
+/opt/atlas-frontend/releases/
 
-```bash
-npm install
-npm test
-npm run build
-HOST=127.0.0.1 PORT=8092 npm start
-```
+The active release is selected by:
 
-Verify locally:
+/opt/atlas-frontend/current
 
-```bash
+systemd runs:
+
+/opt/atlas-frontend/current/.output/server/index.mjs
+
+Frontend source of truth:
+
+/opt/atlas/atlas-frontend
+
+## Deployment
+
+Never build directly in /opt/atlas-frontend/.output.
+
+Use:
+
+/opt/atlas/atlas-frontend/deploy/deploy-atomic.sh
+
+The deploy script:
+- requires a clean Git frontend tree
+- creates a new immutable release
+- installs locked dependencies
+- runs tests
+- builds outside the live release
+- smoke-tests the new release on a temporary port
+- preserves previous hashed assets
+- atomically switches current
+- restarts atlas-frontend
+- runs local and public smoke tests
+- rolls back automatically on failure
+- retains recent releases for rollback
+
+## Verification
+
+Check:
+
+systemctl is-active atlas-frontend
+
 curl -I http://127.0.0.1:8092/
-curl -I http://127.0.0.1:8092/trip
-curl -I http://127.0.0.1:8092/demo
-```
 
-## systemd
+curl -I https://atlas.korsakovgroup.com/
 
-Copy `deploy/atlas-frontend.service` to `/etc/systemd/system/atlas-frontend.service`, create the `atlasfrontend` system user, chown `/opt/atlas-frontend`, then enable the service.
+The process working directory must resolve under:
 
-## nginx
+/opt/atlas-frontend/releases/
 
-Merge the API/frontend routing from `deploy/nginx-atlas.conf` into the existing HTTPS vhost. Keep the Certbot-managed TLS lines from the current production config.
+## nginx routing
 
-Important routing:
-- `/demo` -> frontend
-- `/demo/sample` -> FastAPI
-- `/demo/import` -> FastAPI
-- `/demo/trip/*` -> FastAPI
-- `/demo/reset` -> FastAPI
-- `/health` -> FastAPI
-- everything else -> frontend
+/demo -> frontend
+/demo/sample -> FastAPI
+/demo/import -> FastAPI
+/demo/trip/* -> FastAPI
+/demo/reset -> FastAPI
+/demo/plan/* -> FastAPI
+/health -> FastAPI
+everything else -> frontend
 
-## Provider
+## Rollback
 
-No environment variables are required in production. `ApiAtlasProvider` is selected by production build and calls relative same-origin `/demo/*` API URLs.
+deploy-atomic.sh automatically rolls back after a failed post-switch smoke test.
+
+For manual rollback, atomically repoint /opt/atlas-frontend/current to a previous release and restart atlas-frontend.
