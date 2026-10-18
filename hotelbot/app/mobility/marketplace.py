@@ -185,6 +185,89 @@ def _aware_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _transaction_service(
+    session: Session,
+    now: datetime,
+) -> TransactionService:
+    clock = FrozenClock(now)
+    outbox = MockWhatsAppTransport()
+
+    return TransactionService(
+        session,
+        TxnDeps(
+            clock=clock,
+            providers=ProviderRegistry(clock),
+            executors=default_executors(),
+            transport_for=lambda _: outbox,
+        ),
+    )
+
+
+def _reusable_transfer_quote(
+    session: Session,
+    context_id: str,
+    expected: dict[str, Any],
+    *,
+    now: datetime,
+    provider_id: str | None = None,
+) -> tuple[Quote, ExternalProvider] | None:
+    """Find one exact, still-valid, unaccepted transfer offer.
+
+    Expired OFFERED quotes are transitioned to EXPIRED while scanning.
+    Quotes for a different request remain open until a replacement quote
+    is successfully obtained, at which point request_quote supersedes them.
+    """
+
+    service = _transaction_service(
+        session,
+        now,
+    )
+
+    rows = session.execute(
+        select(Quote, ExternalProvider)
+        .join(
+            ExternalProvider,
+            ExternalProvider.id == Quote.provider_id,
+        )
+        .where(
+            Quote.transaction_context_id == context_id,
+            Quote.service_type == "intercity_transfer",
+            Quote.status == QuoteStatus.OFFERED,
+        )
+        .order_by(Quote.created_at.desc())
+    ).all()
+
+    for quote, provider in rows:
+        if service.is_expired(quote):
+            service.expire(quote)
+            continue
+
+        if (
+            provider_id is not None
+            and quote.provider_id != provider_id
+        ):
+            continue
+
+        transaction = session.scalar(
+            select(ExternalTransaction).where(
+                ExternalTransaction.quote_id == quote.id,
+            )
+        )
+
+        if transaction is not None:
+            continue
+
+        if any(
+            quote.request.get(key) != value
+            for key, value in expected.items()
+        ):
+            continue
+
+        return quote, provider
+
+    return None
+
+
 def active_transfer_quote(
     session: Session,
     trip_id: str,
@@ -192,11 +275,12 @@ def active_transfer_quote(
     *,
     now: datetime,
 ) -> dict[str, Any] | None:
-    """Return the current still-valid Quote for this exact plan state.
+    """Return the current valid Quote for this exact plan state.
 
-    Reading this never creates a Quote, transaction or booking.
-    A Quote for an older origin/date/time/party size is not reusable.
+    Reading may expire an OFFERED quote whose valid_until has passed.
+    It never creates a Quote, transaction or booking.
     """
+
     context = session.scalar(
         select(TransactionContext).where(
             TransactionContext.trip_id == trip_id,
@@ -207,58 +291,35 @@ def active_transfer_quote(
         return None
 
     try:
-        request = request_from_plan_details(plan.details)
+        request = request_from_plan_details(
+            plan.details,
+        )
     except ValueError as exc:
         if str(exc) == "party_size_missing":
             return None
         raise
+
     expected = search_constraints(
         request,
         MobilityMode.PRIVATE_TRANSFER,
     )
 
-    rows = session.execute(
-        select(Quote, ExternalProvider)
-        .join(
-            ExternalProvider,
-            ExternalProvider.id == Quote.provider_id,
-        )
-        .where(
-            Quote.transaction_context_id == context.id,
-            Quote.service_type == "intercity_transfer",
-            Quote.status == QuoteStatus.OFFERED,
-        )
-        .order_by(Quote.created_at.desc())
-    ).all()
+    match = _reusable_transfer_quote(
+        session,
+        context.id,
+        expected,
+        now=now,
+    )
 
-    current = _aware_utc(now)
+    if match is None:
+        return None
 
-    for quote, provider in rows:
-        if _aware_utc(quote.valid_until) <= current:
-            continue
+    quote, provider = match
 
-        # A quote that already produced a transaction is no longer an
-        # active unaccepted offer.
-        txn = session.scalar(
-            select(ExternalTransaction).where(
-                ExternalTransaction.quote_id == quote.id,
-            )
-        )
-        if txn is not None:
-            continue
-
-        if any(
-            quote.request.get(key) != value
-            for key, value in expected.items()
-        ):
-            continue
-
-        return quote_payload(
-            quote,
-            provider.name,
-        )
-
-    return None
+    return quote_payload(
+        quote,
+        provider.name,
+    )
 
 
 def create_transfer_quote(
@@ -272,6 +333,30 @@ def create_transfer_quote(
 
     provider = ensure_transfer_provider(session)
     request = request_from_plan_details(plan.details)
+
+    details = search_constraints(
+        request,
+        MobilityMode.PRIVATE_TRANSFER,
+    )
+
+    existing_context = session.scalar(
+        select(TransactionContext).where(
+            TransactionContext.trip_id == trip_id,
+        )
+    )
+
+    if existing_context is not None:
+        reusable = _reusable_transfer_quote(
+            session,
+            existing_context.id,
+            details,
+            now=now,
+            provider_id=provider.id,
+        )
+
+        if reusable is not None:
+            quote, existing_provider = reusable
+            return quote, existing_provider.name
 
     result = _discover(
         session,
@@ -301,22 +386,9 @@ def create_transfer_quote(
         locale="en",
     )
 
-    clock = FrozenClock(now)
-    outbox = MockWhatsAppTransport()
-
-    service = TransactionService(
+    service = _transaction_service(
         session,
-        TxnDeps(
-            clock=clock,
-            providers=ProviderRegistry(clock),
-            executors=default_executors(),
-            transport_for=lambda _: outbox,
-        ),
-    )
-
-    details = search_constraints(
-        request,
-        MobilityMode.PRIVATE_TRANSFER,
+        now,
     )
 
     quote = service.request_quote(

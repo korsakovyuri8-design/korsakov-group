@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 
@@ -171,7 +171,7 @@ def test_find_transfer_creates_quote_but_not_booking():
         engine.dispose()
 
 
-def test_second_transfer_quote_supersedes_first_offer():
+def test_identical_transfer_quote_reuses_valid_offer():
     engine, session = make_session()
 
     try:
@@ -191,7 +191,81 @@ def test_second_transfer_quote_supersedes_first_offer():
             now=NOW,
         )
 
+        assert second.id == first.id
+        assert first.status.value == "offered"
+
+        assert count(session, Quote) == 1
+        assert count(session, ExternalTransaction) == 0
+
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_changed_transfer_request_supersedes_old_offer():
+    engine, session = make_session()
+
+    try:
+        trip, plan = add_plan(session)
+
+        first, _ = marketplace.create_transfer_quote(
+            session,
+            trip.id,
+            plan,
+            now=NOW,
+        )
+
+        plan.details = {
+            **plan.details,
+            "party_size": 2,
+        }
+        session.flush()
+
+        second, _ = marketplace.create_transfer_quote(
+            session,
+            trip.id,
+            plan,
+            now=NOW,
+        )
+
+        assert second.id != first.id
         assert first.status.value == "superseded"
+        assert second.status.value == "offered"
+        assert second.amount == 65
+
+        assert count(session, Quote) == 2
+        assert count(session, ExternalTransaction) == 0
+
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_expired_transfer_offer_is_expired_and_replaced():
+    engine, session = make_session()
+
+    try:
+        trip, plan = add_plan(session)
+
+        first, _ = marketplace.create_transfer_quote(
+            session,
+            trip.id,
+            plan,
+            now=NOW,
+        )
+
+        later = NOW + timedelta(minutes=16)
+
+        second, _ = marketplace.create_transfer_quote(
+            session,
+            trip.id,
+            plan,
+            now=later,
+        )
+
+        assert second.id != first.id
+        assert first.status.value == "expired"
+        assert first.decided_at == later
         assert second.status.value == "offered"
 
         assert count(session, Quote) == 2
