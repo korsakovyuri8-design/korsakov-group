@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -30,9 +31,15 @@ TRANSFER = "transfer|demo transfers|TR551"
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
+FIXED_LIVE_NOW = datetime(2026, 10, 16, 18, 0, tzinfo=timezone.utc)
+
+
 def _run() -> dict:
-    """The sample path, as the frontend drives it."""
-    with TestClient(create_app(store=SessionStore())) as c:
+    """The sample path, as the frontend drives it, with an injected live clock."""
+    with TestClient(create_app(
+        store=SessionStore(),
+        utcnow=lambda: FIXED_LIVE_NOW,
+    )) as c:
         out = {}
         d = c.get("/demo/sample").json()
         sid = d.pop("session")
@@ -188,3 +195,138 @@ def test_no_raw_evidence_documents_or_ids_are_exposed(run):
     for line in ("Your booking is confirmed.", "Booking reference:", "Issued:", "Ana Example", "Marko Example"):
         assert line not in text, line
     assert not UUID.search(text)
+
+
+def test_plan_transaction_evidence_closes_transport_need_without_leaking_internal_record():
+    from datetime import datetime, timezone
+
+    from app.atlas_web import view_v2
+    from app.db.models import Trip, TripItem
+    from app.db.session import (
+        create_schema,
+        make_engine,
+        make_session_factory,
+    )
+
+    engine = make_engine("sqlite://")
+    create_schema(engine)
+    factory = make_session_factory(engine)
+
+    try:
+        with factory() as session:
+            trip = Trip(
+                title="Transaction planning test",
+            )
+            session.add(trip)
+            session.flush()
+
+            plan = TripItem(
+                trip_id=trip.id,
+                kind="plan",
+                identity="plan|transaction-view-test",
+                provider=None,
+                booking_reference=None,
+                status="stated",
+                details={
+                    "text": "Investment Conference",
+                    "event": "Investment Conference",
+                    "place": "One&Only Portonovi",
+                    "date_text": "20-21 October",
+                    "place_role": "venue",
+                    "overnight_stay": False,
+                    "origin_text": "Podgorica",
+                    "arrival_time": "09:00",
+                    "party_size": 1,
+                    "route_plan": {
+                        "origin": {
+                            "name": "Podgorica",
+                        },
+                        "destination": {
+                            "name": "One&Only Portonovi",
+                        },
+                        "leave_by_local":
+                            "2026-10-20T06:21",
+                        "arrive_by_local":
+                            "2026-10-20T09:00",
+                        "timezone":
+                            "Europe/Podgorica",
+                    },
+                    "transport_transaction": {
+                        "transaction_id": "txn-secret",
+                        "action_id": "action-secret",
+                        "quote_id": "quote-secret",
+                        "status": "accepted",
+                        "provider":
+                            "Atlas Sandbox Transfer",
+                        "provider_reference":
+                            "MOCK-ABCDEFGH",
+                        "pickup": "Podgorica",
+                        "destination":
+                            "One&Only Portonovi",
+                        "pickup_time":
+                            "2026-10-20T06:21:00+02:00",
+                        "party_size": 1,
+                        "amount": "60.00",
+                        "currency": "EUR",
+                        "sandbox": True,
+                    },
+                },
+                times={},
+                current_revision=1,
+                revisions=[],
+            )
+
+            session.add(plan)
+            session.flush()
+
+            rows = view_v2.items(
+                {plan.identity: plan},
+                now_utc=datetime(
+                    2026,
+                    10,
+                    17,
+                    15,
+                    0,
+                    tzinfo=timezone.utc,
+                ),
+            )
+
+            [row] = rows
+            detail = row["detail"]
+
+            codes = [
+                need["code"]
+                for need
+                in detail["planning"]["needs"]
+            ]
+
+            assert (
+                "arrival_transport_unconfirmed"
+                not in codes
+            )
+
+            # Internal transaction state may influence planning but does
+            # not cross the public Journey API boundary wholesale.
+            assert "transport_transaction" not in detail
+
+            assert detail["confirmed_transport"] == {
+                "status": "accepted",
+                "provider": "Atlas Sandbox Transfer",
+                "provider_reference": "MOCK-ABCDEFGH",
+                "pickup": "Podgorica",
+                "destination": "One&Only Portonovi",
+                "pickup_time": "2026-10-20T06:21:00+02:00",
+                "party_size": 1,
+                "amount": "60.00",
+                "currency": "EUR",
+                "sandbox": True,
+            }
+
+            exposed = str(row)
+
+            assert "txn-secret" not in exposed
+            assert "action-secret" not in exposed
+            assert "quote-secret" not in exposed
+
+    finally:
+        engine.dispose()

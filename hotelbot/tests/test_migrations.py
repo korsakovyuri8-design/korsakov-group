@@ -273,7 +273,12 @@ def test_journey_upgrade_adds_trip_tables_and_downgrades(engine):
     tables = {"trips", "trip_source_records", "trip_items", "trip_observations", "trip_issues"}
     with engine.connect() as conn:
         assert tables <= set(sa.inspect(conn).get_table_names())
+
+    # 0009 is no longer head. Verify its own tables first, then bring the
+    # database to current head before comparing against Base.metadata.
+    _upgrade(engine, "head")
     assert _diff(engine) == []
+
     with engine.begin() as conn:
         command.downgrade(alembic_config(conn), "0008_world_fabric")
     with engine.connect() as conn:

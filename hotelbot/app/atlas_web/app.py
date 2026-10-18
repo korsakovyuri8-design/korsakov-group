@@ -28,13 +28,15 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.atlas_web import intake, view
 from app.atlas_web.sessions import DemoSession, SessionStore
-from app.journey import ingest
+from app.journey import ingest, plan_answers, route_planner
+from app.mobility import marketplace as mobility_marketplace
 from app.trip import atlas_demo
 
 log = logging.getLogger("atlas_web")
@@ -47,6 +49,17 @@ ENDED = {"message": "This demo session has ended. Start again with your bookings
 CSP = ("default-src 'self'; script-src 'nonce-{nonce}'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
        "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
        "base-uri 'none'; form-action 'self'")
+
+
+def _client_timezone(value: Any) -> str | None:
+    """A browser-supplied IANA zone is display context, never a travel fact."""
+    if not isinstance(value, str) or not value or len(value) > 64:
+        return None
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+    return value
 
 
 class RateLimiter:
@@ -87,9 +100,11 @@ def _page_template() -> str:
                 .replace("/*ATLAS-SAMPLES*/[]", blob(samples)))
 
 
-def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] = time.monotonic) -> FastAPI:
+def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] = time.monotonic,
+               utcnow: Callable[[], datetime] | None = None) -> FastAPI:
     store = store or SessionStore(clock=clock)
     limiter = RateLimiter(clock)
+    utcnow = utcnow or (lambda: datetime.now(timezone.utc))
     template = _page_template()
     app = FastAPI(title="Korsakov Atlas demo", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -113,13 +128,15 @@ def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] 
         return JSONResponse(status_code=429, content={"message": "Too many requests. Please wait a minute."})
 
     def trip(s: DemoSession) -> dict[str, Any]:
-        return view.picture(s.db, s.trip_id, s.world)
+        now = atlas_demo.NOW if s.clock_mode == "demo" else utcnow()
+        return view.picture(s.db, s.trip_id, s.world, now_utc=now, clock=s.clock_mode,
+                            fallback_timezone=s.client_timezone)
 
     def ingest_one(s: DemoSession, raw: str, kind: str, source: str) -> dict[str, Any]:
         items = atlas_demo.items_of(s.db, s.trip_id)
         before = {k: (v.status, v.current_revision) for k, v in items.items()}
         report = ingest.import_document(s.db, s.trip_id, kind=kind, raw=raw, source_id=source,
-                                        received_at=datetime.now(timezone.utc))
+                                        received_at=utcnow())
         s.db.commit()
         item = report.item
         return view.understood(item, report, before.get(item.identity) if item is not None else None)
@@ -138,7 +155,7 @@ def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] 
     def sample(request: Request) -> JSONResponse:
         if (refused := limited(request, "session")) is not None:
             return refused
-        s = store.create()
+        s = store.create(clock_mode="demo")
         with s.lock:
             cards = [ingest_one(s, (atlas_demo.FIX / atlas_demo.DOCS[d][1]).read_text(encoding="utf-8"),
                                 atlas_demo.DOCS[d][0], f"sample:{d}") for d in ("F1", "F2", "F3")]
@@ -160,6 +177,10 @@ def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] 
         s = store.get(token) if token else None
         if token and s is None:
             return JSONResponse(status_code=404, content=ENDED)
+        client_timezone = _client_timezone(payload.get("client_timezone"))
+        if s is not None and client_timezone:
+            s.client_timezone = client_timezone
+        clock_mode = "demo" if payload.get("sample") in SAMPLES else "live"
         if payload.get("sample") in SAMPLES:
             doc = SAMPLES[payload["sample"]]
             raw, kind, source = (atlas_demo.FIX / atlas_demo.DOCS[doc][1]).read_text(encoding="utf-8"), \
@@ -175,11 +196,568 @@ def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] 
                 log.info("import outcome=unreadable")
                 return JSONResponse({"session": s.token if s else None, "understood": UNREADABLE,
                                      "trip": trip(s) if s else None})
-        s = s or store.create()
+        s = s or store.create(clock_mode=clock_mode, client_timezone=client_timezone)
         with s.lock:
             card = ingest_one(s, raw, kind, source)
             log.info("import outcome=%s kind=%s", card["outcome"], kind)
             return JSONResponse({"session": s.token, "understood": card, "trip": trip(s)})
+
+    @app.post("/demo/plan/role")
+    async def plan_role(request: Request) -> JSONResponse:
+        if (refused := limited(request, "import")) is not None:
+            return refused
+        try:
+            payload = json.loads(await request.body() or b"{}")
+        except ValueError:
+            return JSONResponse(status_code=400, content={"message": "Send JSON."})
+
+        s = store.get(payload.get("session"))
+        if s is None:
+            return JSONResponse(status_code=404, content=ENDED)
+
+        plan_key = str(payload.get("plan_key") or "")
+        role = str(payload.get("role") or "")
+
+        if not plan_key or role not in plan_answers.PLACE_ROLES:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Choose event venue, stay, or both."},
+            )
+
+        with s.lock:
+            result = plan_answers.set_place_role(
+                s.db,
+                s.trip_id,
+                plan_key,
+                role,
+                received_at=utcnow(),
+            )
+            if result is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"message": "That stated plan is no longer available."},
+                )
+
+            _, changed = result
+            s.db.commit()
+            return JSONResponse({
+                "session": s.token,
+                "changed": changed,
+                "trip": trip(s),
+            })
+
+    @app.post("/demo/plan/date")
+    async def plan_date(request: Request) -> JSONResponse:
+        if (refused := limited(request, "import")) is not None:
+            return refused
+
+        try:
+            payload = json.loads(await request.body() or b"{}")
+        except ValueError:
+            return JSONResponse(status_code=400, content={"message": "Send JSON."})
+
+        s = store.get(payload.get("session"))
+        if s is None:
+            return JSONResponse(status_code=404, content=ENDED)
+
+        try:
+            with s.lock:
+                result = plan_answers.set_date_text(
+                    s.db,
+                    s.trip_id,
+                    str(payload.get("plan_key") or ""),
+                    str(payload.get("value") or ""),
+                    received_at=utcnow(),
+                )
+
+                if result is None:
+                    return JSONResponse(
+                        status_code=404,
+                        content={"message": "That stated plan is no longer available."},
+                    )
+
+                _, changed = result
+                s.db.commit()
+
+                return JSONResponse({
+                    "session": s.token,
+                    "changed": changed,
+                    "trip": trip(s),
+                })
+
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Tell Atlas when you are going."},
+            )
+
+
+    @app.post("/demo/plan/stay-intent")
+    async def plan_stay_intent(request: Request) -> JSONResponse:
+        try:
+            payload = json.loads(await request.body() or b"{}")
+        except ValueError:
+            return JSONResponse(status_code=400, content={"message": "Send JSON."})
+
+        s = store.get(payload.get("session"))
+        if s is None:
+            return JSONResponse(status_code=404, content=ENDED)
+
+        value = payload.get("value")
+        if not isinstance(value, bool):
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Choose whether you need an overnight stay."},
+            )
+
+        with s.lock:
+            result = plan_answers.set_overnight_stay(
+                s.db,
+                s.trip_id,
+                str(payload.get("plan_key") or ""),
+                value,
+                received_at=utcnow(),
+            )
+
+            if result is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"message": "That stated plan is no longer available."},
+                )
+
+            _, changed = result
+            s.db.commit()
+
+            return JSONResponse({
+                "session": s.token,
+                "changed": changed,
+                "trip": trip(s),
+            })
+
+
+    @app.post("/demo/plan/origin")
+    async def plan_origin(request: Request) -> JSONResponse:
+        try:
+            payload = json.loads(await request.body() or b"{}")
+        except ValueError:
+            return JSONResponse(status_code=400, content={"message": "Send JSON."})
+
+        s = store.get(payload.get("session"))
+        if s is None:
+            return JSONResponse(status_code=404, content=ENDED)
+
+        try:
+            with s.lock:
+                result = plan_answers.set_origin_text(
+                    s.db,
+                    s.trip_id,
+                    str(payload.get("plan_key") or ""),
+                    str(payload.get("origin") or ""),
+                    received_at=utcnow(),
+                )
+
+                if result is None:
+                    return JSONResponse(
+                        status_code=404,
+                        content={"message": "That stated plan is no longer available."},
+                    )
+
+                _, changed = result
+                s.db.commit()
+
+                return JSONResponse({
+                    "session": s.token,
+                    "changed": changed,
+                    "trip": trip(s),
+                })
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Tell Atlas where you will be coming from."},
+            )
+
+
+    @app.post("/demo/plan/arrival-time")
+    async def plan_arrival_time(request: Request) -> JSONResponse:
+        try:
+            payload = json.loads(await request.body() or b"{}")
+        except ValueError:
+            return JSONResponse(status_code=400, content={"message": "Send JSON."})
+
+        s = store.get(payload.get("session"))
+        if s is None:
+            return JSONResponse(status_code=404, content=ENDED)
+
+        try:
+            with s.lock:
+                result = plan_answers.set_arrival_time(
+                    s.db,
+                    s.trip_id,
+                    str(payload.get("plan_key") or ""),
+                    str(payload.get("value") or ""),
+                    received_at=utcnow(),
+                )
+
+                if result is None:
+                    return JSONResponse(
+                        status_code=404,
+                        content={"message": "That stated plan is no longer available."},
+                    )
+
+                _, changed = result
+                s.db.commit()
+
+                return JSONResponse({
+                    "session": s.token,
+                    "changed": changed,
+                    "trip": trip(s),
+                })
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Choose a valid arrival time."},
+            )
+
+
+    @app.post("/demo/plan/route")
+    async def plan_route(request: Request) -> JSONResponse:
+        try:
+            payload = json.loads(await request.body() or b"{}")
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Send JSON."},
+            )
+
+        s = store.get(payload.get("session"))
+        if s is None:
+            return JSONResponse(status_code=404, content=ENDED)
+
+        with s.lock:
+            try:
+                route = route_planner.plan_and_store(
+                    s.db,
+                    s.trip_id,
+                    str(payload.get("plan_key") or ""),
+                    generated_at=utcnow(),
+                )
+            except route_planner.RoutePlanError as exc:
+                return JSONResponse(
+                    status_code=exc.status,
+                    content={
+                        "code": exc.code,
+                        "message": exc.message,
+                    },
+                )
+
+            s.db.commit()
+
+            return JSONResponse({
+                "session": s.token,
+                "route_plan": route,
+                "trip": trip(s),
+            })
+
+
+    @app.post("/demo/plan/mobility")
+    async def plan_mobility(request: Request) -> JSONResponse:
+        try:
+            payload = json.loads(
+                await request.body() or b"{}"
+            )
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Send JSON."},
+            )
+
+        s = store.get(payload.get("session"))
+
+        if s is None:
+            return JSONResponse(
+                status_code=404,
+                content=ENDED,
+            )
+
+        with s.lock:
+            plan = mobility_marketplace.plan_item(
+                s.db,
+                s.trip_id,
+                str(payload.get("plan_key") or ""),
+            )
+
+            if plan is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "message":
+                            "That stated plan is no longer available."
+                    },
+                )
+
+            try:
+                result = mobility_marketplace.compare(
+                    s.db,
+                    plan,
+                    now=utcnow(),
+                )
+            except ValueError as exc:
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "message":
+                            "The journey is not ready for transport search.",
+                        "reason": str(exc),
+                    },
+                )
+
+            s.db.commit()
+
+            return JSONResponse({
+                "session": s.token,
+                "mobility": result,
+                "trip": trip(s),
+            })
+
+
+    @app.post("/demo/plan/transport-state")
+    async def plan_transport_state(request: Request) -> JSONResponse:
+        if (refused := limited(request, "read")) is not None:
+            return refused
+
+        try:
+            payload = json.loads(await request.body() or b"{}")
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Send JSON."},
+            )
+
+        s = store.get(payload.get("session"))
+        if s is None:
+            return JSONResponse(status_code=404, content=ENDED)
+
+        with s.lock:
+            plan = mobility_marketplace.plan_item(
+                s.db,
+                s.trip_id,
+                str(payload.get("plan_key") or ""),
+            )
+
+            if plan is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "message":
+                            "That stated plan is no longer available."
+                    },
+                )
+
+            quote = mobility_marketplace.active_transfer_quote(
+                s.db,
+                s.trip_id,
+                plan,
+                now=utcnow(),
+            )
+
+            return JSONResponse({
+                "session": s.token,
+                "quote": quote,
+            })
+
+
+    @app.post("/demo/plan/transfer-quote")
+    async def plan_transfer_quote(
+        request: Request,
+    ) -> JSONResponse:
+        try:
+            payload = json.loads(
+                await request.body() or b"{}"
+            )
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Send JSON."},
+            )
+
+        s = store.get(payload.get("session"))
+
+        if s is None:
+            return JSONResponse(
+                status_code=404,
+                content=ENDED,
+            )
+
+        with s.lock:
+            plan = mobility_marketplace.plan_item(
+                s.db,
+                s.trip_id,
+                str(payload.get("plan_key") or ""),
+            )
+
+            if plan is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "message":
+                            "That stated plan is no longer available."
+                    },
+                )
+
+            try:
+                quote, provider_name = (
+                    mobility_marketplace
+                    .create_transfer_quote(
+                        s.db,
+                        s.trip_id,
+                        plan,
+                        now=utcnow(),
+                    )
+                )
+            except ValueError as exc:
+                s.db.rollback()
+
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "message":
+                            "No transfer quote is available.",
+                        "reason": str(exc),
+                    },
+                )
+
+            s.db.commit()
+
+            return JSONResponse({
+                "session": s.token,
+                "quote":
+                    mobility_marketplace.quote_payload(
+                        quote,
+                        provider_name,
+                    ),
+                "trip": trip(s),
+            })
+
+
+    @app.post("/demo/plan/transfer-confirm")
+    async def plan_transfer_confirm(
+        request: Request,
+    ) -> JSONResponse:
+        try:
+            payload = json.loads(
+                await request.body() or b"{}"
+            )
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Send JSON."},
+            )
+
+        s = store.get(payload.get("session"))
+
+        if s is None:
+            return JSONResponse(
+                status_code=404,
+                content=ENDED,
+            )
+
+        with s.lock:
+            plan = mobility_marketplace.plan_item(
+                s.db,
+                s.trip_id,
+                str(payload.get("plan_key") or ""),
+            )
+
+            if plan is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "message":
+                            "That stated plan is no longer available."
+                    },
+                )
+
+            try:
+                txn = (
+                    mobility_marketplace
+                    .confirm_transfer_quote(
+                        s.db,
+                        s.trip_id,
+                        plan,
+                        str(payload.get("quote_id") or ""),
+                        consent=(
+                            payload.get("consent")
+                            is True
+                        ),
+                        now=utcnow(),
+                    )
+                )
+            except ValueError as exc:
+                s.db.rollback()
+
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "message":
+                            "The transfer could not be confirmed.",
+                        "reason": str(exc),
+                    },
+                )
+
+            s.db.commit()
+
+            return JSONResponse({
+                "session": s.token,
+                "transaction":
+                    mobility_marketplace
+                    .transaction_payload(txn),
+                "trip": trip(s),
+            })
+
+
+    @app.post("/demo/plan/party-size")
+    async def plan_party_size(request: Request) -> JSONResponse:
+        try:
+            payload = json.loads(await request.body() or b"{}")
+        except ValueError:
+            return JSONResponse(status_code=400, content={"message": "Send JSON."})
+
+        s = store.get(payload.get("session"))
+        if s is None:
+            return JSONResponse(status_code=404, content=ENDED)
+
+        value = payload.get("value")
+
+        try:
+            with s.lock:
+                result = plan_answers.set_party_size(
+                    s.db,
+                    s.trip_id,
+                    str(payload.get("plan_key") or ""),
+                    value,
+                    received_at=utcnow(),
+                )
+
+                if result is None:
+                    return JSONResponse(
+                        status_code=404,
+                        content={"message": "That stated plan is no longer available."},
+                    )
+
+                _, changed = result
+                s.db.commit()
+
+                return JSONResponse({
+                    "session": s.token,
+                    "changed": changed,
+                    "trip": trip(s),
+                })
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Choose between 1 and 20 travellers."},
+            )
+
 
     @app.get("/demo/trip/{token}")
     def get_trip(token: str, request: Request) -> JSONResponse:

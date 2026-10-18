@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import hashlib
 from typing import Any
 
 from sqlalchemy import select
@@ -143,4 +144,135 @@ STATEMENT = KindSpec(
     derived=("related",),
 )
 
-KINDS: dict[str, KindSpec] = {s.kind: s for s in (FLIGHT, ACCOMMODATION, RESTAURANT, TRANSFER, STATEMENT)}
+# ------------------------------------------------------------------ stated plan
+def _plan_norm(value: str | None) -> str:
+    """Comparison form only; the user's original wording stays untouched."""
+    return " ".join(
+        (value or "")
+        .replace("–", "-")
+        .replace("—", "-")
+        .lower()
+        .split()
+    )
+
+
+def resolve_plan(session: Session, trip_id: str, parsed, values: dict[str, Any]):  # noqa: ANN001, ANN201
+    """Resolve a stated plan conservatively.
+
+    A later statement may REFINE one existing stated plan when:
+    - the destination is the same;
+    - explicit dates do not conflict;
+    - explicit events do not conflict.
+
+    A vague plan followed by exact dates is the same plan when there is only
+    one compatible candidate. Two different explicit date ranges are separate
+    trips. Multiple compatible candidates are ambiguous: Atlas never guesses.
+
+    Stated plans are never merged into provider-backed bookings.
+    """
+    key = "|".join([
+        values.get("date_text", ""),
+        values.get("place", ""),
+        values.get("text", ""),
+    ])
+    identity = "plan|" + hashlib.sha256(
+        key.lower().encode("utf-8")
+    ).hexdigest()[:20]
+
+    # Exact re-delivery / same semantic identity first.
+    exact = session.scalar(
+        select(TripItem).where(
+            TripItem.trip_id == trip_id,
+            TripItem.identity == identity,
+            TripItem.kind == "plan",
+        )
+    )
+    if exact is not None:
+        return exact, exact.identity, "existing"
+
+    place = _plan_norm(values.get("place"))
+    incoming_date = _plan_norm(values.get("date_text"))
+    incoming_event = _plan_norm(values.get("event"))
+
+    if not place:
+        return None, identity, "new"
+
+    candidates = list(
+        session.scalars(
+            select(TripItem).where(
+                TripItem.trip_id == trip_id,
+                TripItem.kind == "plan",
+            )
+        )
+    )
+
+    compatible: list[TripItem] = []
+
+    for candidate in candidates:
+        details = candidate.details or {}
+
+        if _plan_norm(details.get("place")) != place:
+            continue
+
+        existing_date = _plan_norm(details.get("date_text"))
+        existing_event = _plan_norm(details.get("event"))
+
+        # Two different explicit dates mean two different trips.
+        if (
+            incoming_date
+            and existing_date
+            and incoming_date != existing_date
+        ):
+            continue
+
+        # Two explicitly different events at the same place are not one plan.
+        if (
+            incoming_event
+            and existing_event
+            and incoming_event != existing_event
+        ):
+            continue
+
+        # Do not let a new vague statement silently attach itself to an
+        # already date-specific trip unless the event also identifies it.
+        if (
+            not incoming_date
+            and existing_date
+            and not (
+                incoming_event
+                and existing_event
+                and incoming_event == existing_event
+            )
+        ):
+            continue
+
+        compatible.append(candidate)
+
+    if len(compatible) == 1:
+        item = compatible[0]
+        return item, item.identity, "existing"
+
+    if len(compatible) > 1:
+        return None, identity, "ambiguous"
+
+    return None, identity, "new"
+
+
+PLAN = KindSpec(
+    kind="plan",
+    details={
+        "text": str,
+        "event": str,
+        "place": str,
+        "date_text": str,
+        "place_role": str,
+        "overnight_stay": bool,
+        "origin_text": str,
+        "arrival_time": str,
+        "party_size": int, "timing_text": str, "duration_text": str, "note": str},
+    detail_fields=("text", "event", "place", "date_text", "origin_text", "timing_text", "duration_text", "note"),
+    time_fields=(),
+    resolve=resolve_plan,
+)
+
+KINDS: dict[str, KindSpec] = {s.kind: s for s in (FLIGHT, ACCOMMODATION, RESTAURANT, TRANSFER, STATEMENT, PLAN)}

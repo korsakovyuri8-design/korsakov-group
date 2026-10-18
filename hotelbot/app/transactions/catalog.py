@@ -57,6 +57,51 @@ _TRANSPORT_FIELDS = (
               required=False),
     FieldSpec("vehicle", "text", {"en": "vehicle", "cnr": "vozilo", "ru": "автомобиль"}, required=False),
 )
+_SCHEDULED_TRAVEL_FIELDS = (
+    FieldSpec(
+        "departure_time",
+        "datetime",
+        {
+            "en": "departure",
+            "cnr": "polazak",
+            "ru": "отправление",
+        },
+    ),
+    FieldSpec(
+        "origin",
+        "place",
+        {
+            "en": "origin",
+            "cnr": "polazište",
+            "ru": "откуда",
+        },
+    ),
+    FieldSpec(
+        "destination",
+        "place",
+        {
+            "en": "destination",
+            "cnr": "odredište",
+            "ru": "куда",
+        },
+    ),
+    FieldSpec(
+        "party_size",
+        "count",
+        _PEOPLE,
+    ),
+    FieldSpec(
+        "travel_class",
+        "text",
+        {
+            "en": "class",
+            "cnr": "klasa",
+            "ru": "класс",
+        },
+        required=False,
+    ),
+)
+
 _RENTAL_FIELDS = (
     FieldSpec("category", "rental_category", {"en": "item", "cnr": "oprema", "ru": "что"}),
     FieldSpec("quantity", "quantity", {"en": "quantity", "cnr": "količina", "ru": "количество"}),
@@ -87,6 +132,44 @@ _SPECS = [
                 {"en": "intercity transfer", "cnr": "međugradski prevoz", "ru": "междугородний трансфер"},
                 _TRANSPORT_FIELDS,
                 keywords=("intercity", "medjugradsk*", "междугородн*")),
+    ServiceSpec(
+        "bus_ticket",
+        "transport",
+        {
+            "en": "bus ticket",
+            "cnr": "autobuska karta",
+            "ru": "автобусный билет",
+        },
+        _SCHEDULED_TRAVEL_FIELDS,
+        keywords=(
+            "bus ticket",
+            "coach ticket",
+            "ticket for the bus",
+            "autobuska karta",
+            "karta za autobus",
+            "автобусный билет",
+            "билет на автобус",
+        ),
+    ),
+    ServiceSpec(
+        "rail_ticket",
+        "transport",
+        {
+            "en": "rail ticket",
+            "cnr": "vozna karta",
+            "ru": "железнодорожный билет",
+        },
+        _SCHEDULED_TRAVEL_FIELDS,
+        keywords=(
+            "train ticket",
+            "rail ticket",
+            "ticket for the train",
+            "vozna karta",
+            "karta za voz",
+            "железнодорожный билет",
+            "билет на поезд",
+        ),
+    ),
     ServiceSpec("taxi", "transport", {"en": "taxi", "cnr": "taksi", "ru": "такси"}, _TRANSPORT_FIELDS,
                 keywords=("taxi", "cab", "ride to", "taksi", "такси")),
     ServiceSpec("restaurant_reservation", "restaurant",
@@ -172,7 +255,13 @@ SERVICE_CATALOG: dict[str, ServiceSpec] = {s.key: s for s in _SPECS}
 
 # Request topics recognised by the intent layer -> candidate service types.
 TOPIC_SERVICES: dict[RequestType, tuple[str, ...]] = {
-    RequestType.TRANSPORT: ("airport_transfer", "taxi", "intercity_transfer"),
+    RequestType.TRANSPORT: (
+        "airport_transfer",
+        "taxi",
+        "intercity_transfer",
+        "bus_ticket",
+        "rail_ticket",
+    ),
     RequestType.RESTAURANT: ("restaurant_reservation",),
 }
 

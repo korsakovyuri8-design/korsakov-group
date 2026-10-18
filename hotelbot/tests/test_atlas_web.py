@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +22,8 @@ from app.atlas_web.sessions import SessionStore
 from tests.conftest import ROOT
 
 FIX = ROOT / "data" / "trips" / "fixtures"
+
+FIXED_LIVE_NOW = datetime(2026, 10, 17, 10, 0, tzinfo=timezone.utc)
 
 
 class Clock:
@@ -38,7 +41,11 @@ def clock() -> Clock:
 
 @pytest.fixture
 def client(clock):  # noqa: ANN001, ANN201
-    app = create_app(store=SessionStore(ttl_seconds=45 * 60, max_sessions=50, clock=clock), clock=clock)
+    app = create_app(
+        store=SessionStore(ttl_seconds=45 * 60, max_sessions=50, clock=clock),
+        clock=clock,
+        utcnow=lambda: FIXED_LIVE_NOW,
+    )
     with TestClient(app) as c:
         yield c
 
@@ -188,3 +195,145 @@ def test_the_service_never_imports_an_llm_or_an_http_client():
         mods = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module] + \
                [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
         assert not [m for m in mods if m.startswith(("app.llm", "httpx", "requests", "urllib"))], f
+
+
+# ------------------------------------------------------------------ stated plans
+def test_a_natural_language_trip_plan_is_kept_as_stated_not_booking(client):
+    text = "I'm going to Investment Conference returns to One&Only Portonovi 20-21 of October"
+    r = client.post("/demo/import", json={"text": text})
+    assert r.status_code == 200
+    out = r.json()
+    card = out["understood"]
+    assert card["outcome"] == "new" and card["kind"] == "plan" and card["status"] == "Stated"
+    assert card["title"] == "Investment Conference" and card["route"] == "One&Only Portonovi"
+    assert card["when"] == "20–21 October"
+    assert out["trip"]["bookings"] == []
+    plans = [i for i in out["trip"]["items"] if i["kind"] == "plan"]
+    assert len(plans) == 1
+    assert plans[0]["status"] == "stated" and plans[0]["provider"] is None and plans[0]["reference"] is None
+    assert plans[0]["detail"]["planning"]["status"] == "needs_planning"
+    assert [n["code"] for n in plans[0]["detail"]["planning"]["needs"]] == [
+        "place_role_unknown",
+        "overnight_stay_unknown",
+        "arrival_origin_unknown",
+    ]
+    assert plans[0]["detail"]["resolved_date"] == {
+        "status": "resolved",
+        "start_date": "2026-10-20",
+        "end_date": "2026-10-21",
+        "timezone": "Europe/Podgorica",
+        "basis": "inferred_upcoming_date",
+        "reference_date": "2026-10-17",
+        "year_stated": False,
+    }
+    expected_detail = {
+        "event": "Investment Conference",
+        "place": "One&Only Portonovi",
+        "date_text": "20–21 October",
+        "basis": "guest",
+        "resolved_place": {
+            "status": "resolved",
+            "entity_key": "me:oneandonly_portonovi",
+            "canonical_name": "One&Only Portonovi",
+            "kind": "resort",
+            "address": "Portonovi Resort, Herceg Novi 85340, Montenegro",
+            "locality": "Kumbor",
+            "municipality": "Herceg Novi",
+            "country": "Montenegro",
+            "timezone": "Europe/Podgorica",
+            "coordinates": {
+                "lat": 42.435287,
+                "lon": 18.59857,
+            },
+            "resolver": "atlas_montenegro_seed",
+            "registry_version": "2026-10-17.2",
+            "match": "exact_alias",
+        },
+    }
+    for key, value in expected_detail.items():
+        assert plans[0]["detail"][key] == value
+    assert text not in str(out["trip"])          # raw guest text is not echoed by the trip view
+    assert out["trip"]["attention"] == [] and out["trip"]["activities"] is None
+
+
+def test_a_vague_sentence_without_an_explicit_date_is_kept_as_stated_plan(client):
+    r = client.post(
+        "/demo/import",
+        json={"text": "I'm going to One&Only Portonovi soon"},
+    )
+    assert r.status_code == 200
+
+    out = r.json()
+    assert out["understood"]["outcome"] == "new"
+    assert out["understood"]["kind"] == "plan"
+    assert out["understood"]["status"] == "Stated"
+    assert out["understood"]["route"] == "One&Only Portonovi"
+
+    plan = next(
+        item for item in out["trip"]["items"]
+        if item["kind"] == "plan"
+    )
+
+    assert plan["detail"]["place"] == "One&Only Portonovi"
+    assert plan["detail"]["timing_text"].lower() == "soon"
+    assert plan["detail"].get("date_text") is None
+    assert out["trip"]["bookings"] == []
+
+
+# ------------------------------------------------------------------ live clock
+def test_a_real_import_uses_live_clock_and_client_timezone(clock):
+    now = datetime(2026, 10, 16, 17, 5, tzinfo=timezone.utc)
+    app = create_app(store=SessionStore(ttl_seconds=45 * 60, max_sessions=50, clock=clock),
+                     clock=clock, utcnow=lambda: now)
+    text = "I'm going to Investment Conference returns to One&Only Portonovi 20-21 of October"
+    with TestClient(app) as c:
+        out = c.post("/demo/import", json={"text": text, "client_timezone": "Europe/Podgorica"}).json()
+    clock_view = out["trip"]["context"]["now"]
+    assert clock_view == {
+        "utc": "2026-10-16T17:05:00+00:00",
+        "local": "2026-10-16T19:05",
+        "timezone": "Europe/Podgorica",
+        "clock": "live",
+    }
+
+
+def test_demo_sample_keeps_the_frozen_demo_clock(client):
+    now = _sample(client)["trip"]["context"]["now"]
+    assert now["clock"] == "demo"
+    assert now["local"] == "2026-10-18T13:00"
+
+
+def test_answering_plan_place_role_closes_only_that_planning_question(client):
+    text = "I'm going to Investment Conference returns to One&Only Portonovi 20-21 of October"
+    first = client.post("/demo/import", json={"text": text}).json()
+
+    sid = first["session"]
+    plan = next(i for i in first["trip"]["items"] if i["kind"] == "plan")
+    key = plan["key"]
+
+    r = client.post(
+        "/demo/plan/role",
+        json={"session": sid, "plan_key": key, "role": "venue"},
+    )
+    assert r.status_code == 200
+    out = r.json()
+
+    assert out["changed"] is True
+
+    plan = next(i for i in out["trip"]["items"] if i["kind"] == "plan")
+    assert plan["detail"]["place_role"] == "venue"
+
+    codes = [n["code"] for n in plan["detail"]["planning"]["needs"]]
+    assert codes == [
+        "overnight_stay_unknown",
+        "arrival_origin_unknown",
+    ]
+
+    # Answering the clarification does not invent a booking.
+    assert out["trip"]["bookings"] == []
+
+    again = client.post(
+        "/demo/plan/role",
+        json={"session": sid, "plan_key": key, "role": "venue"},
+    ).json()
+    assert again["changed"] is False

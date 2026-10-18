@@ -115,9 +115,10 @@ def _days(out: dict[str, Any], items: dict[str, TripItem]) -> list[dict[str, Any
     return days
 
 
-def _activities(db, out: dict[str, Any], items: dict[str, TripItem], world: dict[str, Any]) -> dict[str, Any] | None:  # noqa: ANN001
+def _activities(db, out: dict[str, Any], items: dict[str, TripItem], world: dict[str, Any],
+                now_utc: datetime = NOW) -> dict[str, Any] | None:  # noqa: ANN001
     for w in out["windows"]:
-        found = fitting_activities(db, w, world, now_utc=NOW)
+        found = fitting_activities(db, w, world, now_utc=now_utc)
         if found is None:
             continue
         n, minutes = len(found["suggestions"]), w["minutes"]
@@ -147,19 +148,23 @@ def _next(out: dict[str, Any], items: dict[str, TripItem]) -> list[dict[str, str
     return nxt
 
 
-def picture(db, trip_id: str, world: dict[str, Any]) -> dict[str, Any]:  # noqa: ANN001
+def picture(db, trip_id: str, world: dict[str, Any], *, now_utc: datetime = NOW, clock: str = "demo",
+            fallback_timezone: str | None = None) -> dict[str, Any]:  # noqa: ANN001
     snapshot = timeline.snapshot(db, trip_id)
     out = timeline.build(snapshot, policies.load())
-    items = {k: v for k, v in items_of(db, trip_id).items() if v.kind != "statement"}
+    all_items = items_of(db, trip_id)
+    items = {k: v for k, v in all_items.items() if v.kind in ("flight", "accommodation", "transfer", "restaurant")}
+    public_items = {k: v for k, v in all_items.items() if v.kind != "statement"}
     return {"route": _route(out), "dates": _dates(out), "bookings": booking_rows(items),
             "attention": _attention(out, items), "days": _days(out, items),
-            "activities": _activities(db, out, items, world), "next": _next(out, items),
+            "activities": _activities(db, out, items, world, now_utc), "next": _next(out, items),
             "off_timeline": [{"kind": f["kind"], "reason": "Atlas can't place this in time yet (unknown time zone)."}
                              for f in out["floating"]],
             "policy_version": out["policy_version"],
             # v2 (view_v2.py): structured, additive; every v1 field above is unchanged
-            "context": view_v2.context(out, NOW), "next_item": view_v2.next_item(out, NOW),
-            "items": view_v2.items(items), "disruption": view_v2.disruption(snapshot, out, items)}
+            "context": view_v2.context(out, now_utc, clock=clock, fallback_timezone=fallback_timezone),
+            "next_item": view_v2.next_item(out, now_utc),
+            "items": view_v2.items(public_items, now_utc=now_utc), "disruption": view_v2.disruption(snapshot, out, items)}
 
 
 # ------------------------------------------------------------------ the import card
@@ -172,6 +177,10 @@ def _card_basics(item: TripItem) -> dict[str, str]:
         a, b = datetime.fromisoformat(t["check_in"]["local"]), datetime.fromisoformat(t["check_out"]["local"])
         when = f"{a.day}–{b.day} {a.strftime('%b')}" if a.month == b.month else f"{a:%-d %b} – {b:%-d %b}"
         return {"title": display_name(item), "route": _town(d.get("address")), "when": when}
+    if item.kind == "plan":
+        return {"title": d.get("event") or "Stated plan",
+                "route": d.get("place") or "",
+                "when": d.get("date_text") or d.get("timing_text") or d.get("duration_text") or "Dates not set"}
     if item.kind == "transfer":
         to = d["dropoff"] if d.get("dropoff_place_kind") == "airport" else _town(d.get("dropoff"))
         return {"title": f"Transfer {d['pickup']} → {to}", "route": f"{d['pickup']} → {to}",

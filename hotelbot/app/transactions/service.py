@@ -42,6 +42,7 @@ from app.db.models import (
     Quote,
     QuoteStatus,
     Stay,
+    TransactionContext,
     Urgency,
 )
 from app.db.repositories import ConversationRepository
@@ -108,12 +109,54 @@ class TransactionService:
         return candidates[0] if candidates else None
 
     # ---------------------------------------------------------------- quotes
-    def request_quote(self, *, stay: Stay, conv: Conversation, provider: ExternalProvider, service_type: str,
-                      details: dict[str, Any], locale: str, candidate: Candidate | None = None,
-                      supersede: bool = True, replaces: ExternalTransaction | None = None) -> Quote:
+    def request_quote(
+        self,
+        *,
+        provider: ExternalProvider,
+        service_type: str,
+        details: dict[str, Any],
+        locale: str,
+        stay: Stay | None = None,
+        conv: Conversation | None = None,
+        context: TransactionContext | None = None,
+        candidate: Candidate | None = None,
+        supersede: bool = True,
+        replaces: ExternalTransaction | None = None,
+    ) -> Quote:
         """Hold the inventory the candidate needs, then ask the provider for a
         price. The hold expires with the quote. Raises NoAvailability (the
         last unit went to someone else a moment ago) or ProviderError."""
+        if (stay is None) == (context is None):
+            raise ValueError(
+                "quote must belong to exactly one owner: "
+                "Stay or TransactionContext"
+            )
+
+        if stay is not None and conv is None:
+            raise ValueError(
+                "Stay-owned quote requires a Conversation"
+            )
+
+        if context is not None and conv is not None:
+            raise ValueError(
+                "Atlas-native quote cannot use a property Conversation"
+            )
+
+        if stay is not None:
+            property_id = stay.property_id
+            stay_id = stay.id
+            guest_id = stay.guest_id
+            conversation_id = conv.id
+            transaction_context_id = None
+        else:
+            assert context is not None
+
+            property_id = None
+            stay_id = None
+            guest_id = context.guest_id
+            conversation_id = None
+            transaction_context_id = context.id
+
         details = dict(details)
         offering = candidate.offering if candidate else None
         if candidate is not None:
@@ -144,12 +187,32 @@ class TransactionService:
                 self.s.delete(h)
             raise
         if supersede:
-            self.supersede_open(conv.id, service_type)
+            if conversation_id is not None:
+                self.supersede_open(
+                    conversation_id,
+                    service_type,
+                )
+            else:
+                assert transaction_context_id is not None
+                self.supersede_open_context(
+                    transaction_context_id,
+                    service_type,
+                )
         terms = dict(candidate.terms) if candidate else {}
         quote = Quote(
-            code="".join(secrets.choice(_CODE_ALPHABET) for _ in range(4)),
-            property_id=stay.property_id, stay_id=stay.id, guest_id=stay.guest_id, conversation_id=conv.id,
-            provider_id=provider.id, service_type=service_type, request=details, currency=result.currency,
+            code="".join(
+                secrets.choice(_CODE_ALPHABET)
+                for _ in range(4)
+            ),
+            property_id=property_id,
+            stay_id=stay_id,
+            guest_id=guest_id,
+            conversation_id=conversation_id,
+            transaction_context_id=transaction_context_id,
+            provider_id=provider.id,
+            service_type=service_type,
+            request=details,
+            currency=result.currency,
             amount=result.amount, description=result.description, conditions=result.conditions,
             valid_until=result.valid_until, provider_reference=result.provider_reference, status=QuoteStatus.OFFERED,
             consent={}, terms=terms, offering_id=offering.id if offering else None,
@@ -174,6 +237,50 @@ class TransactionService:
         return self.s.scalar(select(Quote).where(Quote.conversation_id == conversation_id,
                                                  Quote.status == QuoteStatus.OFFERED)
                              .order_by(Quote.created_at.desc()).limit(1))
+
+    def open_quotes_for_context(
+        self,
+        transaction_context_id: str,
+    ) -> list[Quote]:
+        return list(
+            self.s.scalars(
+                select(Quote)
+                .where(
+                    Quote.transaction_context_id
+                    == transaction_context_id,
+                    Quote.status == QuoteStatus.OFFERED,
+                )
+                .order_by(Quote.created_at.desc())
+            )
+        )
+
+    def supersede_open_context(
+        self,
+        transaction_context_id: str,
+        service_type: str | None = None,
+    ) -> None:
+        """A new Atlas offer replaces only an open offer for the same
+        service in the same Atlas transaction context.
+        """
+        q = select(Quote).where(
+            Quote.transaction_context_id
+            == transaction_context_id,
+            Quote.status == QuoteStatus.OFFERED,
+        )
+
+        if service_type:
+            q = q.where(
+                Quote.service_type == service_type
+            )
+
+        for quote in self.s.scalars(q):
+            quote.status = QuoteStatus.SUPERSEDED
+            quote.decided_at = self.clock.now()
+
+            availability.release_quote(
+                self.s,
+                quote.id,
+            )
 
     def supersede_open(self, conversation_id: str, service_type: str | None = None) -> None:
         """A new offer replaces open offers for the SAME service only; a trip
@@ -211,9 +318,16 @@ class TransactionService:
         quote.consent = {"message_id": message_id, "text": text, "at": self.clock.now().isoformat(),
                          "amount": str(quote.amount), "currency": quote.currency, "code": quote.code,
                          "terms": quote.terms or {}}
-        action = ActionService(self.s, self.deps.executors).propose(
-            property_id=quote.property_id, stay_id=quote.stay_id, conversation_id=quote.conversation_id,
-            action_type=quote.service_type, executor="provider",
+        action = ActionService(
+            self.s,
+            self.deps.executors,
+        ).propose(
+            property_id=quote.property_id,
+            stay_id=quote.stay_id,
+            conversation_id=quote.conversation_id,
+            transaction_context_id=quote.transaction_context_id,
+            action_type=quote.service_type,
+            executor="provider",
             summary=f"{quote.service_type} via provider, {format_price(quote.amount, quote.currency)}",
             params={"quote_id": quote.id, "details": quote.request, "amount": str(quote.amount),
                     "currency": quote.currency, "replaces": quote.replaces_transaction_id},
@@ -321,7 +435,11 @@ class TransactionService:
         request = SubmitRequest(
             idempotency_key=txn.idempotency_key, service_type=quote.service_type, details=txn.request,
             quote_reference=quote.provider_reference, amount=quote.amount, currency=quote.currency,
-            customer_reference=txn.action.stay_id or txn.id,
+            customer_reference=(
+                txn.action.stay_id
+                or txn.action.transaction_context_id
+                or txn.id
+            ),
             offering_ref=quote.request.get("_offering_id"),
             modifies_reference=old.provider_reference if modify and old else None,
         )

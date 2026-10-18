@@ -31,6 +31,8 @@ class DemoSession:
     trip_id: str
     world: dict[str, Any]
     touched: float
+    clock_mode: str = "live"
+    client_timezone: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def close(self) -> None:
@@ -48,14 +50,15 @@ class SessionStore:
     def __len__(self) -> int:
         return len(self._sessions)
 
-    def create(self) -> DemoSession:
+    def create(self, *, clock_mode: str = "live", client_timezone: str | None = None) -> DemoSession:
         engine = make_engine("sqlite://")
         create_schema(engine)
         db = sessionmaker(engine)()
         world = atlas_demo.build_world(db)
         trip = ingest.create_trip(db, title="Atlas demo trip")
         db.commit()
-        s = DemoSession(secrets.token_urlsafe(24), engine, db, trip.id, world, self.clock())
+        s = DemoSession(secrets.token_urlsafe(24), engine, db, trip.id, world, self.clock(),
+                        clock_mode=clock_mode, client_timezone=client_timezone)
         with self._lock:
             self._sweep()
             while len(self._sessions) >= self.max:

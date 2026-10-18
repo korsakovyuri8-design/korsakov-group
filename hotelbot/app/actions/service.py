@@ -59,18 +59,26 @@ class ActionService:
     def propose(
         self,
         *,
-        property_id: str,
+        property_id: str | None,
         action_type: str,
         summary: str,
         executor: str = "staff",
         stay_id: str | None = None,
         conversation_id: str | None = None,
+        transaction_context_id: str | None = None,
         params: dict[str, Any] | None = None,
         urgency: Urgency | None = None,
     ) -> Action:
+        if (property_id is None) == (transaction_context_id is None):
+            raise ValueError(
+                "action must belong to exactly one owner: "
+                "Property or TransactionContext"
+            )
+
         action = Action(
             property_id=property_id,
             stay_id=stay_id,
+            transaction_context_id=transaction_context_id,
             conversation_id=conversation_id,
             action_type=action_type,
             status=S.PROPOSED,

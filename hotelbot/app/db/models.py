@@ -297,9 +297,13 @@ class Action(Base):
     __tablename__ = "actions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), index=True)
+    property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id"), index=True)
     stay_id: Mapped[str | None] = mapped_column(ForeignKey("stays.id"), index=True)
     conversation_id: Mapped[str | None] = mapped_column(ForeignKey("conversations.id"), index=True)
+    transaction_context_id: Mapped[str | None] = mapped_column(
+        ForeignKey("transaction_contexts.id"),
+        index=True,
+    )
     action_type: Mapped[str] = mapped_column(String(64))       # capability key, e.g. "late_arrival_request"
     status: Mapped[ActionStatus] = mapped_column(_enum(ActionStatus), default=ActionStatus.PROPOSED)
     urgency: Mapped[Urgency] = mapped_column(_enum(Urgency), default=Urgency.NORMAL)
@@ -447,6 +451,78 @@ class PropertyProvider(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class TransactionContext(Base):
+    """Owner context for Atlas-native external transactions.
+
+    HotelBot transactions belong to Property/Stay.
+    Atlas-native transactions belong directly to a Trip through this
+    context. No synthetic Property or Stay is created.
+    """
+
+    __tablename__ = "transaction_contexts"
+    __table_args__ = (
+        UniqueConstraint(
+            "trip_id",
+            name="uq_transaction_contexts_trip_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=_uuid,
+    )
+
+    kind: Mapped[str] = mapped_column(
+        String(32),
+        default="atlas_trip",
+    )
+
+    trip_id: Mapped[str | None] = mapped_column(
+        ForeignKey("trips.id"),
+        index=True,
+    )
+
+    guest_id: Mapped[str | None] = mapped_column(
+        ForeignKey("guests.id"),
+        index=True,
+    )
+
+    channel: Mapped[str] = mapped_column(
+        String(32),
+        default="atlas_web",
+    )
+
+    locale: Mapped[str | None] = mapped_column(
+        String(16),
+    )
+
+    timezone: Mapped[str] = mapped_column(
+        String(64),
+        default="UTC",
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(16),
+        default="active",
+    )
+
+    extra: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSON,
+        default=dict,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        default=utcnow,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+
 class Quote(Base):
     """A provider's priced offer. A quote is never a booking; only explicit
     guest consent to *this* quote creates a transaction."""
@@ -455,10 +531,14 @@ class Quote(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     code: Mapped[str] = mapped_column(String(8), index=True)   # short id the guest can refer to
-    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), index=True)
-    stay_id: Mapped[str] = mapped_column(ForeignKey("stays.id"), index=True)
-    guest_id: Mapped[str] = mapped_column(ForeignKey("guests.id"), index=True)
+    property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id"), index=True)
+    stay_id: Mapped[str | None] = mapped_column(ForeignKey("stays.id"), index=True)
+    guest_id: Mapped[str | None] = mapped_column(ForeignKey("guests.id"), index=True)
     conversation_id: Mapped[str | None] = mapped_column(ForeignKey("conversations.id"))
+    transaction_context_id: Mapped[str | None] = mapped_column(
+        ForeignKey("transaction_contexts.id"),
+        index=True,
+    )
     provider_id: Mapped[str] = mapped_column(ForeignKey("external_providers.id"))
     service_type: Mapped[str] = mapped_column(String(64))
     request: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # the details that were priced

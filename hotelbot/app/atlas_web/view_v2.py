@@ -24,9 +24,9 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.db.models import TripItem
-from app.journey import policies, timeinfo, timeline
+from app.journey import date_resolver, place_resolver, planning, policies, timeinfo, timeline
 
-KIND_ORDER = {"flight": 0, "accommodation": 1, "transfer": 2, "restaurant": 3}
+KIND_ORDER = {"flight": 0, "accommodation": 1, "transfer": 2, "restaurant": 3, "plan": 4}
 MOVES = ("flight", "transfer")
 
 
@@ -63,7 +63,8 @@ def _issues_by_item(out: dict[str, Any]) -> dict[str, list[str]]:
 
 
 # ------------------------------------------------------------------ context
-def context(out: dict[str, Any], now_utc: datetime) -> dict[str, Any]:
+def context(out: dict[str, Any], now_utc: datetime, *, clock: str = "demo",
+            fallback_timezone: str | None = None) -> dict[str, Any]:
     now = now_utc.astimezone(timezone.utc)
     started = [e for e in out["entries"] if datetime.fromisoformat(e["start"]) <= now]
     ongoing = [e for e in started if e["occupies"] and now < datetime.fromisoformat(e["end"])]
@@ -93,8 +94,8 @@ def context(out: dict[str, Any], now_utc: datetime) -> dict[str, Any]:
     else:
         loc = {"basis": "planned", "status": "unknown", "reason": "trip_not_started"}
     tz = loc.get("timezone") or next(((e["from"] or {}).get("tz") for e in out["entries"]
-                                      if (e["from"] or {}).get("tz")), None) or "UTC"
-    return {"now": {"utc": now.isoformat(), "local": _local(now.isoformat(), tz), "timezone": tz, "clock": "demo"},
+                                      if (e["from"] or {}).get("tz")), None) or fallback_timezone or "UTC"
+    return {"now": {"utc": now.isoformat(), "local": _local(now.isoformat(), tz), "timezone": tz, "clock": clock},
             "planned_location": loc}
 
 
@@ -118,7 +119,7 @@ def _ordered_revisions(item: TripItem) -> list[dict[str, Any]]:
     return sorted(item.revisions or [], key=lambda r: (r.get("issued_at") or "", r["revision"]))
 
 
-def _detail(item: TripItem) -> dict[str, Any]:
+def _detail(item: TripItem, *, now_utc: datetime) -> dict[str, Any]:
     d, t = item.details or {}, item.times or {}
     if item.kind == "flight":
         dep, arr = t.get("departs") or {}, t.get("arrives") or {}
@@ -151,18 +152,94 @@ def _detail(item: TripItem) -> dict[str, Any]:
     if item.kind == "restaurant":
         return {"venue": d.get("venue"), "address": d.get("address"), "locality": _locality(d.get("address"), "address"),
                 "party": d.get("party"), "starts": _time(t.get("starts"))}
+    if item.kind == "plan":
+        resolved_place = place_resolver.resolve_place(d.get("place"))
+        timezone_name = (
+            (resolved_place or {}).get("timezone")
+            or "UTC"
+        )
+
+        internal_transport = d.get("transport_transaction")
+        confirmed_transport = None
+
+        if (
+            isinstance(internal_transport, dict)
+            and internal_transport.get("status")
+            in {"accepted", "in_progress", "completed"}
+        ):
+            confirmed_transport = {
+                "status": internal_transport.get("status"),
+                "provider": internal_transport.get("provider"),
+                "provider_reference":
+                    internal_transport.get("provider_reference"),
+                "pickup": internal_transport.get("pickup"),
+                "destination":
+                    internal_transport.get("destination"),
+                "pickup_time":
+                    internal_transport.get("pickup_time"),
+                "party_size":
+                    internal_transport.get("party_size"),
+                "amount":
+                    internal_transport.get("amount"),
+                "currency":
+                    internal_transport.get("currency"),
+                "sandbox":
+                    internal_transport.get("sandbox") is True,
+            }
+
+        return {
+            "event": d.get("event"),
+            "place": d.get("place"),
+            "date_text": d.get("date_text"),
+            "basis": "guest",
+            "place_role": d.get("place_role"),
+            "overnight_stay": d.get("overnight_stay"),
+            "origin_text": d.get("origin_text"),
+            "arrival_time": d.get("arrival_time"),
+            "party_size": d.get("party_size"),
+            "route_plan": d.get("route_plan"),
+            "confirmed_transport": confirmed_transport,
+            "resolved_place": resolved_place,
+            "resolved_date": date_resolver.resolve_date_range(
+                d.get("date_text"),
+                now_utc=now_utc,
+                timezone=timezone_name,
+            ),
+        }
     return {}
 
 
-def items(trip_items: dict[str, TripItem]) -> list[dict[str, Any]]:
+def items(trip_items: dict[str, TripItem], *, now_utc: datetime) -> list[dict[str, Any]]:
     rows = []
     for item in sorted(trip_items.values(), key=lambda i: (KIND_ORDER.get(i.kind, 9), i.identity)):
         revs = _ordered_revisions(item)
+        detail = _detail(item, now_utc=now_utc)
+        if item.kind == "plan":
+            stated = item.details or {}
+            for key in ("timing_text", "duration_text", "note"):
+                if stated.get(key):
+                    detail[key] = stated[key]
+            # Provider-backed transaction evidence is needed by the
+            # deterministic planning engine, but it is an internal domain
+            # record and must not be exposed wholesale through the public
+            # Trip API.
+            planning_detail = {
+                **detail,
+                "transport_transaction":
+                    (item.details or {}).get(
+                        "transport_transaction"
+                    ),
+            }
+
+            detail["planning"] = planning.needs_for_plan(
+                planning_detail,
+                trip_items.values(),
+            )
         rows.append({"key": item.identity, "kind": item.kind, "provider": item.provider,
                      "reference": item.booking_reference, "status": item.status,
                      "revision": {"current": item.current_revision, "count": len(revs),
                                   "changed_fields": list(revs[-1]["changed_fields"]) if revs else []},
-                     "detail": _detail(item)})
+                     "detail": detail})
     return rows
 
 

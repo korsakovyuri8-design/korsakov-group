@@ -1,0 +1,48 @@
+version: 2026-10-17.2
+places:
+  me:oneandonly_portonovi:
+    canonical_name: One&Only Portonovi
+    kind: resort
+    aliases:
+    - One&Only Portonovi
+    - One & Only Portonovi
+    - One and Only Portonovi
+    - One&Only Portonovi Resort
+    - One and Only Portonovi Resort
+    address: Portonovi Resort, Herceg Novi 85340, Montenegro
+    locality: Kumbor
+    municipality: Herceg Novi
+    country: Montenegro
+    timezone: Europe/Podgorica
+    coordinates:
+      lat: 42.435287
+      lon: 18.59857
+  me:kotor:
+    canonical_name: Kotor
+    kind: city
+    aliases:
+    - Kotor
+    - Kotor, Montenegro
+    address: Kotor, Montenegro
+    locality: Kotor
+    municipality: Kotor
+    country: Montenegro
+    timezone: Europe/Podgorica
+    coordinates:
+      lat: 42.4278
+      lon: 18.7686
+
+  me:podgorica:
+    canonical_name: Podgorica
+    kind: city
+    aliases:
+    - Podgorica
+    - Podgorica, Montenegro
+    address: Podgorica, Montenegro
+    locality: Podgorica
+    municipality: Podgorica
+    country: Montenegro
+    timezone: Europe/Podgorica
+    coordinates:
+      lat: 42.44123775
+      lon: 19.26308552

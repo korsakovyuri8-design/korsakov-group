@@ -79,11 +79,18 @@ def prepare(text: str) -> str:
 
 
 def recognise(raw: str) -> str | None:
-    """The document kind, if one of the deterministic parsers reads it."""
+    """A supported booking confirmation or a conservative stated trip plan."""
     for kind in BOOKING_KINDS:
         try:
             if ingest.PARSERS[kind][1](raw) is not None:
                 return kind
         except Exception:                        # a parser that cannot read it does not recognise it
             continue
+    # Free text may be useful without being a booking.  Keep this after all
+    # provider parsers so a real confirmation always wins.
+    try:
+        if ingest.PARSERS["plan_statement"][1](raw) is not None:
+            return "plan_statement"
+    except Exception:
+        pass
     return None
