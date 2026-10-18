@@ -177,7 +177,7 @@ def provenance_violations(session: Session, item: TripItem) -> list[str]:
 
 
 def import_document(session: Session, trip_id: str, *, kind: str, raw: str, source_id: str,
-                    received_at: datetime) -> ImportReport:
+                    received_at: datetime, retain_raw: bool = True) -> ImportReport:
     raw_sha = _sha(raw)
     seen = session.scalar(select(TripSourceRecord).where(TripSourceRecord.trip_id == trip_id,
                                                          TripSourceRecord.raw_sha256 == raw_sha))
@@ -190,7 +190,7 @@ def import_document(session: Session, trip_id: str, *, kind: str, raw: str, sour
     # compare wall clocks of different zones
     issued_utc = _utc(parsed.issued_at) if parsed else None
     record = TripSourceRecord(trip_id=trip_id, kind=kind, source_id=source_id, received_at=_utc(received_at),
-                              issued_at=issued_utc, raw=raw, raw_sha256=raw_sha,
+                              issued_at=issued_utc, raw=raw if retain_raw else "", raw_sha256=raw_sha,
                               normalized_sha256=_sha(normalized_text(raw)))
     session.add(record)
     session.flush()

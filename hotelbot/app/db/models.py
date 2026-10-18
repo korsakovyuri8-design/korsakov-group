@@ -1127,6 +1127,66 @@ class Trip(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+
+class AtlasWebSession(Base):
+    """Durable bearer-token session for the public Atlas web surface.
+
+    The plaintext browser token is never persisted. Only its SHA-256 hash
+    is stored. The session points at one durable Trip.
+    """
+
+    __tablename__ = "atlas_web_sessions"
+    __table_args__ = (
+        UniqueConstraint(
+            "token_hash",
+            name="uq_atlas_web_sessions_token_hash",
+        ),
+        UniqueConstraint(
+            "trip_id",
+            name="uq_atlas_web_sessions_trip_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=_uuid,
+    )
+
+    token_hash: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+
+    trip_id: Mapped[str] = mapped_column(
+        ForeignKey("trips.id"),
+        nullable=False,
+        index=True,
+    )
+
+    clock_mode: Mapped[str] = mapped_column(
+        String(16),
+        default="live",
+    )
+
+    client_timezone: Mapped[str | None] = mapped_column(
+        String(64),
+    )
+
+    # Unix wall-clock time, not process monotonic time, so idle expiry
+    # remains meaningful after an API process restart.
+    touched_at_epoch: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        default=utcnow,
+    )
+
+    ended_at: Mapped[datetime | None] = mapped_column()
+
+
 class TripSourceRecord(Base):
     """One received input, verbatim and immutable. The same bytes twice are one
     record (raw_sha256); a forwarded or reformatted copy is a new record."""

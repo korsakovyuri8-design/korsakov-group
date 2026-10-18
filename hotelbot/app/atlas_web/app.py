@@ -7,11 +7,13 @@
     POST /demo/reset          {session} -> the session and everything in it are gone
     GET  /health
 
-Privacy (docs/ATLAS_RELEASE.md): raw documents are never logged and never
-returned; they live only in the visitor's in-memory session, which ends on
-reset or after the TTL. One document is at most 150 KB. Requests are rate
-limited per visitor. Unknown formats are refused - never stored, never sent
-to a model. The page may load nothing but itself and its fonts.
+Privacy (docs/ATLAS_RELEASE.md): raw documents are never logged or returned
+and Atlas Web does not retain the full raw source body in durable storage.
+Structured trip facts, provenance and transaction state may be durable while
+the session is active. Anonymous trip state is removed on reset or TTL expiry
+unless a real-world provider transaction must be retained for audit,
+reconciliation or cancellation. One document is at most 150 KB. Unknown
+formats are refused - never stored, never sent to a model.
 
     uvicorn app.atlas_web.app:create_app --factory
 """
@@ -102,7 +104,8 @@ def _page_template() -> str:
 
 def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] = time.monotonic,
                utcnow: Callable[[], datetime] | None = None) -> FastAPI:
-    store = store or SessionStore(clock=clock)
+    if store is None:
+        store = SessionStore()
     limiter = RateLimiter(clock)
     utcnow = utcnow or (lambda: datetime.now(timezone.utc))
     template = _page_template()
@@ -135,8 +138,15 @@ def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] 
     def ingest_one(s: DemoSession, raw: str, kind: str, source: str) -> dict[str, Any]:
         items = atlas_demo.items_of(s.db, s.trip_id)
         before = {k: (v.status, v.current_revision) for k, v in items.items()}
-        report = ingest.import_document(s.db, s.trip_id, kind=kind, raw=raw, source_id=source,
-                                        received_at=utcnow())
+        report = ingest.import_document(
+            s.db,
+            s.trip_id,
+            kind=kind,
+            raw=raw,
+            source_id=source,
+            received_at=utcnow(),
+            retain_raw=False,
+        )
         s.db.commit()
         item = report.item
         return view.understood(item, report, before.get(item.identity) if item is not None else None)
@@ -179,7 +189,7 @@ def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] 
             return JSONResponse(status_code=404, content=ENDED)
         client_timezone = _client_timezone(payload.get("client_timezone"))
         if s is not None and client_timezone:
-            s.client_timezone = client_timezone
+            store.set_client_timezone(s, client_timezone)
         clock_mode = "demo" if payload.get("sample") in SAMPLES else "live"
         if payload.get("sample") in SAMPLES:
             doc = SAMPLES[payload["sample"]]
