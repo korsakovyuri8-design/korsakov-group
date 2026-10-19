@@ -598,6 +598,166 @@ def confirm_transfer_quote(
     return txn
 
 
+
+def current_transfer_transaction(
+    session: Session,
+    trip_id: str,
+    plan: TripItem,
+) -> ExternalTransaction | None:
+    """Return this plan's transaction only if it belongs to this Atlas trip."""
+    state = (plan.details or {}).get("transport_transaction")
+
+    if not isinstance(state, dict):
+        return None
+
+    transaction_id = state.get("transaction_id")
+    if not transaction_id:
+        return None
+
+    txn = session.get(ExternalTransaction, transaction_id)
+    if txn is None:
+        return None
+
+    quote = txn.quote
+
+    if (
+        quote.service_type != "intercity_transfer"
+        or not quote.transaction_context_id
+    ):
+        return None
+
+    context = session.get(
+        TransactionContext,
+        quote.transaction_context_id,
+    )
+
+    if context is None or context.trip_id != trip_id:
+        return None
+
+    return txn
+
+
+def cancellation_payload(
+    session: Session,
+    trip_id: str,
+    plan: TripItem,
+    *,
+    now: datetime,
+) -> dict[str, Any] | None:
+    txn = current_transfer_transaction(
+        session,
+        trip_id,
+        plan,
+    )
+
+    if txn is None:
+        return None
+
+    service = _transaction_service(session, now)
+    policy = service.cancellation_policy(txn)
+
+    return {
+        "transaction_id": txn.id,
+        "transaction_status": txn.action.status.value,
+        "cancellable":
+            txn.action.status in {
+                ActionStatus.PROPOSED,
+                ActionStatus.SUBMITTED,
+                ActionStatus.PENDING_CONDITION,
+                ActionStatus.ACCEPTED,
+            },
+        "policy": {
+            "status": policy.status,
+            "deadline":
+                policy.deadline.isoformat()
+                if policy.deadline
+                else None,
+            "fee": policy.fee,
+        },
+        "provider": txn.provider.name,
+        "provider_reference": txn.provider_reference,
+        "sandbox":
+            txn.provider.slug
+            == "atlas-sandbox-transfer",
+    }
+
+
+def cancel_transfer(
+    session: Session,
+    trip_id: str,
+    plan: TripItem,
+    *,
+    transaction_id: str,
+    now: datetime,
+) -> ExternalTransaction:
+    txn = current_transfer_transaction(
+        session,
+        trip_id,
+        plan,
+    )
+
+    if txn is None:
+        raise ValueError("confirmed_transfer_not_found")
+
+    if not transaction_id or txn.id != transaction_id:
+        raise ValueError("cancellation_transaction_mismatch")
+
+    # Idempotent replay for the same completed cancellation.
+    # No second provider call or cancellation job.
+    if txn.action.status == ActionStatus.CANCELLED:
+        return txn
+
+    service = _transaction_service(session, now)
+
+    if not service.request_cancel(txn):
+        raise ValueError(
+            f"transfer_not_cancellable:{txn.action.status.value}"
+        )
+
+    # Atlas Web currently executes the deterministic sandbox provider inline.
+    # Real providers keep the durable worker path.
+    if (
+        txn.provider.slug == "atlas-sandbox-transfer"
+        and txn.action.status != ActionStatus.CANCELLED
+    ):
+        service.run_cancel(txn.id)
+
+        job = session.scalar(
+            select(Job).where(
+                Job.idempotency_key
+                == f"cancel:{txn.id}"
+            )
+        )
+
+        if job is not None:
+            job.status = JobStatus.SUCCEEDED
+            job.attempts = max(job.attempts, 1)
+            job.completed_at = now
+            job.last_error = None
+            job.locked_by = None
+            job.locked_at = None
+
+    # Keep the historical plan snapshot in sync for compatibility.
+    # Public truth still comes from ExternalTransaction.action.status.
+    state = dict(
+        (plan.details or {}).get(
+            "transport_transaction"
+        ) or {}
+    )
+
+    plan.details = {
+        **(plan.details or {}),
+        "transport_transaction": {
+            **state,
+            "status": txn.action.status.value,
+        },
+    }
+
+    session.flush()
+
+    return txn
+
+
 def transaction_payload(
     txn: ExternalTransaction,
 ) -> dict[str, Any]:

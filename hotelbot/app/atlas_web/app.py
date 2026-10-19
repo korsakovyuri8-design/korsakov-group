@@ -38,6 +38,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.atlas_web import intake, view
 from app.atlas_web.sessions import DemoSession, SessionStore
 from app.config import get_settings
+from app.jobs.queue import PermanentJobError, RetryableJobError
 from app.journey import ingest, plan_answers, route_planner
 from app.mobility import marketplace as mobility_marketplace
 from app.trip import atlas_demo
@@ -726,6 +727,186 @@ def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] 
                     .transaction_payload(txn),
                 "trip": trip(s),
             })
+
+
+    @app.post("/demo/plan/transfer-cancellation")
+    async def plan_transfer_cancellation(
+        request: Request,
+    ) -> JSONResponse:
+        try:
+            payload = json.loads(
+                await request.body() or b"{}"
+            )
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Send JSON."},
+            )
+
+        s = store.get(payload.get("session"))
+
+        if s is None:
+            return JSONResponse(
+                status_code=404,
+                content=ENDED,
+            )
+
+        with s.lock:
+            plan = mobility_marketplace.plan_item(
+                s.db,
+                s.trip_id,
+                str(payload.get("plan_key") or ""),
+            )
+
+            if plan is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "message":
+                            "That stated plan is no longer available."
+                    },
+                )
+
+            state = (
+                mobility_marketplace
+                .cancellation_payload(
+                    s.db,
+                    s.trip_id,
+                    plan,
+                    now=utcnow(),
+                )
+            )
+
+            return JSONResponse({
+                "session": s.token,
+                "cancellation": state,
+            })
+
+
+    @app.post("/demo/plan/transfer-cancel")
+    async def plan_transfer_cancel(
+        request: Request,
+    ) -> JSONResponse:
+        try:
+            payload = json.loads(
+                await request.body() or b"{}"
+            )
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Send JSON."},
+            )
+
+        if payload.get("consent") is not True:
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "message":
+                        "Explicit cancellation consent is required.",
+                    "reason":
+                        "explicit_cancellation_consent_required",
+                },
+            )
+
+        s = store.get(payload.get("session"))
+
+        if s is None:
+            return JSONResponse(
+                status_code=404,
+                content=ENDED,
+            )
+
+        with s.lock:
+            plan = mobility_marketplace.plan_item(
+                s.db,
+                s.trip_id,
+                str(payload.get("plan_key") or ""),
+            )
+
+            if plan is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "message":
+                            "That stated plan is no longer available."
+                    },
+                )
+
+            try:
+                txn = mobility_marketplace.cancel_transfer(
+                    s.db,
+                    s.trip_id,
+                    plan,
+                    transaction_id=str(
+                        payload.get("transaction_id") or ""
+                    ),
+                    now=utcnow(),
+                )
+            except (RetryableJobError, PermanentJobError) as exc:
+                s.db.rollback()
+                return JSONResponse(
+                    status_code=(
+                        503 if isinstance(exc, RetryableJobError)
+                        else 502
+                    ),
+                    content={
+                        "reason": "provider_cancellation_unverified",
+                        "message":
+                            "Cancellation could not be verified. "
+                            "Do not assume the booking is cancelled.",
+                    },
+                )
+            except ValueError as exc:
+                s.db.rollback()
+
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "message":
+                            "The transfer could not be cancelled.",
+                        "reason": str(exc),
+                    },
+                )
+
+            # Persist both successful cancellation and provider refusal.
+            # A refused cancellation must not lose its audit trail.
+            s.db.commit()
+
+            response = {
+                "session": s.token,
+                "transaction":
+                    mobility_marketplace.transaction_payload(txn),
+                "trip": trip(s),
+            }
+
+            if txn.action.status.value == "cancelled":
+                return JSONResponse(response)
+
+            # Sandbox cancellation executes synchronously.
+            # No CANCELLED state means no confirmed cancellation.
+            if txn.provider.slug == "atlas-sandbox-transfer":
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        **response,
+                        "reason": "provider_cancellation_not_confirmed",
+                        "message":
+                            "The provider did not confirm cancellation. "
+                            "The transaction remains active.",
+                    },
+                )
+
+            # Real providers may process cancellation asynchronously.
+            return JSONResponse(
+                status_code=202,
+                content={
+                    **response,
+                    "reason": "cancellation_pending",
+                    "message":
+                        "Cancellation requested. "
+                        "Awaiting provider confirmation.",
+                },
+            )
 
 
     @app.post("/demo/plan/party-size")

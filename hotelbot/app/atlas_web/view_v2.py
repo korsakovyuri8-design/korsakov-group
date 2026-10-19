@@ -23,7 +23,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.db.models import TripItem
+from app.db.models import ExternalTransaction, TripItem
 from app.journey import date_resolver, place_resolver, planning, policies, timeinfo, timeline
 
 KIND_ORDER = {"flight": 0, "accommodation": 1, "transfer": 2, "restaurant": 3, "plan": 4}
@@ -119,7 +119,46 @@ def _ordered_revisions(item: TripItem) -> list[dict[str, Any]]:
     return sorted(item.revisions or [], key=lambda r: (r.get("issued_at") or "", r["revision"]))
 
 
-def _detail(item: TripItem, *, now_utc: datetime) -> dict[str, Any]:
+
+def _live_transport_transaction(
+    db: Any,
+    item: TripItem,
+) -> dict[str, Any] | None:
+    """Merge stored plan linkage with authoritative live transaction state."""
+    stored = (item.details or {}).get("transport_transaction")
+
+    if not isinstance(stored, dict):
+        return None
+
+    out = dict(stored)
+    transaction_id = out.get("transaction_id")
+
+    if db is None or not transaction_id:
+        return out
+
+    txn = db.get(ExternalTransaction, transaction_id)
+
+    if txn is None:
+        return None
+
+    out.update({
+        "status": txn.action.status.value,
+        "provider": txn.provider.name,
+        "provider_reference": txn.provider_reference,
+        "amount": f"{txn.quote.amount:.2f}",
+        "currency": txn.quote.currency,
+        "sandbox":
+            txn.provider.slug == "atlas-sandbox-transfer",
+    })
+
+    return out
+
+def _detail(
+    item: TripItem,
+    *,
+    now_utc: datetime,
+    db: Any = None,
+) -> dict[str, Any]:
     d, t = item.details or {}, item.times or {}
     if item.kind == "flight":
         dep, arr = t.get("departs") or {}, t.get("arrives") or {}
@@ -159,7 +198,10 @@ def _detail(item: TripItem, *, now_utc: datetime) -> dict[str, Any]:
             or "UTC"
         )
 
-        internal_transport = d.get("transport_transaction")
+        internal_transport = _live_transport_transaction(
+            db,
+            item,
+        )
         confirmed_transport = None
 
         if (
@@ -209,11 +251,20 @@ def _detail(item: TripItem, *, now_utc: datetime) -> dict[str, Any]:
     return {}
 
 
-def items(trip_items: dict[str, TripItem], *, now_utc: datetime) -> list[dict[str, Any]]:
+def items(
+    trip_items: dict[str, TripItem],
+    *,
+    now_utc: datetime,
+    db: Any = None,
+) -> list[dict[str, Any]]:
     rows = []
     for item in sorted(trip_items.values(), key=lambda i: (KIND_ORDER.get(i.kind, 9), i.identity)):
         revs = _ordered_revisions(item)
-        detail = _detail(item, now_utc=now_utc)
+        detail = _detail(
+            item,
+            now_utc=now_utc,
+            db=db,
+        )
         if item.kind == "plan":
             stated = item.details or {}
             for key in ("timing_text", "duration_text", "note"):
@@ -226,8 +277,9 @@ def items(trip_items: dict[str, TripItem], *, now_utc: datetime) -> list[dict[st
             planning_detail = {
                 **detail,
                 "transport_transaction":
-                    (item.details or {}).get(
-                        "transport_transaction"
+                    _live_transport_transaction(
+                        db,
+                        item,
                     ),
             }
 

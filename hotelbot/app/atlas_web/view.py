@@ -164,7 +164,11 @@ def picture(db, trip_id: str, world: dict[str, Any], *, now_utc: datetime = NOW,
             # v2 (view_v2.py): structured, additive; every v1 field above is unchanged
             "context": view_v2.context(out, now_utc, clock=clock, fallback_timezone=fallback_timezone),
             "next_item": view_v2.next_item(out, now_utc),
-            "items": view_v2.items(public_items, now_utc=now_utc), "disruption": view_v2.disruption(snapshot, out, items)}
+            "items": view_v2.items(
+                public_items,
+                now_utc=now_utc,
+                db=db,
+            ), "disruption": view_v2.disruption(snapshot, out, items)}
 
 
 # ------------------------------------------------------------------ the import card
