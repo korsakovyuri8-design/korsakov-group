@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { TransferChangePanel } from "./TransferChangePanel";
 
 import {
   answerPartySize,
@@ -8,6 +9,10 @@ import {
   canGetActiveTransferQuote,
   canGetTransferQuote,
   compareMobility,
+  canReviewTransferCancellation,
+  getTransferCancellation,
+  canCancelTransfer,
+  cancelTransfer,
   getActiveTransferQuote,
   confirmTransfer,
   getTransferQuote,
@@ -15,18 +20,21 @@ import {
 
 import type {
   ConfirmedTransport,
+  MobilityCancellation,
   MobilityComparison,
   MobilityMode,
   MobilityQuote,
-  MobilityTransaction,
   PlanningNeed,
   RoutePlan,
+  TransportChange,
 } from "@/lib/atlas/domain";
 
 interface Props {
+  planKey?: string | undefined;
   route?: RoutePlan | undefined;
   needs?: PlanningNeed[] | undefined;
   confirmedTransport?: ConfirmedTransport | undefined;
+  transportChange?: TransportChange | undefined;
 }
 
 const LABELS: Record<MobilityMode, string> = {
@@ -64,13 +72,15 @@ export function MobilityOptions({
   route,
   needs,
   confirmedTransport,
+  transportChange,
+  planKey: fallbackPlanKey,
 }: Props) {
   const qc = useQueryClient();
   const transportNeed = needs?.find(
     (n) => n.code === "arrival_transport_unconfirmed",
   );
 
-  const planKey = transportNeed?.planKey;
+  const planKey = transportNeed?.planKey ?? fallbackPlanKey;
 
   const [comparison, setComparison] =
     useState<MobilityComparison | null>(null);
@@ -78,14 +88,21 @@ export function MobilityOptions({
   const [quote, setQuote] =
     useState<MobilityQuote | null>(null);
 
-  const [transaction, setTransaction] =
-    useState<MobilityTransaction | null>(null);
-
   const [partySize, setPartySize] =
     useState("");
 
+  const [cancellation, setCancellation] =
+    useState<MobilityCancellation | null>(null);
+
+  const [cancelConsent, setCancelConsent] = useState(false);
+
+  const [cancelNotice, setCancelNotice] =
+    useState<"cancelled" | "pending" | "needs_attention" | null>(null);
+
+  const cancelInFlight = useRef(false);
+
   const [busy, setBusy] =
-    useState<"compare" | "quote" | "confirm" | null>(null);
+    useState<"compare" | "quote" | "confirm" | "cancellation" | "cancel" | null>(null);
 
   const [error, setError] =
     useState<string | null>(null);
@@ -95,6 +112,7 @@ export function MobilityOptions({
 
     setComparison(null);
     setQuote(null);
+    setCancellation(null);
     setError(null);
 
     if (
@@ -133,17 +151,42 @@ export function MobilityOptions({
     confirmedTransport,
   ]);
 
-  const confirmed = transaction
-    ? {
-        status: transaction.status,
-        provider: transaction.provider,
-        providerReference:
-          transaction.providerReference,
-        amount: transaction.amount,
-        currency: transaction.currency,
-        sandbox: transaction.sandbox,
-      }
+  // The latest provider-backed trip state is authoritative.
+  // Never retain an older confirmation after a replacement.
+  const confirmed = cancelNotice === "cancelled"
+    ? undefined
     : confirmedTransport;
+
+  const previousConfirmedReference = useRef(
+    confirmedTransport?.providerReference,
+  );
+
+  useEffect(() => {
+    const reference = confirmedTransport?.providerReference;
+    const newlyConfirmed =
+      confirmedTransport?.status === "accepted" ||
+      confirmedTransport?.status === "in_progress" ||
+      confirmedTransport?.status === "completed";
+
+    if (
+      cancelNotice !== null &&
+      newlyConfirmed &&
+      reference &&
+      reference !== previousConfirmedReference.current
+    ) {
+      // A later confirmed booking supersedes the local notice
+      // for the previously cancelled transaction.
+      setCancelNotice(null);
+      setCancelConsent(false);
+      setCancellation(null);
+    }
+
+    previousConfirmedReference.current = reference;
+  }, [
+    confirmedTransport?.providerReference,
+    confirmedTransport?.status,
+    cancelNotice,
+  ]);
 
   if (
     !route ||
@@ -271,8 +314,14 @@ export function MobilityOptions({
         quote.id,
       );
 
-      if (result) {
-        setTransaction(result);
+      if (
+        !result ||
+        !["accepted", "in_progress", "completed"].includes(result.status)
+      ) {
+        setError(
+          "Atlas has not verified confirmation of this transfer. " +
+          "Check the current booking status before trying again.",
+        );
       }
     } catch {
       setError(
@@ -286,6 +335,79 @@ export function MobilityOptions({
 
 
 
+  async function reviewCancellation() {
+    if (!planKey || !canReviewTransferCancellation) return;
+
+    setBusy("cancellation");
+    setError(null);
+
+    try {
+      const preview = await getTransferCancellation(planKey);
+
+      if (preview?.transactionId) {
+        setCancelConsent(false);
+        setCancellation(preview);
+      } else {
+        setError("No cancellation information is available.");
+      }
+    } catch {
+      setError(
+        "Atlas couldn't load the cancellation terms. No changes were made.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitCancellation() {
+    if (
+      !planKey ||
+      !cancellation ||
+      !cancellation.cancellable ||
+      !cancelConsent ||
+      !canCancelTransfer ||
+      busy !== null ||
+      cancelInFlight.current ||
+      cancelNotice !== null
+    ) return;
+
+    cancelInFlight.current = true;
+    setBusy("cancel");
+    setError(null);
+
+    try {
+      const result = await cancelTransfer(
+        qc,
+        planKey,
+        cancellation.transactionId,
+      );
+
+      if (!result || result.pending ||
+          result.transaction.status !== "cancelled") {
+        setCancelNotice("pending");
+      } else {
+        // The backend confirmed cancellation.
+        // Never retain a stale locally confirmed transaction.
+        setQuote(null);
+        setComparison(null);
+        setCancellation(null);
+        setCancelNotice("cancelled");
+      }
+    } catch {
+      // Includes refusal, timeout and uncertain network outcomes.
+      // Do not change the local transaction to CANCELLED.
+      setCancelNotice("needs_attention");
+      setError(
+        "Cancellation was not confirmed. The transfer may still be active. " +
+        "Check its current status before making another booking.",
+      );
+    } finally {
+      cancelInFlight.current = false;
+      setCancelConsent(false);
+      setBusy(null);
+    }
+  }
+
   if (confirmed) {
     return (
       <section className="mx-5 mt-9 md:mx-10">
@@ -294,6 +416,31 @@ export function MobilityOptions({
         </h2>
 
         <div className="surface p-5">
+          {transportChange?.status === "needs_attention" && (
+            <div role="alert" className="mb-5 rounded-xl border border-attention/40 bg-attention-soft p-4">
+              <p className="font-semibold">
+                Booking change needs attention
+              </p>
+              <p className="mt-2 text-sm">
+                Atlas cannot verify cancellation of your previous
+                transfer. Both bookings may still be active.
+                Do not assume the old booking was cancelled.
+              </p>
+              <p className="mt-2 text-xs">
+                Previous: {transportChange.oldTransactionStatus ?? "unverified"}
+                {" · "}
+                Current: {transportChange.newTransactionStatus ?? "unverified"}
+              </p>
+            </div>
+          )}
+
+          {transportChange?.status === "completed" && (
+            <p role="status" className="mb-5 rounded-xl bg-secondary p-3 text-sm">
+              Replacement completed. The previous transfer was
+              cancelled according to the provider records.
+            </p>
+          )}
+
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-display text-2xl">
@@ -349,6 +496,127 @@ export function MobilityOptions({
             Provider status:{" "}
             {confirmed.status}.
           </p>
+
+          {!cancellation && cancelNotice === null && (
+            <TransferChangePanel
+              planKey={planKey}
+              confirmed={confirmed}
+              needsGap={Boolean(transportNeed)}
+              change={transportChange}
+            />
+          )}
+
+          {cancelNotice === "pending" && (
+            <p role="status" className="mt-4 text-sm text-muted-foreground">
+              Cancellation requested; awaiting provider confirmation.
+              Your transfer is not yet confirmed as cancelled.
+            </p>
+          )}
+
+          {canReviewTransferCancellation &&
+           planKey &&
+           cancelNotice === null && (
+            <div className="mt-5 border-t border-border pt-4">
+              {!cancellation ? (
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void reviewCancellation()}
+                  className="rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {busy === "cancellation"
+                    ? "Loading terms…"
+                    : "Review cancellation terms"}
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <p className="font-medium">
+                    Cancellation terms
+                  </p>
+
+                  <p className="text-sm">
+                    {cancellation.policy.status === "free"
+                      ? "Provider policy: free cancellation."
+                      : cancellation.policy.status === "fee"
+                        ? "Provider policy: a cancellation fee may apply."
+                        : "Cancellation cost is not confirmed."}
+                  </p>
+
+                  {cancellation.policy.deadline && (
+                    <p className="text-xs text-muted-foreground">
+                      Policy deadline: {cancellation.policy.deadline}
+                    </p>
+                  )}
+
+                  {cancellation.policy.fee && (
+                    <p className="text-xs text-muted-foreground">
+                      Fee: {cancellation.policy.fee}
+                    </p>
+                  )}
+
+                  <p className="text-xs text-muted-foreground">
+                    This is a preview. Your transfer has not been cancelled.
+                    {cancellation.sandbox
+                      ? " This is a sandbox booking."
+                      : ""}
+                  </p>
+
+                  {!cancellation.cancellable ? (
+                    <p className="text-sm text-muted-foreground">
+                      This transaction cannot be cancelled through Atlas
+                      in its current status.
+                    </p>
+                  ) : canCancelTransfer ? (
+                    <div className="space-y-3">
+                      <label className="flex items-start gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          aria-label="I consent to cancelling this transfer"
+                          checked={cancelConsent}
+                          disabled={busy !== null}
+                          onChange={(e) => setCancelConsent(e.target.checked)}
+                          className="mt-1"
+                        />
+                        <span>
+                          I understand the displayed policy and explicitly
+                          authorize cancellation of this transfer.
+                        </span>
+                      </label>
+
+                      <button
+                        type="button"
+                        disabled={!cancelConsent || busy !== null}
+                        onClick={() => void submitCancellation()}
+                        className="rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-40"
+                      >
+                        {busy === "cancel"
+                          ? "Requesting cancellation…"
+                          : "Confirm cancellation"}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => {
+                      setCancellation(null);
+                      setCancelConsent(false);
+                    }}
+                    className="text-sm font-medium underline underline-offset-4 disabled:opacity-40"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <p role="alert" className="mt-3 text-xs text-attention">
+              {error}
+            </p>
+          )}
         </div>
       </section>
     );
@@ -360,6 +628,13 @@ export function MobilityOptions({
       <h2 className="eyebrow mb-3">
         Transport options
       </h2>
+
+      {cancelNotice === "cancelled" && (
+        <p role="status" className="surface mb-4 p-4 text-sm">
+          Transfer cancellation confirmed by the provider.
+          No current transfer booking is being claimed.
+        </p>
+      )}
 
       {!comparison && !quote && (
         <div className="surface p-5">

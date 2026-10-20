@@ -20,7 +20,7 @@ describe("Atlas route planning action", () => {
       "session-test",
     );
 
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
       new Response(
         JSON.stringify({
           session: "session-test",

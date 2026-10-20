@@ -174,9 +174,9 @@ describe("MobilityOptions quote party size", () => {
     });
 
     expect(
-      api.answerPartySize.mock.invocationCallOrder[0],
+      api.answerPartySize.mock.invocationCallOrder[0]!,
     ).toBeLessThan(
-      api.getTransferQuote.mock.invocationCallOrder[0],
+      api.getTransferQuote.mock.invocationCallOrder[0]!,
     );
 
     await screen.findByText("65.00 EUR");

@@ -10,7 +10,7 @@ describe("party size clarification", () => {
   it("sends party size to Python Atlas", async () => {
     window.sessionStorage.setItem("atlas.session", "session-test");
 
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
       new Response(
         JSON.stringify({
           session: "session-test",

@@ -20,7 +20,7 @@ describe("Atlas mobility API", () => {
       "session-test",
     );
 
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
       new Response(
         JSON.stringify({
           session: "session-test",
@@ -97,7 +97,7 @@ describe("Atlas mobility API", () => {
       "session-test",
     );
 
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
       new Response(
         JSON.stringify({
           session: "session-test",
@@ -168,7 +168,7 @@ describe("Atlas mobility confirmation", () => {
       "session-test",
     );
 
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
       new Response(
         JSON.stringify({
           session: "session-test",

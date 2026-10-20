@@ -57,6 +57,10 @@ describe("natural stated plans", () => {
 
     const [plan] = state.trip.items;
 
+    if (!plan) {
+      throw new Error("Expected a stated plan");
+    }
+
     expect(plan.city).toBe("Podgorica");
     expect(plan.subtitle).toBe("a weekend");
     expect(plan.isBooking).toBe(false);
@@ -81,6 +85,10 @@ describe("natural stated plans", () => {
     );
 
     const [plan] = state.trip.items;
+
+    if (!plan) {
+      throw new Error("Expected a stated plan");
+    }
 
     expect(plan.city).toBe("Podgorica");
     expect(plan.subtitle).toBe("30–31 October");

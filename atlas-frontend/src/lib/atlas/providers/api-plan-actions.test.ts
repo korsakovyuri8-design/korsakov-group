@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 function mockFetch() {
-  const fn = vi.fn(async () =>
+  const fn = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
     new Response(
       JSON.stringify({
         session: "session-test",

@@ -1,9 +1,12 @@
 import type {
   ConfirmedTransport,
   MobilityComparison,
+  MobilityCancellation,
+  MobilityCancelResult,
   MobilityConfirmResult,
   MobilityQuote,
   MobilityTransaction,
+  TransportChange,
 } from "../domain";
 // ApiAtlasProvider — talks to the existing Atlas HTTP API:
 //   GET /demo/sample · POST /demo/import · GET /demo/trip/{session} · POST /demo/reset
@@ -542,6 +545,54 @@ function mapMobilityQuote(raw: unknown): MobilityQuote {
 }
 
 
+function mapCancellation(
+  raw: unknown,
+): MobilityCancellation | undefined {
+  const c = obj(raw);
+  if (!c) return undefined;
+
+  const policy = obj(c["policy"]);
+
+  return {
+    transactionId: str(c["transaction_id"]) ?? "",
+    transactionStatus: str(c["transaction_status"]) ?? "",
+    cancellable: c["cancellable"] === true,
+    policy: {
+      status: str(policy?.["status"]) ?? "unknown",
+      deadline: str(policy?.["deadline"]),
+      fee: str(policy?.["fee"]),
+    },
+    provider: str(c["provider"]) ?? "",
+    providerReference: str(c["provider_reference"]),
+    sandbox: c["sandbox"] === true,
+  };
+}
+
+function mapTransportChange(
+  raw: unknown,
+): TransportChange | undefined {
+  const change = obj(raw);
+  if (!change) return undefined;
+
+  const status = str(change["status"]);
+
+  if (
+    status !== "completed" &&
+    status !== "needs_attention"
+  ) return undefined;
+
+  return {
+    status,
+    reason: str(change["reason"]),
+    oldTransactionStatus:
+      str(change["old_transaction_status"]),
+    newTransactionStatus:
+      str(change["new_transaction_status"]),
+    oldProviderReference:
+      str(change["old_provider_reference"]),
+  };
+}
+
 export function mapTrip(raw: unknown): AtlasState {
   const t = obj(raw) ?? {};
   const days = arr(t["days"]);
@@ -589,6 +640,10 @@ export function mapTrip(raw: unknown): AtlasState {
       heldWindows: mapHeld(disruption),
       confirmedTransport: mapConfirmedTransport(
         rawPlanDetail?.["confirmed_transport"],
+      ),
+      transportPlanKey: str(rawPlan?.["key"]),
+      transportChange: mapTransportChange(
+        rawPlanDetail?.["transport_change"],
       ),
     },
     next,
@@ -852,6 +907,66 @@ export const ApiAtlasProvider: AtlasProvider = {
     return mapMobilityQuote(data["quote"]);
   },
 
+  async getTransferCancellation(planKey: string) {
+    const current = session.get();
+
+    if (!current) {
+      throw new Error("Atlas session has ended.");
+    }
+
+    const data = await request<Obj>(
+      "/demo/plan/transfer-cancellation",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          session: current,
+          plan_key: planKey,
+        }),
+      },
+    );
+
+    session.set(data["session"]);
+    return mapCancellation(data["cancellation"]);
+  },
+
+  async cancelTransfer(
+    planKey: string,
+    transactionId: string,
+  ): Promise<MobilityCancelResult> {
+    const current = session.get();
+
+    if (!current) {
+      throw new Error("Atlas session has ended.");
+    }
+
+    const data = await request<Obj>(
+      "/demo/plan/transfer-cancel",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          session: current,
+          plan_key: planKey,
+          transaction_id: transactionId,
+          consent: true,
+        }),
+      },
+    );
+
+    session.set(data["session"]);
+
+    const transaction = mapMobilityTransaction(
+      data["transaction"],
+    );
+
+    return {
+      transaction,
+      state: mapTrip(data["trip"]),
+      pending:
+        transaction.status !== "cancelled"
+        || data["reason"] === "cancellation_pending",
+    };
+  },
+
   async confirmTransfer(
     planKey: string,
     quoteId: string,
@@ -877,12 +992,24 @@ export const ApiAtlasProvider: AtlasProvider = {
 
     session.set(data["session"]);
 
+    const state = mapTrip(data["trip"]);
+
+    // The endpoint can return an explicit fail-closed change
+    // result even if a trip projection is unavailable.
+    const responseChange = mapTransportChange(
+      data["change"],
+    );
+
+    if (!state.trip.transportChange && responseChange) {
+      state.trip.transportChange = responseChange;
+    }
+
     return {
       transaction:
         mapMobilityTransaction(
           data["transaction"],
         ),
-      state: mapTrip(data["trip"]),
+      state,
     };
   },
 

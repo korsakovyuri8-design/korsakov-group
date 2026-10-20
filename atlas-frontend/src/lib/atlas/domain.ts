@@ -250,6 +250,28 @@ export interface ConfirmedTransport {
   sandbox: boolean;
 }
 
+export interface TransportChange {
+  status: "completed" | "needs_attention";
+  reason?: string | undefined;
+  oldTransactionStatus?: string | undefined;
+  newTransactionStatus?: string | undefined;
+  oldProviderReference?: string | undefined;
+}
+
+export interface MobilityCancellation {
+  transactionId: string;
+  transactionStatus: string;
+  cancellable: boolean;
+  policy: {
+    status: string;
+    deadline?: string | undefined;
+    fee?: string | undefined;
+  };
+  provider: string;
+  providerReference?: string | undefined;
+  sandbox: boolean;
+}
+
 export interface MobilityTransaction {
   id: string;
   actionId: string;
@@ -280,6 +302,12 @@ export interface MobilityConfirmResult {
   state: AtlasState;
 }
 
+export interface MobilityCancelResult {
+  transaction: MobilityTransaction;
+  state: AtlasState;
+  pending: boolean;
+}
+
 export interface Trip {
   id: string;
   title: string;
@@ -293,6 +321,8 @@ export interface Trip {
   routePlan?: RoutePlan | undefined;
   /** Provider-confirmed transport, safe public summary only. */
   confirmedTransport?: ConfirmedTransport | undefined;
+  transportPlanKey?: string | undefined;
+  transportChange?: TransportChange | undefined;
   freeWindow?: FreeWindow | undefined;
   places: MapPlace[];
   /** Confirmed bookings as the source lists them (may differ from itinerary lines). */
@@ -381,6 +411,15 @@ export interface AtlasProvider {
   getActiveTransferQuote?: ((planKey: string) => Promise<MobilityQuote | undefined>) | undefined;
   /** Request a priced private-transfer offer. This creates a Quote, not a booking. */
   getTransferQuote?: ((planKey: string) => Promise<MobilityQuote>) | undefined;
+  /** Read cancellation terms. Does not cancel anything. */
+  getTransferCancellation?: ((
+    planKey: string,
+  ) => Promise<MobilityCancellation | undefined>) | undefined;
+  /** Explicit cancellation consent for one transaction. */
+  cancelTransfer?: ((
+    planKey: string,
+    transactionId: string,
+  ) => Promise<MobilityCancelResult>) | undefined;
   /** Explicitly accept one quoted transfer. */
   confirmTransfer?: ((
     planKey: string,

@@ -174,6 +174,44 @@ export const getTransferQuote = async (
   return provider.getTransferQuote(planKey);
 };
 
+export const canReviewTransferCancellation =
+  !!provider.getTransferCancellation;
+
+export const getTransferCancellation = async (
+  planKey: string,
+) => provider.getTransferCancellation?.(planKey);
+
+export const canCancelTransfer =
+  !!provider.cancelTransfer;
+
+export const cancelTransfer = async (
+  qc: QueryClient,
+  planKey: string,
+  transactionId: string,
+) => {
+  if (!provider.cancelTransfer) return undefined;
+
+  try {
+    const result = await provider.cancelTransfer(
+      planKey,
+      transactionId,
+    );
+
+    qc.setQueryData<AtlasState>(
+      atlasQuery().queryKey,
+      result.state,
+    );
+
+    return result;
+  } catch (error) {
+    // Outcome may be uncertain. Refresh authoritative state.
+    void qc.invalidateQueries({
+      queryKey: atlasQuery().queryKey,
+    });
+    throw error;
+  }
+};
+
 export const canConfirmTransfer =
   !!provider.confirmTransfer;
 
@@ -184,15 +222,23 @@ export const confirmTransfer = async (
 ) => {
   if (!provider.confirmTransfer) return undefined;
 
-  const result = await provider.confirmTransfer(
-    planKey,
-    quoteId,
-  );
+  try {
+    const result = await provider.confirmTransfer(
+      planKey,
+      quoteId,
+    );
 
-  qc.setQueryData<AtlasState>(
-    atlasQuery().queryKey,
-    result.state,
-  );
+    qc.setQueryData<AtlasState>(
+      atlasQuery().queryKey,
+      result.state,
+    );
 
-  return result.transaction;
+    return result.transaction;
+  } catch (error) {
+    // An interrupted request is not evidence that no booking occurred.
+    void qc.invalidateQueries({
+      queryKey: atlasQuery().queryKey,
+    });
+    throw error;
+  }
 };

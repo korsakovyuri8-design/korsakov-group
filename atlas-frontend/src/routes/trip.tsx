@@ -58,9 +58,11 @@ function TripPage() {
       <PlanningNeeds needs={trip.planningNeeds} />
       <RoutePlanCard route={trip.routePlan} needs={trip.planningNeeds} />
       <MobilityOptions
+        planKey={trip.transportPlanKey}
         route={trip.routePlan}
         needs={trip.planningNeeds}
         confirmedTransport={trip.confirmedTransport}
+        transportChange={trip.transportChange}
       />
 
       <div className="mx-3 mt-8 md:mx-8">
