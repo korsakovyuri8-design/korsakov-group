@@ -720,13 +720,49 @@ def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] 
 
             s.db.commit()
 
-            return JSONResponse({
+            picture = trip(s)
+
+            plan_row = next(
+                (
+                    item for item in picture["items"]
+                    if item["kind"] == "plan"
+                    and item["key"] == plan.identity
+                ),
+                None,
+            )
+
+            change = (
+                plan_row["detail"].get("transport_change")
+                if plan_row is not None
+                else None
+            )
+
+            # Replacement evidence must never fail open.
+            if txn.quote.replaces_transaction_id and change is None:
+                change = {
+                    "status": "needs_attention",
+                    "reason": "change_state_unavailable",
+                }
+
+            response = {
                 "session": s.token,
                 "transaction":
-                    mobility_marketplace
-                    .transaction_payload(txn),
-                "trip": trip(s),
-            })
+                    mobility_marketplace.transaction_payload(txn),
+                "trip": picture,
+            }
+
+            if change is not None:
+                response["change"] = change
+
+            return JSONResponse(
+                status_code=(
+                    202
+                    if change is not None
+                    and change["status"] == "needs_attention"
+                    else 200
+                ),
+                content=response,
+            )
 
 
     @app.post("/demo/plan/transfer-cancellation")

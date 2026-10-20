@@ -161,6 +161,17 @@ def _confirmed_transaction_transport(
     }:
         return False
 
+    # A confirmed provider booking must match the current party.
+    required_party = detail.get("party_size")
+    booked_party = tx.get("party_size")
+
+    if (
+        type(required_party) is not int
+        or type(booked_party) is not int
+        or required_party != booked_party
+    ):
+        return False
+
     # Origin must match the traveller's stated/derived origin.
     if not _matches(
         tx.get("pickup"),

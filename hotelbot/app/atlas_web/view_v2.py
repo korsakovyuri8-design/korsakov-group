@@ -153,6 +153,56 @@ def _live_transport_transaction(
 
     return out
 
+
+def _transport_change(db: Any, item: TripItem) -> dict[str, Any] | None:
+    """Project the state of both sides of a replacement."""
+    if db is None:
+        return None
+
+    stored = (item.details or {}).get("transport_transaction")
+
+    if not isinstance(stored, dict):
+        return None
+
+    current_id = stored.get("transaction_id")
+    if not current_id:
+        return None
+
+    current = db.get(ExternalTransaction, current_id)
+    if current is None:
+        return None
+
+    old_id = current.quote.replaces_transaction_id
+    if not old_id:
+        return None
+
+    old = db.get(ExternalTransaction, old_id)
+
+    if (
+        old is None
+        or old.quote.transaction_context_id
+        != current.quote.transaction_context_id
+    ):
+        return {
+            "status": "needs_attention",
+            "reason": "old_cancellation_evidence_missing",
+            "old_provider_reference": None,
+        }
+
+    cancelled = old.action.status.value == "cancelled"
+
+    return {
+        "status": "completed" if cancelled else "needs_attention",
+        "reason": (
+            None if cancelled
+            else "old_cancellation_not_confirmed"
+        ),
+        "old_transaction_status": old.action.status.value,
+        "new_transaction_status": current.action.status.value,
+        "old_provider_reference": old.provider_reference,
+    }
+
+
 def _detail(
     item: TripItem,
     *,
@@ -241,6 +291,7 @@ def _detail(
             "party_size": d.get("party_size"),
             "route_plan": d.get("route_plan"),
             "confirmed_transport": confirmed_transport,
+            "transport_change": _transport_change(db, item),
             "resolved_place": resolved_place,
             "resolved_date": date_resolver.resolve_date_range(
                 d.get("date_text"),

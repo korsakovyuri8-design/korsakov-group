@@ -31,6 +31,7 @@ from app.db.models import (
     TransactionContext,
     TripItem,
 )
+from app.jobs.queue import PermanentJobError, RetryableJobError
 from app.marketplace import discovery
 from app.mobility.core import (
     MODE_SPECS,
@@ -339,6 +340,60 @@ def create_transfer_quote(
         MobilityMode.PRIVATE_TRANSFER,
     )
 
+    # Replacement is allowed only for an accepted booking
+    # belonging to this exact Atlas trip and plan.
+    previous = current_transfer_transaction(
+        session,
+        trip_id,
+        plan,
+    )
+
+    # Never create an independent booking while the current
+    # transfer is active, ambiguous, or already in progress.
+    if previous is not None and previous.action.status not in {
+        ActionStatus.ACCEPTED,
+        ActionStatus.CANCELLED,
+        ActionStatus.REJECTED,
+        ActionStatus.FAILED,
+    }:
+        raise ValueError("existing_transfer_not_replaceable")
+
+    # An earlier replacement may have succeeded while cancellation
+    # of the old booking failed or is still pending.
+    # Do not create another Quote until that obligation is resolved.
+    if (
+        previous is not None
+        and previous.quote.replaces_transaction_id
+    ):
+        old_transaction = session.get(
+            ExternalTransaction,
+            previous.quote.replaces_transaction_id,
+        )
+
+        if (
+            old_transaction is None
+            or old_transaction.quote.transaction_context_id
+            != previous.quote.transaction_context_id
+            or old_transaction.action.status
+            != ActionStatus.CANCELLED
+        ):
+            raise ValueError("unresolved_previous_change")
+
+    replaces = None
+
+    if (
+        previous is not None
+        and previous.action.status == ActionStatus.ACCEPTED
+    ):
+        # Never make a second booking for an unchanged request.
+        if all(
+            previous.request.get(key) == value
+            for key, value in details.items()
+        ):
+            raise ValueError("transfer_already_confirmed")
+
+        replaces = previous
+
     existing_context = session.scalar(
         select(TransactionContext).where(
             TransactionContext.trip_id == trip_id,
@@ -398,6 +453,7 @@ def create_transfer_quote(
         details=details,
         locale="en",
         candidate=candidate,
+        replaces=replaces,
     )
 
     # Defensive invariant: requesting a quote can never make a booking.
@@ -543,7 +599,9 @@ def confirm_transfer_quote(
     # Atlas demo sessions have no background worker. For the deterministic
     # sandbox provider we execute the SAME provider-submit domain operation
     # inline, then mark its queued outbox job completed.
-    if txn.action.status == ActionStatus.PROPOSED:
+    submitted_now = txn.action.status == ActionStatus.PROPOSED
+
+    if submitted_now:
         service.run_submit(txn.id)
 
         job = session.scalar(
@@ -562,6 +620,57 @@ def confirm_transfer_quote(
             job.locked_at = None
 
     session.flush()
+
+    # The domain engine queues cancellation only after the
+    # replacement has been accepted by the new provider.
+    # Atlas Web runs this operation inline for sandbox only.
+    if (
+        submitted_now
+        and txn.action.status == ActionStatus.ACCEPTED
+        and quote.replaces_transaction_id
+    ):
+        previous = session.get(
+            ExternalTransaction,
+            quote.replaces_transaction_id,
+        )
+
+        if (
+            previous is not None
+            and previous.provider.slug == "atlas-sandbox-transfer"
+            and previous.action.status == ActionStatus.ACCEPTED
+        ):
+            try:
+                cancel_transfer(
+                    session,
+                    trip_id,
+                    plan,
+                    transaction_id=previous.id,
+                    now=now,
+                )
+            except RetryableJobError:
+                # The new booking has already been accepted.
+                # Preserve both transactions and the pending
+                # cancellation job for later reconciliation.
+                pass
+            except PermanentJobError:
+                # No automatic retries for a permanent failure.
+                # Both booking records remain available for review.
+                job = session.scalar(
+                    select(Job).where(
+                        Job.idempotency_key
+                        == f"cancel:{previous.id}"
+                    )
+                )
+
+                if job is not None:
+                    job.status = JobStatus.DEAD
+                    job.attempts = max(job.attempts, 1)
+                    job.completed_at = now
+                    job.last_error = (
+                        "sandbox cancellation permanently failed"
+                    )
+                    job.locked_by = None
+                    job.locked_at = None
 
     if txn.action.status in {
         ActionStatus.ACCEPTED,
