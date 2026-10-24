@@ -82,6 +82,27 @@ def fetch_route(
     }
 
 
+
+_GEOGRAPHY_FIELDS = (
+    "coordinate_precision", "resolver", "registry_version",
+    "source_attribution", "source_url", "source_license", "source_license_url",
+    "source_sha256", "source_countries_sha256", "source_built_at", "source_modified",
+)
+
+
+def _route_point(place: dict[str, Any]) -> dict[str, Any]:
+    point = {
+        "entity_key": place["entity_key"],
+        "name": place["canonical_name"],
+        "locality": place["locality"],
+        "coordinates": place["coordinates"],
+    }
+    for field in _GEOGRAPHY_FIELDS:
+        if place.get(field) is not None:
+            point[field] = place[field]
+    return point
+
+
 def build_route_plan(
     *,
     origin: dict[str, Any],
@@ -106,18 +127,8 @@ def build_route_plan(
     return {
         "status": "estimated",
         "mode": "driving",
-        "origin": {
-            "entity_key": origin["entity_key"],
-            "name": origin["canonical_name"],
-            "locality": origin["locality"],
-            "coordinates": origin["coordinates"],
-        },
-        "destination": {
-            "entity_key": destination["entity_key"],
-            "name": destination["canonical_name"],
-            "locality": destination["locality"],
-            "coordinates": destination["coordinates"],
-        },
+        "origin": _route_point(origin),
+        "destination": _route_point(destination),
         "distance_km": round(estimate["distance_m"] / 1000, 1),
         "route_duration_minutes": route_minutes,
         "planning_buffer_minutes": buffer_minutes,

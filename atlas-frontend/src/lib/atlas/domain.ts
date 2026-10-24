@@ -159,6 +159,12 @@ export interface RoutePlanPoint {
   name: string;
   locality?: string | undefined;
   coords?: Coords | undefined;
+  coordinatePrecision?: string | undefined;
+  sourceAttribution?: string | undefined;
+  sourceUrl?: string | undefined;
+  sourceLicense?: string | undefined;
+  sourceLicenseUrl?: string | undefined;
+  sourceModified?: boolean | undefined;
 }
 
 export interface RoutePlan {

@@ -87,6 +87,8 @@ class MobilityRequest:
     party_size: int | None
     timezone: str
     leave_by_local: datetime | None = None
+    origin_entity_key: str | None = None
+    destination_entity_key: str | None = None
 
     def __post_init__(self) -> None:
         if not self.origin.strip():
@@ -330,4 +332,14 @@ def request_from_plan_details(
         ),
         party_size=party_size,
         timezone=str(timezone),
+        origin_entity_key=(
+            str(origin_obj["entity_key"])
+            if isinstance(origin_obj, Mapping) and origin_obj.get("entity_key") is not None
+            else None
+        ),
+        destination_entity_key=(
+            str(destination_obj["entity_key"])
+            if isinstance(destination_obj, Mapping) and destination_obj.get("entity_key") is not None
+            else None
+        ),
     )

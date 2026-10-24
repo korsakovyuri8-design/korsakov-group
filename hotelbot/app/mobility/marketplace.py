@@ -73,13 +73,19 @@ def _region_for_request(request) -> str | None:
     if origin is None or destination is None:
         return None
 
-    if (
-        origin["country"] == "Montenegro"
-        and destination["country"] == "Montenegro"
+    for place, supplied_key in (
+        (origin, request.origin_entity_key),
+        (destination, request.destination_entity_key),
     ):
-        return REGION
-
-    return None
+        # Adding geography does not grant provider coverage. Preserve the
+        # original curated sandbox scope and cross-check route identity.
+        if (
+            place.get("country") != "Montenegro"
+            or place.get("resolver") != "atlas_montenegro_seed"
+            or (supplied_key is not None and supplied_key != place.get("entity_key"))
+        ):
+            return None
+    return REGION
 
 def _discover(
     session: Session,
@@ -589,6 +595,9 @@ def confirm_transfer_quote(
             raise ValueError(
                 "quote_no_longer_matches_plan"
             )
+
+    if _region_for_request(request) != REGION:
+        raise ValueError("no_transfer_provider_for_region")
 
     clock = FrozenClock(now)
     outbox = MockWhatsAppTransport()

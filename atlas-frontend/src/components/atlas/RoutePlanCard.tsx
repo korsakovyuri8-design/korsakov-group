@@ -5,6 +5,7 @@ import { ArrowRight, CarFront, Clock3 } from "lucide-react";
 import type {
   PlanningNeed,
   RoutePlan,
+  RoutePlanPoint,
 } from "@/lib/atlas/domain";
 import {
   canPlanRoute,
@@ -23,6 +24,45 @@ function duration(minutes: number) {
   if (!m) return `${h} h`;
 
   return `${h} h ${m} min`;
+}
+
+function geographySources(route: RoutePlan) {
+  const sources = new Map<string, RoutePlanPoint>();
+
+  for (const point of [route.origin, route.destination]) {
+    if (!point.sourceAttribution) continue;
+
+    const key = JSON.stringify([
+      point.sourceAttribution,
+      point.sourceUrl,
+      point.sourceLicense,
+      point.sourceLicenseUrl,
+      point.sourceModified,
+    ]);
+    sources.set(key, point);
+  }
+
+  return [...sources.entries()];
+}
+
+function sourceLink(label: string | undefined, value: string | undefined) {
+  if (!label) return null;
+  if (!value) return label;
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return label;
+  }
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") return label;
+
+  return (
+    <a href={url.href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+      {label}
+    </a>
+  );
 }
 
 export function RoutePlanCard({
@@ -101,6 +141,11 @@ export function RoutePlanCard({
     );
   }
 
+  const sources = geographySources(route);
+  const hasCityLocations = [route.origin, route.destination].some(
+    (point) => point.coordinatePrecision === "city_centroid",
+  );
+
   return (
     <section className="mx-5 mt-9 md:mx-10">
       <h2 className="eyebrow mb-3">Route to your plan</h2>
@@ -145,6 +190,19 @@ export function RoutePlanCard({
           Estimate · {route.trafficLive ? "live traffic" : "no live traffic"}
           {route.providerGuarantee ? "" : " · not guaranteed by provider"}
         </div>
+
+        {(hasCityLocations || sources.length > 0) && (
+          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+            {hasCityLocations && <p>City locations are approximate.</p>}
+            {sources.map(([key, source]) => (
+              <p key={key}>
+                Geographic data: {sourceLink(source.sourceAttribution, source.sourceUrl)}
+                {source.sourceLicense && <> · {sourceLink(source.sourceLicense, source.sourceLicenseUrl)}</>}
+                {source.sourceModified === true && " · adapted by Atlas"}
+              </p>
+            ))}
+          </div>
+        )}
 
         {transportNeed && (
           <div className="mt-4 rounded-xl bg-secondary px-3 py-2 text-sm">

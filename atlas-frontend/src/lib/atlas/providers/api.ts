@@ -15,7 +15,7 @@ import type {
 import type {
   AtlasProvider, AtlasState, DiscoverySuggestion, FreeWindow, ImportResult, ImportedBooking,
   ItemKind, NextItem, NextStep, PlannedLocation, PlanningNeed, TripIssue, TripItem, TripState,
-  RoutePlan,
+  RoutePlan, RoutePlanPoint,
 } from "../domain";
 
 /** "" = same origin (the Atlas service serves this frontend). Override with VITE_ATLAS_API_BASE. */
@@ -396,6 +396,27 @@ function mapRoutePlan(value: unknown): RoutePlan | undefined {
     return { lat, lng };
   }
 
+  function geography(point: Obj | undefined): Partial<RoutePlanPoint> {
+    const mapped: Partial<RoutePlanPoint> = {};
+    const fields = [
+      ["coordinate_precision", "coordinatePrecision"],
+      ["source_attribution", "sourceAttribution"],
+      ["source_url", "sourceUrl"],
+      ["source_license", "sourceLicense"],
+      ["source_license_url", "sourceLicenseUrl"],
+    ] as const;
+
+    for (const [rawField, viewField] of fields) {
+      const value = str(point?.[rawField]);
+      if (value !== undefined) mapped[viewField] = value;
+    }
+
+    const modified = point?.["source_modified"];
+    if (typeof modified === "boolean") mapped.sourceModified = modified;
+
+    return mapped;
+  }
+
   return {
     status: "estimated",
     mode: "driving",
@@ -404,12 +425,14 @@ function mapRoutePlan(value: unknown): RoutePlan | undefined {
       name: originName,
       locality: str(origin?.["locality"]),
       coords: coords(originCoordinates),
+      ...geography(origin),
     },
 
     destination: {
       name: destinationName,
       locality: str(destination?.["locality"]),
       coords: coords(destinationCoordinates),
+      ...geography(destination),
     },
 
     distanceKm,

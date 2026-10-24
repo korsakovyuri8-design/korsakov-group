@@ -7,12 +7,12 @@ network calls, LLM calls or device-location fallbacks.
 
 from __future__ import annotations
 
-import re
-import unicodedata
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from app.journey import geonames_catalog
 
 PATH = Path(__file__).resolve().parents[2] / "data" / "trips" / "montenegro_places.yaml"
 DATA = yaml.safe_load(PATH.read_text(encoding="utf-8"))
@@ -20,10 +20,7 @@ REGISTRY_VERSION: str = DATA["version"]
 
 
 def _norm(value: str) -> str:
-    text = unicodedata.normalize("NFKD", value).casefold()
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = text.replace("&", " and ")
-    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+    return geonames_catalog.normalize_alias(value) or ""
 
 
 GLOBAL_PATH = PATH.parent / "global_places.yaml"
@@ -44,7 +41,12 @@ def resolve_place(text: str | None) -> dict[str, Any] | None:
     if not text or not text.strip():
         return None
 
-    hits = INDEX.get(_norm(text), {})
+    key = _norm(text)
+    if not key:
+        return None
+    hits = INDEX.get(key, {})
+    if not hits:
+        return geonames_catalog.lookup(text)
 
     # Multiple aliases of the SAME entity are fine.
     # Multiple different entities are ambiguous and never guessed.
