@@ -26,11 +26,18 @@ def _norm(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
 
 
+GLOBAL_PATH = PATH.parent / "global_places.yaml"
+GLOBAL_DATA = yaml.safe_load(GLOBAL_PATH.read_text(encoding="utf-8"))
+
 INDEX: dict[str, dict[str, dict[str, Any]]] = {}
 
-for key, row in sorted((DATA.get("places") or {}).items()):
-    for alias in [row["canonical_name"], *(row.get("aliases") or [])]:
-        INDEX.setdefault(_norm(alias), {})[key] = row
+for document in (DATA, GLOBAL_DATA):
+    for key, row in sorted((document.get("places") or {}).items()):
+        aliases = list(row.get("aliases") or [])
+        if not row.get("require_country_qualifier"):
+            aliases.insert(0, row["canonical_name"])
+        for alias in aliases:
+            INDEX.setdefault(_norm(alias), {})[key] = row
 
 
 def resolve_place(text: str | None) -> dict[str, Any] | None:
@@ -61,7 +68,20 @@ def resolve_place(text: str | None) -> dict[str, Any] | None:
             "lat": coords.get("lat"),
             "lon": coords.get("lon"),
         },
-        "resolver": "atlas_montenegro_seed",
-        "registry_version": REGISTRY_VERSION,
+        "resolver": (
+            "atlas_montenegro_seed"
+            if key in DATA["places"]
+            else "atlas_global_seed"
+        ),
+        "registry_version": (
+            REGISTRY_VERSION
+            if key in DATA["places"]
+            else str(GLOBAL_DATA["version"])
+        ),
+        **(
+            {"coordinate_precision": row["coordinate_precision"]}
+            if row.get("coordinate_precision") is not None
+            else {}
+        ),
         "match": "exact_alias",
     }

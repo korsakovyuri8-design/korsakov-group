@@ -32,6 +32,7 @@ from app.db.models import (
     TripItem,
 )
 from app.jobs.queue import PermanentJobError, RetryableJobError
+from app.journey import place_resolver
 from app.marketplace import discovery
 from app.mobility.core import (
     MODE_SPECS,
@@ -63,6 +64,23 @@ def plan_item(
     )
 
 
+
+def _region_for_request(request) -> str | None:
+    """Fail closed when the journey has no verified provider region."""
+    origin = place_resolver.resolve_place(request.origin)
+    destination = place_resolver.resolve_place(request.destination)
+
+    if origin is None or destination is None:
+        return None
+
+    if (
+        origin["country"] == "Montenegro"
+        and destination["country"] == "Montenegro"
+    ):
+        return REGION
+
+    return None
+
 def _discover(
     session: Session,
     request,
@@ -86,7 +104,7 @@ def _discover(
         session,
         service_type=spec.service_type,
         details=details,
-        region=REGION,
+        region=_region_for_request(request),
         property_id=None,
         now=now,
         tz=request.timezone,
@@ -106,12 +124,13 @@ def compare(
     No Quote or ExternalTransaction is created here.
     """
 
-    ensure_transfer_provider(session)
-
     request = request_from_plan_details(
         plan.details,
         require_party_size=False,
     )
+
+    if _region_for_request(request) == REGION:
+        ensure_transfer_provider(session)
     modes = []
 
     for mode in MobilityMode:
@@ -300,6 +319,9 @@ def active_transfer_quote(
             return None
         raise
 
+    if _region_for_request(request) != REGION:
+        return None
+
     expected = search_constraints(
         request,
         MobilityMode.PRIVATE_TRANSFER,
@@ -332,8 +354,12 @@ def create_transfer_quote(
 ) -> tuple[Quote, str]:
     """Create a provider Quote. Never create a booking."""
 
-    provider = ensure_transfer_provider(session)
     request = request_from_plan_details(plan.details)
+
+    if _region_for_request(request) != REGION:
+        raise ValueError("no_transfer_provider_for_region")
+
+    provider = ensure_transfer_provider(session)
 
     details = search_constraints(
         request,

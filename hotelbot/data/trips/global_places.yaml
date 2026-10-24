@@ -1,0 +1,128 @@
+version: 2026-10-24.1
+places:
+  it:rome:
+    canonical_name: Rome
+    kind: city
+    aliases:
+    - Rome, Italy
+    require_country_qualifier: true
+    address: Rome, Italy
+    locality: Rome
+    country: Italy
+    timezone: Europe/Rome
+    coordinate_precision: city_centroid
+    coordinates:
+      lat: 41.9028
+      lon: 12.4964
+  it:milan:
+    canonical_name: Milan
+    kind: city
+    aliases:
+    - Milan, Italy
+    require_country_qualifier: true
+    address: Milan, Italy
+    locality: Milan
+    country: Italy
+    timezone: Europe/Rome
+    coordinate_precision: city_centroid
+    coordinates:
+      lat: 45.4642
+      lon: 9.19
+  fr:paris:
+    canonical_name: Paris
+    kind: city
+    aliases:
+    - Paris, France
+    require_country_qualifier: true
+    address: Paris, France
+    locality: Paris
+    country: France
+    timezone: Europe/Paris
+    coordinate_precision: city_centroid
+    coordinates:
+      lat: 48.8566
+      lon: 2.3522
+  gb:london:
+    canonical_name: London
+    kind: city
+    aliases:
+    - London, United Kingdom
+    require_country_qualifier: true
+    address: London, United Kingdom
+    locality: London
+    country: United Kingdom
+    timezone: Europe/London
+    coordinate_precision: city_centroid
+    coordinates:
+      lat: 51.5074
+      lon: -0.1278
+  tr:istanbul:
+    canonical_name: Istanbul
+    kind: city
+    aliases:
+    - Istanbul, Turkey
+    require_country_qualifier: true
+    address: Istanbul, Turkey
+    locality: Istanbul
+    country: Turkey
+    timezone: Europe/Istanbul
+    coordinate_precision: city_centroid
+    coordinates:
+      lat: 41.0082
+      lon: 28.9784
+  ge:tbilisi:
+    canonical_name: Tbilisi
+    kind: city
+    aliases:
+    - Tbilisi, Georgia
+    require_country_qualifier: true
+    address: Tbilisi, Georgia
+    locality: Tbilisi
+    country: Georgia
+    timezone: Asia/Tbilisi
+    coordinate_precision: city_centroid
+    coordinates:
+      lat: 41.7151
+      lon: 44.8271
+  uz:tashkent:
+    canonical_name: Tashkent
+    kind: city
+    aliases:
+    - Tashkent, Uzbekistan
+    require_country_qualifier: true
+    address: Tashkent, Uzbekistan
+    locality: Tashkent
+    country: Uzbekistan
+    timezone: Asia/Tashkent
+    coordinate_precision: city_centroid
+    coordinates:
+      lat: 41.2995
+      lon: 69.2401
+  us:nyc:
+    canonical_name: New York City
+    kind: city
+    aliases:
+    - New York City, United States
+    require_country_qualifier: true
+    address: New York City, United States
+    locality: New York City
+    country: United States
+    timezone: America/New_York
+    coordinate_precision: city_centroid
+    coordinates:
+      lat: 40.7128
+      lon: -74.006
+  jp:tokyo:
+    canonical_name: Tokyo
+    kind: city
+    aliases:
+    - Tokyo, Japan
+    require_country_qualifier: true
+    address: Tokyo, Japan
+    locality: Tokyo
+    country: Japan
+    timezone: Asia/Tokyo
+    coordinate_precision: city_centroid
+    coordinates:
+      lat: 35.6762
+      lon: 139.6503
