@@ -1,22 +1,12 @@
 """Provider discovery: which providers/offerings can fulfil THIS request.
 
-Candidates come only from the provider registry (region-scoped providers
-shared by many properties, plus a property's own partners) - never from a
-model. Each offering is checked against the request:
+Candidates come only from the provider registry - never from a model.
 
-    static fit   category, language, activity/specialty, format (private/group),
-                 vehicle size, child seats, luggage, group size, minimum duration
-    details      fields the offering itself requires (ski heights, rental days...)
-    time         a concrete window (fixed-schedule offerings resolve a day-only
-                 request to their scheduled start; others need a time)
-    inventory    live capacity minus holds, per variant
-    price        the offering's declared pricing (estimate; the provider quotes)
-
-Property relationships shape the result: BLOCKED providers are dropped,
-EXCLUSIVE ones are the only candidates for their services, DEFAULT /
-PREFERRED (and a capability's declared provider) rank first. Ranking never
-re-admits a candidate that failed a constraint. Nothing here needs a
-property: a traveller without one gets the same discovery for a region.
+Legacy callers may scope providers by property/region. New Atlas callers can
+also supply a CoverageQuery. In coverage mode, provider selection is
+fail-closed: only providers with fresh, explicit ProviderCoverage evidence
+for the requested service/capability remain eligible. Legacy region strings
+never substitute for missing coverage evidence.
 """
 
 from __future__ import annotations
@@ -30,112 +20,244 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import ExternalProvider, Offering, PropertyProvider, ProviderRelation
-from app.marketplace import pricing, terms
+from app.db.models import (
+    ExternalProvider,
+    Offering,
+    PropertyProvider,
+    ProviderCoverage,
+    ProviderRelation,
+)
 from app.marketplace import inventory as availability
-from app.marketplace.inventory import NoAvailability, SlotMatch, most_specific
+from app.marketplace import pricing, terms
+from app.marketplace.inventory import (
+    NoAvailability,
+    SlotMatch,
+    most_specific,
+)
+from app.marketplace.provider_coverage import (
+    CoverageQuery,
+    verified_coverages,
+)
 
 
 @dataclass
 class Candidate:
     provider: ExternalProvider
     offering: Offering | None
+    coverage: ProviderCoverage | None = None
     start: datetime | None = None
     end: datetime | None = None
     need: dict[str | None, int] = field(default_factory=dict)
     amount: Decimal | None = None
     currency: str | None = None
-    missing: list[str] = field(default_factory=list)       # details the offering still needs
-    resolved: dict[str, Any] = field(default_factory=dict)  # e.g. start_time from a fixed schedule
+    missing: list[str] = field(default_factory=list)
+    resolved: dict[str, Any] = field(default_factory=dict)
     terms: dict[str, Any] = field(default_factory=dict)
     rank: tuple = ()
 
     @property
     def format(self) -> str | None:
-        return (self.offering.attributes or {}).get("format") if self.offering else None
+        return (
+            (self.offering.attributes or {}).get("format")
+            if self.offering
+            else None
+        )
 
 
 @dataclass
 class DiscoveryResult:
-    candidates: list[Candidate]           # ready to quote, best first
-    pending: list[Candidate]              # suitable so far, but need more details
-    reason: str | None = None             # most specific reason when nothing fits
+    candidates: list[Candidate]
+    pending: list[Candidate]
+    reason: str | None = None
     alternatives: list[SlotMatch] = field(default_factory=list)
 
 
-def relations(session: Session, property_id: str | None, service_type: str) -> dict[str, ProviderRelation]:
+def relations(
+    session: Session,
+    property_id: str | None,
+    service_type: str,
+) -> dict[str, ProviderRelation]:
     if not property_id:
         return {}
+
     out = {}
-    for rel in session.scalars(select(PropertyProvider).where(PropertyProvider.property_id == property_id)):
+    for rel in session.scalars(
+        select(PropertyProvider).where(
+            PropertyProvider.property_id == property_id
+        )
+    ):
         services = (rel.services or {}).get("service_types")
         if not services or service_type in services:
             out[rel.provider_id] = rel.relation
     return out
 
 
-def providers_in_scope(session: Session, service_type: str, *, property_id: str | None,
-                       region: str | None) -> list[ExternalProvider]:
+def providers_in_scope(
+    session: Session,
+    service_type: str,
+    *,
+    property_id: str | None,
+    region: str | None,
+    provider_ids: set[str] | frozenset[str] | None = None,
+) -> list[ExternalProvider]:
+    """Legacy scope plus optional evidence-ID intersection."""
+
     scopes = []
     if property_id:
         scopes.append(ExternalProvider.property_id == property_id)
     if region:
         scopes.append(ExternalProvider.region == region)
-    if not scopes:
+
+    normalized_ids: frozenset[str] | None = None
+    if provider_ids is not None:
+        normalized_ids = frozenset(
+            value for value in provider_ids if isinstance(value, str) and value
+        )
+        if not normalized_ids:
+            return []
+
+    if not scopes and normalized_ids is None:
         return []
-    rows = session.scalars(select(ExternalProvider).where(or_(*scopes), ExternalProvider.active)
-                           .order_by(ExternalProvider.slug))
-    return [p for p in rows if service_type in (p.services or {}).get("service_types", [])]
+
+    q = select(ExternalProvider).where(
+        ExternalProvider.active.is_(True)
+    )
+
+    if scopes:
+        q = q.where(or_(*scopes))
+
+    if normalized_ids is not None:
+        q = q.where(ExternalProvider.id.in_(normalized_ids))
+
+    rows = session.scalars(q.order_by(ExternalProvider.slug))
+
+    return [
+        provider
+        for provider in rows
+        if service_type
+        in (provider.services or {}).get("service_types", [])
+    ]
 
 
-def _static_misfit(offering: Offering, details: dict[str, Any], provider: ExternalProvider) -> str | None:
+def _static_misfit(
+    offering: Offering,
+    details: dict[str, Any],
+    provider: ExternalProvider,
+) -> str | None:
     attrs = offering.attributes or {}
     cats = attrs.get("categories")
     if details.get("category") and cats is not None and details["category"] not in cats:
         return "category_unsupported"
+
     langs = attrs.get("languages")
     if details.get("language") and langs and details["language"] not in langs:
         return "language_unavailable"
+
     specialties = attrs.get("specialties")
     if details.get("activity") and specialties is not None and details["activity"] not in specialties:
         return "activity_unavailable"
+
     if details.get("format") and attrs.get("format") and details["format"] != attrs["format"]:
         return "format_unavailable"
+
     if details.get("child_seats") and int(details["child_seats"]) > int(attrs.get("child_seats", 0)):
         return "no_child_seats"
+
     if details.get("luggage") and attrs.get("luggage_capacity") is not None and \
             int(details["luggage"]) > int(attrs["luggage_capacity"]):
         return "luggage_too_large"
+
     vehicle = (details.get("vehicle") or "").lower()
     if vehicle and attrs.get("vehicle_types") and not any(v in vehicle for v in attrs["vehicle_types"]):
         return "vehicle_unavailable"
-    min_hours = {**(provider.policies or {}), **(offering.policies or {})}.get("min_duration_hours")
+
+    min_hours = {
+        **(provider.policies or {}),
+        **(offering.policies or {}),
+    }.get("min_duration_hours")
+
     if min_hours:
         requested = int(details.get("hours") or 0) or int(details.get("days") or 1) * 24
         if requested < int(min_hours):
             return "below_minimum_duration"
+
     if attrs.get("max_party") and attrs.get("unit") not in ("group", "vehicle") and \
             int(details.get("party_size") or 1) > int(attrs["max_party"]):
         return "party_too_large"
+
     try:
-        availability.demand(offering, {**details, "heights": details.get("heights") or []})
+        availability.demand(
+            offering,
+            {**details, "heights": details.get("heights") or []},
+        )
     except NoAvailability as exc:
         if exc.reason not in ("size_unknown",):
             return exc.reason
+
     return None
 
 
-def discover(session: Session, *, service_type: str, details: dict[str, Any], region: str | None,
-             property_id: str | None, now: datetime, tz: str, declared: str | None = None,
-             start: datetime | None = None, day: date | None = None,
-             venue_id: str | None = None, event_id: str | None = None,
-             replaces: str | None = None) -> DiscoveryResult:
-    """`replaces`: the transaction a change would replace - its own inventory
-    counts as free for the new offer (it is released if the change goes through)."""
+def discover(
+    session: Session,
+    *,
+    service_type: str,
+    details: dict[str, Any],
+    region: str | None,
+    property_id: str | None,
+    now: datetime,
+    tz: str,
+    declared: str | None = None,
+    start: datetime | None = None,
+    day: date | None = None,
+    venue_id: str | None = None,
+    event_id: str | None = None,
+    replaces: str | None = None,
+    coverage: CoverageQuery | None = None,
+) -> DiscoveryResult:
+    """Discover providers without inventing provider authority."""
+
+    coverage_matches: dict[str, ProviderCoverage] = {}
+    coverage_ids: frozenset[str] | None = None
+
+    if coverage is not None:
+        coverage_matches = verified_coverages(
+            session,
+            service_type=service_type,
+            capability=coverage.capability,
+            now=now,
+            area_codes=coverage.area_codes,
+            origin_entity_key=coverage.origin_entity_key,
+            destination_entity_key=coverage.destination_entity_key,
+            allow_sandbox=coverage.allow_sandbox,
+        )
+        coverage_ids = frozenset(coverage_matches)
+
+        if not coverage_matches:
+            return DiscoveryResult(
+                [],
+                [],
+                "no_verified_provider_coverage",
+            )
+
     rel = relations(session, property_id, service_type)
-    providers = [p for p in providers_in_scope(session, service_type, property_id=property_id, region=region)
-                 if rel.get(p.id) != ProviderRelation.BLOCKED]
-    exclusive = [p for p in providers if rel.get(p.id) == ProviderRelation.EXCLUSIVE]
+
+    providers = [
+        provider
+        for provider in providers_in_scope(
+            session,
+            service_type,
+            property_id=property_id,
+            region=region,
+            provider_ids=coverage_ids,
+        )
+        if rel.get(provider.id) != ProviderRelation.BLOCKED
+    ]
+
+    exclusive = [
+        provider
+        for provider in providers
+        if rel.get(provider.id) == ProviderRelation.EXCLUSIVE
+    ]
     if exclusive:
         providers = exclusive
 
@@ -143,107 +265,269 @@ def discover(session: Session, *, service_type: str, details: dict[str, Any], re
     pending: list[Candidate] = []
     reasons: list[str] = []
     alts: list[SlotMatch] = []
+
     for provider in providers:
-        boost = 0 if (rel.get(provider.id) in (ProviderRelation.DEFAULT, ProviderRelation.PREFERRED,
-                                               ProviderRelation.EXCLUSIVE) or provider.slug == declared) else 1
-        q = select(Offering).where(Offering.provider_id == provider.id, Offering.service_type == service_type,
-                                   Offering.active).order_by(Offering.slug)
+        coverage_match = coverage_matches.get(provider.id)
+
+        boost = (
+            0
+            if (
+                rel.get(provider.id)
+                in (
+                    ProviderRelation.DEFAULT,
+                    ProviderRelation.PREFERRED,
+                    ProviderRelation.EXCLUSIVE,
+                )
+                or provider.slug == declared
+            )
+            else 1
+        )
+
+        q = (
+            select(Offering)
+            .where(
+                Offering.provider_id == provider.id,
+                Offering.service_type == service_type,
+                Offering.active.is_(True),
+            )
+            .order_by(Offering.slug)
+        )
+
         if venue_id:
             q = q.where(Offering.place_id == venue_id)
         if event_id:
-            q = q.where(Offering.event_id == event_id)     # tickets for THIS event only
+            q = q.where(Offering.event_id == event_id)
+
         offerings = list(session.scalars(q))
+
         if not offerings:
-            if venue_id is None and event_id is None:   # provider without catalogued offerings: it prices and decides itself
-                ready.append(Candidate(provider, None, start=start, rank=(boost, 1, Decimal(0), provider.slug)))
+            if venue_id is None and event_id is None:
+                ready.append(
+                    Candidate(
+                        provider,
+                        None,
+                        coverage=coverage_match,
+                        start=start,
+                        rank=(boost, 1, Decimal(0), provider.slug),
+                    )
+                )
             continue
+
         for offering in offerings:
-            cand = _evaluate(session, provider, offering, details, now=now, tz=tz, start=start, day=day,
-                             reasons=reasons, alts=alts, replaces=replaces)
-            if cand is None:
+            candidate = _evaluate(
+                session,
+                provider,
+                offering,
+                details,
+                now=now,
+                tz=tz,
+                start=start,
+                day=day,
+                reasons=reasons,
+                alts=alts,
+                replaces=replaces,
+                coverage=coverage_match,
+            )
+
+            if candidate is None:
                 continue
-            cand.rank = (boost, 0, cand.amount if cand.amount is not None else Decimal("1e9"), provider.slug,
-                         offering.slug)
-            (pending if cand.missing else ready).append(cand)
-    ready.sort(key=lambda c: c.rank)
-    pending.sort(key=lambda c: c.rank)
-    reason = None if (ready or pending) else most_specific(reasons or ["not_offered"])
-    alts.sort(key=lambda m: abs(m.starts_at - start) if (m.starts_at and start) else 0)
-    return DiscoveryResult(ready, pending, reason, _dedupe(alts)[:3])
+
+            candidate.rank = (
+                boost,
+                0,
+                candidate.amount if candidate.amount is not None else Decimal("1e9"),
+                provider.slug,
+                offering.slug,
+            )
+
+            (pending if candidate.missing else ready).append(candidate)
+
+    ready.sort(key=lambda candidate: candidate.rank)
+    pending.sort(key=lambda candidate: candidate.rank)
+
+    reason = (
+        None
+        if (ready or pending)
+        else most_specific(reasons or ["not_offered"])
+    )
+
+    alts.sort(
+        key=lambda match: (
+            abs(match.starts_at - start)
+            if (match.starts_at and start)
+            else 0
+        )
+    )
+
+    return DiscoveryResult(
+        ready,
+        pending,
+        reason,
+        _dedupe(alts)[:3],
+    )
 
 
 def _dedupe(alts: list[SlotMatch]) -> list[SlotMatch]:
     seen, out = set(), []
-    for m in alts:
-        key = (m.offering.id, m.starts_at)
+
+    for match in alts:
+        key = (match.offering.id, match.starts_at)
         if key not in seen:
             seen.add(key)
-            out.append(m)
+            out.append(match)
+
     return out
 
 
-def _evaluate(session: Session, provider: ExternalProvider, offering: Offering, details: dict[str, Any], *,
-              now: datetime, tz: str, start: datetime | None, day: date | None, reasons: list[str],
-              alts: list[SlotMatch], replaces: str | None = None) -> Candidate | None:
+def _evaluate(
+    session: Session,
+    provider: ExternalProvider,
+    offering: Offering,
+    details: dict[str, Any],
+    *,
+    now: datetime,
+    tz: str,
+    start: datetime | None,
+    day: date | None,
+    reasons: list[str],
+    alts: list[SlotMatch],
+    replaces: str | None = None,
+    coverage: ProviderCoverage | None = None,
+) -> Candidate | None:
     attrs = offering.attributes or {}
+
     misfit = _static_misfit(offering, details, provider)
     if misfit:
         reasons.append(misfit)
         return None
-    cand = Candidate(provider, offering, currency=offering.currency or (provider.config or {}).get("currency"),
-                     terms=terms.merged(provider.policies, offering.policies, attrs))
-    cand.missing = [f for f in attrs.get("requires", []) if details.get(f) in (None, [], "")]
+
+    candidate = Candidate(
+        provider,
+        offering,
+        coverage=coverage,
+        currency=offering.currency or (provider.config or {}).get("currency"),
+        terms=terms.merged(
+            provider.policies,
+            offering.policies,
+            attrs,
+        ),
+    )
+
+    candidate.missing = [
+        name
+        for name in attrs.get("requires", [])
+        if details.get(name) in (None, [], "")
+    ]
+
     if attrs.get("variants") and details.get("heights") and \
             len(details["heights"]) < int(details.get("quantity") or 1):
-        cand.missing.append("heights")
-    if cand.missing:
-        return cand
+        candidate.missing.append("heights")
+
+    if candidate.missing:
+        return candidate
+
     if not availability.has_inventory(session, offering):
         if start is None:
-            cand.missing = ["start_time"]
-            return cand
-        cand.start = start
+            candidate.missing = ["start_time"]
+            return candidate
+        candidate.start = start
     else:
-        w = availability.window(session, offering, start, day, days=int(details.get("days") or 1),
-                                hours=int(details["hours"]) if details.get("hours") else None, tz=tz)
+        window = availability.window(
+            session,
+            offering,
+            start,
+            day,
+            days=int(details.get("days") or 1),
+            hours=int(details["hours"]) if details.get("hours") else None,
+            tz=tz,
+        )
         need = availability.demand(offering, details)
-        if w is None:
+
+        if window is None:
             if start is None and day is not None and not attrs.get("fixed_start"):
-                cand.missing = ["start_time"]       # e.g. a taxi needs an exact time
-                return cand
+                candidate.missing = ["start_time"]
+                return candidate
+
             reasons.append("not_offered_at_that_time")
-            near = start or datetime.combine(day, datetime.min.time(), tzinfo=now.tzinfo) if (start or day) else now
-            alts.extend(availability.alternatives(session, offering, near, need, now, ignore_transaction=replaces))
+            near = (
+                start
+                or datetime.combine(
+                    day,
+                    datetime.min.time(),
+                    tzinfo=now.tzinfo,
+                )
+                if (start or day)
+                else now
+            )
+            alts.extend(
+                availability.alternatives(
+                    session,
+                    offering,
+                    near,
+                    need,
+                    now,
+                    ignore_transaction=replaces,
+                )
+            )
             return None
-        s, e, _slot = w
-        problem = availability.check(session, offering, s, e, need, now, replaces)
+
+        begins, ends, _slot = window
+        problem = availability.check(
+            session,
+            offering,
+            begins,
+            ends,
+            need,
+            now,
+            replaces,
+        )
+
         if problem:
             reasons.append(problem)
-            alts.extend(availability.alternatives(session, offering, s, need, now, ignore_transaction=replaces))
+            alts.extend(
+                availability.alternatives(
+                    session,
+                    offering,
+                    begins,
+                    need,
+                    now,
+                    ignore_transaction=replaces,
+                )
+            )
             return None
-        cand.start, cand.end, cand.need = s, e, need
-        if start is None or (attrs.get("fixed_start") and s != start):
-            # The offering runs on a schedule: quote ITS start time (shown to the
-            # guest), never the time they guessed. Local, like guest-given times.
-            cand.resolved["start_time"] = s.astimezone(ZoneInfo(tz)).isoformat()
+
+        candidate.start, candidate.end, candidate.need = begins, ends, need
+
+        if start is None or (attrs.get("fixed_start") and begins != start):
+            candidate.resolved["start_time"] = begins.astimezone(
+                ZoneInfo(tz)
+            ).isoformat()
+
     priced = {**details}
-    if cand.start is not None and "pickup_time" in details:
+    if candidate.start is not None and "pickup_time" in details:
         priced["pickup_time"] = details["pickup_time"]
-    cand.amount = pricing.compute(offering.pricing, priced, tz=tz)
-    return cand
+
+    candidate.amount = pricing.compute(
+        offering.pricing,
+        priced,
+        tz=tz,
+    )
+
+    return candidate
 
 
 def options(result: DiscoveryResult, *, by_format: bool) -> list[Candidate]:
-    """What to put in front of the guest: the best candidate, plus the best
-    of each other format (private vs group tour) when the guest has not
-    chosen one - so they compare real offers, not descriptions."""
     if not result.candidates:
         return []
+
     if not by_format:
         return [result.candidates[0]]
+
     out, seen = [], set()
-    for c in result.candidates:
-        if c.format not in seen:
-            seen.add(c.format)
-            out.append(c)
+
+    for candidate in result.candidates:
+        if candidate.format not in seen:
+            seen.add(candidate.format)
+            out.append(candidate)
+
     return out[:2]

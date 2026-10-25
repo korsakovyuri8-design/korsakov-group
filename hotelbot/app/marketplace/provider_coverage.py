@@ -11,6 +11,7 @@ ExternalProvider.region.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -43,8 +44,16 @@ MODE_CAPABILITIES = {
     "sandbox": VALID_CAPABILITIES,
 }
 
-# A single geographic area does not prove an inter-city route.
 ROUTE_ONLY_SERVICES = frozenset({"intercity_transfer"})
+
+
+@dataclass(frozen=True)
+class CoverageQuery:
+    capability: str
+    area_codes: frozenset[str] = field(default_factory=frozenset)
+    origin_entity_key: str | None = None
+    destination_entity_key: str | None = None
+    allow_sandbox: bool = False
 
 
 def _aware(value: datetime) -> datetime:
@@ -161,10 +170,9 @@ def _scope_matches(
     )
 
 
-def find_verified_coverage(
+def verified_coverages(
     session: Session,
     *,
-    provider_id: str,
     service_type: str,
     capability: str,
     now: datetime,
@@ -172,42 +180,61 @@ def find_verified_coverage(
     origin_entity_key: str | None = None,
     destination_entity_key: str | None = None,
     allow_sandbox: bool = False,
-) -> ProviderCoverage | None:
-    """Return one deterministic verified coverage row, or None.
-
-    Exact route coverage outranks area coverage. Missing evidence never falls
-    back to ExternalProvider.region and missing capabilities are never inferred.
-    """
-
-    provider = session.get(ExternalProvider, provider_id)
-    if (
-        provider is None
-        or not provider.active
-        or not _provider_declares_service(provider, service_type)
-    ):
-        return None
+    provider_ids: set[str] | frozenset[str] | tuple[str, ...] | None = None,
+) -> dict[str, ProviderCoverage]:
+    if capability not in VALID_CAPABILITIES:
+        return {}
 
     normalized_areas = frozenset(
-        code
-        for code in area_codes
-        if isinstance(code, str) and code
+        code for code in area_codes if isinstance(code, str) and code
     )
 
-    rows = list(
-        session.scalars(
-            select(ProviderCoverage)
-            .where(
-                ProviderCoverage.provider_id == provider_id,
-                ProviderCoverage.service_type == service_type,
-                ProviderCoverage.active.is_(True),
-            )
-            .order_by(ProviderCoverage.coverage_key)
+    allowed_ids: frozenset[str] | None = None
+    if provider_ids is not None:
+        allowed_ids = frozenset(
+            value for value in provider_ids if isinstance(value, str) and value
+        )
+        if not allowed_ids:
+            return {}
+
+    q = (
+        select(ProviderCoverage)
+        .where(
+            ProviderCoverage.service_type == service_type,
+            ProviderCoverage.active.is_(True),
+        )
+        .order_by(
+            ProviderCoverage.provider_id,
+            ProviderCoverage.coverage_key,
         )
     )
 
-    matches: list[tuple[int, str, ProviderCoverage]] = []
+    if allowed_ids is not None:
+        q = q.where(ProviderCoverage.provider_id.in_(allowed_ids))
+
+    rows = list(session.scalars(q))
+    if not rows:
+        return {}
+
+    row_provider_ids = {row.provider_id for row in rows}
+    providers = {
+        provider.id: provider
+        for provider in session.scalars(
+            select(ExternalProvider).where(
+                ExternalProvider.id.in_(row_provider_ids),
+                ExternalProvider.active.is_(True),
+            )
+        )
+    }
+
+    best: dict[str, tuple[int, str, ProviderCoverage]] = {}
 
     for row in rows:
+        provider = providers.get(row.provider_id)
+        if provider is None:
+            continue
+        if not _provider_declares_service(provider, service_type):
+            continue
         if not _well_formed(row):
             continue
         if row.integration_mode == "sandbox" and not allow_sandbox:
@@ -225,11 +252,41 @@ def find_verified_coverage(
         ):
             continue
 
-        rank = 0 if row.scope_kind == "route" else 1
-        matches.append((rank, row.coverage_key, row))
+        candidate = (
+            0 if row.scope_kind == "route" else 1,
+            row.coverage_key,
+            row,
+        )
+        previous = best.get(row.provider_id)
+        if previous is None or candidate[:2] < previous[:2]:
+            best[row.provider_id] = candidate
 
-    if not matches:
-        return None
+    return {
+        provider_id: item[2]
+        for provider_id, item in best.items()
+    }
 
-    matches.sort(key=lambda item: (item[0], item[1]))
-    return matches[0][2]
+
+def find_verified_coverage(
+    session: Session,
+    *,
+    provider_id: str,
+    service_type: str,
+    capability: str,
+    now: datetime,
+    area_codes: set[str] | frozenset[str] | tuple[str, ...] = (),
+    origin_entity_key: str | None = None,
+    destination_entity_key: str | None = None,
+    allow_sandbox: bool = False,
+) -> ProviderCoverage | None:
+    return verified_coverages(
+        session,
+        service_type=service_type,
+        capability=capability,
+        now=now,
+        area_codes=area_codes,
+        origin_entity_key=origin_entity_key,
+        destination_entity_key=destination_entity_key,
+        allow_sandbox=allow_sandbox,
+        provider_ids={provider_id},
+    ).get(provider_id)
