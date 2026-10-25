@@ -428,6 +428,77 @@ class ExternalProvider(Base):
     commission_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
+class ProviderCoverage(Base):
+    """Verified commercial/service coverage for one ExternalProvider.
+
+    World geography says where places are. This table says where a provider
+    has explicit, time-bounded evidence to expose a service. Coverage never
+    implies inventory, price, Quote, Booking, or provider confirmation.
+    """
+
+    __tablename__ = "provider_coverages"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider_id",
+            "coverage_key",
+            name="uq_provider_coverages_provider_key",
+        ),
+        Index(
+            "ix_provider_coverages_lookup",
+            "provider_id",
+            "service_type",
+            "active",
+        ),
+        Index(
+            "ix_provider_coverages_route",
+            "origin_entity_key",
+            "destination_entity_key",
+            "service_type",
+        ),
+        Index(
+            "ix_provider_coverages_area",
+            "area_code",
+            "service_type",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=_uuid,
+    )
+    provider_id: Mapped[str] = mapped_column(
+        ForeignKey("external_providers.id", ondelete="CASCADE"),
+    )
+    coverage_key: Mapped[str] = mapped_column(String(200))
+    service_type: Mapped[str] = mapped_column(String(64))
+    scope_kind: Mapped[str] = mapped_column(String(16))  # area | route
+
+    area_code: Mapped[str | None] = mapped_column(
+        ForeignKey("coverage_areas.code"),
+    )
+    origin_entity_key: Mapped[str | None] = mapped_column(String(128))
+    destination_entity_key: Mapped[str | None] = mapped_column(String(128))
+    directional: Mapped[bool] = mapped_column(default=True)
+
+    integration_mode: Mapped[str] = mapped_column(String(32))
+    capabilities: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    evidence_source: Mapped[str] = mapped_column(String(200))
+    evidence_ref: Mapped[str | None] = mapped_column(String(500))
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    verification_type: Mapped[str] = mapped_column(String(32))
+    verified_at: Mapped[datetime] = mapped_column()
+    valid_from: Mapped[datetime | None] = mapped_column()
+    valid_until: Mapped[datetime] = mapped_column()
+
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
 
 class ProviderRelation(str, enum.Enum):
     PREFERRED = "preferred"     # ranked first among suitable providers
