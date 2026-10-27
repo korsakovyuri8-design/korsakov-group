@@ -18,6 +18,7 @@ import { Route as MapRouteImport } from './routes/map'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as TripRouteImport } from './routes/trip'
 import { Route as BookingIdRouteImport } from './routes/booking.$id'
+import { Route as TransferPodgoricaKotorRouteImport } from './routes/transfer.podgorica-kotor'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -64,6 +65,11 @@ const BookingIdRoute = BookingIdRouteImport.update({
   path: '/booking/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TransferPodgoricaKotorRoute = TransferPodgoricaKotorRouteImport.update({
+  id: '/transfer/podgorica-kotor',
+  path: '/transfer/podgorica-kotor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/trip': typeof TripRoute
   '/booking/$id': typeof BookingIdRoute
+  '/transfer/podgorica-kotor': typeof TransferPodgoricaKotorRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/trip': typeof TripRoute
   '/booking/$id': typeof BookingIdRoute
+  '/transfer/podgorica-kotor': typeof TransferPodgoricaKotorRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,6 +106,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/trip': typeof TripRoute
   '/booking/$id': typeof BookingIdRoute
+  '/transfer/podgorica-kotor': typeof TransferPodgoricaKotorRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -111,6 +120,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/trip'
     | '/booking/$id'
+    | '/transfer/podgorica-kotor'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -122,6 +132,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/trip'
     | '/booking/$id'
+    | '/transfer/podgorica-kotor'
   id:
     | '__root__'
     | '/'
@@ -133,6 +144,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/trip'
     | '/booking/$id'
+    | '/transfer/podgorica-kotor'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -145,6 +157,7 @@ export interface RootRouteChildren {
   ProfileRoute: typeof ProfileRoute
   TripRoute: typeof TripRoute
   BookingIdRoute: typeof BookingIdRoute
+  TransferPodgoricaKotorRoute: typeof TransferPodgoricaKotorRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -212,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BookingIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/transfer/podgorica-kotor': {
+      id: '/transfer/podgorica-kotor'
+      path: '/transfer/podgorica-kotor'
+      fullPath: '/transfer/podgorica-kotor'
+      preLoaderRoute: typeof TransferPodgoricaKotorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -225,6 +245,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileRoute: ProfileRoute,
   TripRoute: TripRoute,
   BookingIdRoute: BookingIdRoute,
+  TransferPodgoricaKotorRoute: TransferPodgoricaKotorRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

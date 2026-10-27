@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronDown, CircleDashed, Clock, TriangleAlert } from "lucide-react";
 import type { TripIssue } from "@/lib/atlas/domain";
 import { Button } from "@/components/ui/button";
+import { TransportAffiliateCta } from "@/components/atlas/TransportAffiliateCta";
 import { cn } from "@/lib/utils";
 
 const iconFor = (k: TripIssue["kind"]) => (k === "missing_transport" ? CircleDashed : k === "unknown_status" ? Clock : TriangleAlert);
@@ -23,7 +24,7 @@ export function IssueCard({ issue, defaultOpen = false }: { issue: TripIssue; de
         </div>
         <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
-      {open && (issue.why || issue.action) && (
+      {open && (issue.why || issue.action || issue.kind === "missing_transport") && (
         <div className="animate-grow px-4 pb-4 pl-11">
           {issue.why && (
             <div className="border-t border-border/70 pt-3 text-sm">
@@ -35,6 +36,9 @@ export function IssueCard({ issue, defaultOpen = false }: { issue: TripIssue; de
             <Button size="sm" className="mt-4" asChild>
               <Link to="/booking/$id" params={{ id: issue.action.itemId }}>{issue.action.label}</Link>
             </Button>
+          )}
+          {issue.kind === "missing_transport" && (
+            <TransportAffiliateCta />
           )}
         </div>
       )}

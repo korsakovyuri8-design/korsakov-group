@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { data } = useSuspenseQuery(atlasQuery(useScenario()));
   const trip = data.trip;
   const hasScenarios = scenarioOptions.length > 0;
-  if (path.startsWith("/demo")) return <>{children}</>;
+  if (path.startsWith("/demo") || path.startsWith("/transfer/")) return <>{children}</>;
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
