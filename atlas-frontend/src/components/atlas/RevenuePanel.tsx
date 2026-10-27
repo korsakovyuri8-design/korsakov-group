@@ -20,9 +20,30 @@ function safeHttpsUrl(raw: unknown): string | undefined {
   }
 }
 
-export function configuredRevenueOffers(): RevenueOffer[] {
-  const env = import.meta.env as Record<string, string | undefined>;
+function revenueEnv(name: string): string | undefined {
+  const viteValue = (
+    import.meta.env as Record<string, string | undefined>
+  )[name];
 
+  if (typeof viteValue === "string" && viteValue.trim()) {
+    return viteValue;
+  }
+
+  if (typeof process !== "undefined") {
+    const runtimeValue = process.env?.[name];
+
+    if (
+      typeof runtimeValue === "string"
+      && runtimeValue.trim()
+    ) {
+      return runtimeValue;
+    }
+  }
+
+  return undefined;
+}
+
+export function configuredRevenueOffers(): RevenueOffer[] {
   const specs: Array<{
     id: RevenueOffer["id"];
     title: string;
@@ -35,7 +56,7 @@ export function configuredRevenueOffers(): RevenueOffer[] {
       title: "Check transfer prices",
       description:
         "Continue to Kiwitaxi to check current transfer availability and pricing.",
-      raw: env["VITE_ATLAS_AFFILIATE_KIWITAXI_URL"],
+      raw: revenueEnv("VITE_ATLAS_AFFILIATE_KIWITAXI_URL"),
       affiliate: true,
     },
     {
@@ -43,7 +64,7 @@ export function configuredRevenueOffers(): RevenueOffer[] {
       title: "Compare rental cars",
       description:
         "Continue to DiscoverCars to compare current rental-car offers.",
-      raw: env["VITE_ATLAS_AFFILIATE_DISCOVERCARS_URL"],
+      raw: revenueEnv("VITE_ATLAS_AFFILIATE_DISCOVERCARS_URL"),
       affiliate: true,
     },
     {
@@ -51,7 +72,7 @@ export function configuredRevenueOffers(): RevenueOffer[] {
       title: "Find experiences",
       description:
         "Continue to Viator to browse tours, tickets and activities.",
-      raw: env["VITE_ATLAS_AFFILIATE_VIATOR_URL"],
+      raw: revenueEnv("VITE_ATLAS_AFFILIATE_VIATOR_URL"),
       affiliate: true,
     },
     {
@@ -59,7 +80,7 @@ export function configuredRevenueOffers(): RevenueOffer[] {
       title: "Ask Atlas Concierge",
       description:
         "Get a personal trip review and booking-support session.",
-      raw: env["VITE_ATLAS_CONCIERGE_URL"],
+      raw: revenueEnv("VITE_ATLAS_CONCIERGE_URL"),
       affiliate: false,
     },
   ];
