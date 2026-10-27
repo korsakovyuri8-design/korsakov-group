@@ -34,6 +34,7 @@ from app.db.models import (
 from app.jobs.queue import PermanentJobError, RetryableJobError
 from app.journey import place_resolver
 from app.marketplace import discovery
+from app.marketplace.provider_coverage import CoverageQuery
 from app.mobility.core import (
     MODE_SPECS,
     MobilityMode,
@@ -66,7 +67,11 @@ def plan_item(
 
 
 def _region_for_request(request) -> str | None:
-    """Fail closed when the journey has no verified provider region."""
+    """Return only the legacy Montenegro sandbox region.
+
+    This is not global provider coverage. It exists solely to preserve the
+    explicit synthetic Montenegro development path.
+    """
     origin = place_resolver.resolve_place(request.origin)
     destination = place_resolver.resolve_place(request.destination)
 
@@ -77,24 +82,65 @@ def _region_for_request(request) -> str | None:
         (origin, request.origin_entity_key),
         (destination, request.destination_entity_key),
     ):
-        # Adding geography does not grant provider coverage. Preserve the
-        # original curated sandbox scope and cross-check route identity.
         if (
             place.get("country") != "Montenegro"
             or place.get("resolver") != "atlas_montenegro_seed"
-            or (supplied_key is not None and supplied_key != place.get("entity_key"))
+            or (
+                supplied_key is not None
+                and supplied_key != place.get("entity_key")
+            )
         ):
             return None
+
     return REGION
 
-def _discover(
-    session: Session,
+
+def _verified_route_identity(
+    request,
+) -> tuple[str, str] | None:
+    """Cross-check stored entity keys against deterministic geography.
+
+    Provider coverage never trusts arbitrary entity keys copied into plan
+    JSON. Both keys must exist and match the resolver's canonical identity.
+    """
+
+    if (
+        not request.origin_entity_key
+        or not request.destination_entity_key
+    ):
+        return None
+
+    origin = place_resolver.resolve_place(request.origin)
+    destination = place_resolver.resolve_place(request.destination)
+
+    if origin is None or destination is None:
+        return None
+
+    origin_key = origin.get("entity_key")
+    destination_key = destination.get("entity_key")
+
+    if (
+        request.origin_entity_key != origin_key
+        or request.destination_entity_key != destination_key
+    ):
+        return None
+
+    return str(origin_key), str(destination_key)
+
+
+def _empty_discovery(reason: str):
+    return discovery.DiscoveryResult(
+        candidates=[],
+        pending=[],
+        reason=reason,
+        alternatives=[],
+    )
+
+
+def _discovery_inputs(
     request,
     mode: MobilityMode,
-    *,
-    now: datetime,
 ):
-    spec = MODE_SPECS[mode]
     details = search_constraints(request, mode)
 
     start = (
@@ -106,16 +152,184 @@ def _discover(
         else None
     )
 
+    return details, start
+
+
+def _verified_discover(
+    session: Session,
+    request,
+    mode: MobilityMode,
+    *,
+    now: datetime,
+):
+    identity = _verified_route_identity(request)
+
+    if identity is None:
+        return _empty_discovery(
+            "route_identity_unverified"
+        )
+
+    details, start = _discovery_inputs(
+        request,
+        mode,
+    )
+
     return discovery.discover(
         session,
-        service_type=spec.service_type,
+        service_type=MODE_SPECS[mode].service_type,
         details=details,
-        region=_region_for_request(request),
+        region=None,
+        property_id=None,
+        now=now,
+        tz=request.timezone,
+        start=start,
+        coverage=CoverageQuery(
+            capability="discover",
+            origin_entity_key=identity[0],
+            destination_entity_key=identity[1],
+            allow_sandbox=False,
+        ),
+    )
+
+
+def _legacy_sandbox_discover(
+    session: Session,
+    request,
+    mode: MobilityMode,
+    *,
+    now: datetime,
+):
+    if _region_for_request(request) != REGION:
+        return _empty_discovery("not_offered")
+
+    details, start = _discovery_inputs(
+        request,
+        mode,
+    )
+
+    return discovery.discover(
+        session,
+        service_type=MODE_SPECS[mode].service_type,
+        details=details,
+        region=REGION,
         property_id=None,
         now=now,
         tz=request.timezone,
         start=start,
     )
+
+
+def _merge_discovery(verified, legacy):
+    """Verified real supply ranks before the synthetic legacy sandbox."""
+
+    def key(candidate):
+        return (
+            candidate.provider.id,
+            (
+                candidate.offering.id
+                if candidate.offering is not None
+                else None
+            ),
+        )
+
+    ready = []
+    pending = []
+    seen = set()
+
+    for candidate in [
+        *verified.candidates,
+        *legacy.candidates,
+    ]:
+        candidate_key = key(candidate)
+        if candidate_key not in seen:
+            seen.add(candidate_key)
+            ready.append(candidate)
+
+    for candidate in [
+        *verified.pending,
+        *legacy.pending,
+    ]:
+        candidate_key = key(candidate)
+        if candidate_key not in seen:
+            seen.add(candidate_key)
+            pending.append(candidate)
+
+    alternatives = []
+    alternative_seen = set()
+
+    for match in [
+        *verified.alternatives,
+        *legacy.alternatives,
+    ]:
+        alt_key = (
+            match.offering.id,
+            match.starts_at,
+        )
+        if alt_key not in alternative_seen:
+            alternative_seen.add(alt_key)
+            alternatives.append(match)
+
+    reason = None
+    if not ready and not pending:
+        reason = (
+            verified.reason
+            or legacy.reason
+            or "not_offered"
+        )
+
+    return discovery.DiscoveryResult(
+        candidates=ready,
+        pending=pending,
+        reason=reason,
+        alternatives=alternatives[:3],
+    )
+
+
+def _discover(
+    session: Session,
+    request,
+    mode: MobilityMode,
+    *,
+    now: datetime,
+):
+    verified = _verified_discover(
+        session,
+        request,
+        mode,
+        now=now,
+    )
+
+    if _region_for_request(request) != REGION:
+        return verified
+
+    legacy = _legacy_sandbox_discover(
+        session,
+        request,
+        mode,
+        now=now,
+    )
+
+    return _merge_discovery(
+        verified,
+        legacy,
+    )
+
+
+def _coverage_payload(candidate):
+    row = candidate.coverage
+
+    if row is None:
+        return None
+
+    return {
+        "coverage_key": row.coverage_key,
+        "scope_kind": row.scope_kind,
+        "integration_mode": row.integration_mode,
+        "verification_type": row.verification_type,
+        "evidence_source": row.evidence_source,
+        "verified_at": row.verified_at.isoformat(),
+        "valid_until": row.valid_until.isoformat(),
+    }
 
 
 def compare(
@@ -164,6 +378,8 @@ def compare(
                         (candidate.provider.profile or {})
                         .get("synthetic")
                     ),
+                    "coverage":
+                        _coverage_payload(candidate),
                 })
 
         if result.candidates:
