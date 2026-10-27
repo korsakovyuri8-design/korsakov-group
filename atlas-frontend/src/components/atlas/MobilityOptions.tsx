@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { TransferChangePanel } from "./TransferChangePanel";
+import { RevenuePanel } from "./RevenuePanel";
 
 import {
   answerPartySize,
@@ -957,6 +958,8 @@ export function MobilityOptions({
 
         </div>
       )}
+
+      <RevenuePanel />
 
       {error && (
         <p className="mt-3 text-xs text-attention">
