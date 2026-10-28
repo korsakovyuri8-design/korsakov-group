@@ -64,29 +64,6 @@ describe("RevenuePanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("falls back to the server runtime environment for SSR", () => {
-    const key = "VITE_ATLAS_AFFILIATE_KIWITAXI_URL";
-    const previous = process.env[key];
-
-    process.env[key] = "https://kiwitaxi.com/runtime-ref";
-
-    try {
-      const offer = configuredRevenueOffers().find(
-        (item) => item.id === "kiwitaxi",
-      );
-
-      expect(offer?.url).toBe(
-        "https://kiwitaxi.com/runtime-ref",
-      );
-    } finally {
-      if (previous === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = previous;
-      }
-    }
-  });
-
   it("ignores non-HTTPS and malformed URLs", () => {
     vi.stubEnv(
       "VITE_ATLAS_AFFILIATE_KIWITAXI_URL",

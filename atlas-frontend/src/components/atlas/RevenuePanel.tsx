@@ -20,24 +20,33 @@ function safeHttpsUrl(raw: unknown): string | undefined {
   }
 }
 
+declare const __ATLAS_REVENUE__: Record<
+  string,
+  string | undefined
+>;
+
 function revenueEnv(name: string): string | undefined {
   const viteValue = (
     import.meta.env as Record<string, string | undefined>
   )[name];
 
-  if (typeof viteValue === "string" && viteValue.trim()) {
+  if (
+    typeof viteValue === "string"
+    && viteValue.trim()
+  ) {
     return viteValue;
   }
 
-  if (typeof process !== "undefined") {
-    const runtimeValue = process.env?.[name];
+  const buildValue =
+    typeof __ATLAS_REVENUE__ !== "undefined"
+      ? __ATLAS_REVENUE__[name]
+      : undefined;
 
-    if (
-      typeof runtimeValue === "string"
-      && runtimeValue.trim()
-    ) {
-      return runtimeValue;
-    }
+  if (
+    typeof buildValue === "string"
+    && buildValue.trim()
+  ) {
+    return buildValue;
   }
 
   return undefined;

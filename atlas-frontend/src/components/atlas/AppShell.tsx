@@ -14,6 +14,10 @@ const nav = [
   { to: "/map", label: "Map", icon: Map },
 ] as const;
 
+export function isAtlasPublicRoute(path: string): boolean {
+  return path === "/demo" || path.startsWith("/transfer/");
+}
+
 export function Wordmark({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-baseline gap-1.5", className)}>
@@ -41,10 +45,19 @@ export function ScenarioSwitch({ className }: { className?: string }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
+
+  if (isAtlasPublicRoute(path)) {
+    return <>{children}</>;
+  }
+
+  return <PrivateAppShell>{children}</PrivateAppShell>;
+}
+
+function PrivateAppShell({ children }: { children: ReactNode }) {
+  const path = useRouterState({ select: (s) => s.location.pathname });
   const { data } = useSuspenseQuery(atlasQuery(useScenario()));
   const trip = data.trip;
   const hasScenarios = scenarioOptions.length > 0;
-  if (path.startsWith("/demo") || path.startsWith("/transfer/")) return <>{children}</>;
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">

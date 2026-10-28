@@ -6,13 +6,17 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  useRouterState,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { AppShell } from "@/components/atlas/AppShell";
+import {
+  AppShell,
+  isAtlasPublicRoute,
+} from "@/components/atlas/AppShell";
 import { ClientOnly } from "@tanstack/react-router";
 import { isLive } from "@/lib/atlas/api";
 import { prefetchTrips } from "@/lib/atlas/scenario";
@@ -116,14 +120,30 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const path = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  const publicRoute = isAtlasPublicRoute(path);
 
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      {/* A live Atlas session lives in sessionStorage, so the live shell renders in the browser only. */}
-      {isLive
-        ? <ClientOnly fallback={<div className="min-h-dvh" aria-busy="true" />}><AppShell><Outlet /></AppShell></ClientOnly>
-        : <AppShell><Outlet /></AppShell>}
+      {/* Live trip state is browser-only; public pages remain fully SSR-rendered. */}
+      {isLive && !publicRoute
+        ? (
+          <ClientOnly
+            fallback={<div className="min-h-dvh" aria-busy="true" />}
+          >
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          </ClientOnly>
+        )
+        : (
+          <AppShell>
+            <Outlet />
+          </AppShell>
+        )}
     </QueryClientProvider>
   );
 }
