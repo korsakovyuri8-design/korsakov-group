@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PodgoricaKotorTransferPage } from "@/routes/transfer.podgorica-kotor";
+import { TransferPage, loadTransferRoute } from "@/routes/transfer.$slug";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -14,7 +14,7 @@ describe("Podgorica to Kotor landing", () => {
       "https://kiwitaxi.com/en?pap=test123",
     );
 
-    render(<PodgoricaKotorTransferPage />);
+    render(<TransferPage route={loadTransferRoute("podgorica-kotor")} />);
 
     expect(
       screen.getByRole("heading", {

@@ -20,6 +20,7 @@ import {
 import { ClientOnly } from "@tanstack/react-router";
 import { isLive } from "@/lib/atlas/api";
 import { prefetchTrips } from "@/lib/atlas/scenario";
+import { captureRevenueAttribution } from "@/lib/revenue/attribution";
 
 function NotFoundComponent() {
   return (
@@ -86,6 +87,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "referrer", content: "no-referrer" },
       { title: "Korsakov Atlas" },
       { name: "description", content: "Your entire trip, understood." },
     ],
@@ -97,7 +99,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
-  loader: ({ context }) => prefetchTrips(context.queryClient),
+  loader: ({ context, location }) => isAtlasPublicRoute(location.pathname)
+    ? undefined
+    : prefetchTrips(context.queryClient),
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
@@ -124,6 +128,7 @@ function RootComponent() {
     select: (state) => state.location.pathname,
   });
   const publicRoute = isAtlasPublicRoute(path);
+  useEffect(() => { captureRevenueAttribution(); }, [path]);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy import select
 
 from app.db.models import (
@@ -11,6 +12,7 @@ from app.db.models import (
     ProviderCoverage,
 )
 from app.db.session import (
+    alembic_config,
     create_schema,
     head_revision,
     make_engine,
@@ -160,8 +162,11 @@ def match(
     )
 
 
-def test_migration_head_is_provider_coverage():
-    assert head_revision() == "0012_provider_coverage"
+def test_provider_coverage_remains_in_migration_history():
+    scripts = ScriptDirectory.from_config(alembic_config())
+    assert "0012_provider_coverage" in {
+        revision.revision for revision in scripts.iterate_revisions(head_revision(), "base")
+    }
 
 
 def test_no_coverage_row_fails_closed_even_when_legacy_region_exists(db):

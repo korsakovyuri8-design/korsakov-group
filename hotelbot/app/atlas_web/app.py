@@ -37,6 +37,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.atlas_web import intake, view
 from app.atlas_web.sessions import DemoSession, SessionStore
+from app.atlas_web.revenue import revenue_router
 from app.config import get_settings
 from app.jobs.queue import PermanentJobError, RetryableJobError
 from app.journey import ingest, plan_answers, route_planner
@@ -114,6 +115,7 @@ def create_app(*, store: SessionStore | None = None, clock: Callable[[], float] 
     utcnow = utcnow or (lambda: datetime.now(timezone.utc))
     template = _page_template()
     app = FastAPI(title="Korsakov Atlas demo", docs_url=None, redoc_url=None, openapi_url=None)
+    app.include_router(revenue_router(store.factory, clock, utcnow))
 
     @app.middleware("http")
     async def headers(request: Request, call_next):  # noqa: ANN001, ANN202

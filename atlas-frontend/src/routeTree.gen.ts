@@ -18,7 +18,7 @@ import { Route as MapRouteImport } from './routes/map'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as TripRouteImport } from './routes/trip'
 import { Route as BookingIdRouteImport } from './routes/booking.$id'
-import { Route as TransferPodgoricaKotorRouteImport } from './routes/transfer.podgorica-kotor'
+import { Route as TransferSlugRouteImport } from './routes/transfer.$slug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -65,9 +65,9 @@ const BookingIdRoute = BookingIdRouteImport.update({
   path: '/booking/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TransferPodgoricaKotorRoute = TransferPodgoricaKotorRouteImport.update({
-  id: '/transfer/podgorica-kotor',
-  path: '/transfer/podgorica-kotor',
+const TransferSlugRoute = TransferSlugRouteImport.update({
+  id: '/transfer/$slug',
+  path: '/transfer/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -81,7 +81,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/trip': typeof TripRoute
   '/booking/$id': typeof BookingIdRoute
-  '/transfer/podgorica-kotor': typeof TransferPodgoricaKotorRoute
+  '/transfer/$slug': typeof TransferSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -93,7 +93,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/trip': typeof TripRoute
   '/booking/$id': typeof BookingIdRoute
-  '/transfer/podgorica-kotor': typeof TransferPodgoricaKotorRoute
+  '/transfer/$slug': typeof TransferSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -106,7 +106,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/trip': typeof TripRoute
   '/booking/$id': typeof BookingIdRoute
-  '/transfer/podgorica-kotor': typeof TransferPodgoricaKotorRoute
+  '/transfer/$slug': typeof TransferSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -120,7 +120,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/trip'
     | '/booking/$id'
-    | '/transfer/podgorica-kotor'
+    | '/transfer/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -132,7 +132,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/trip'
     | '/booking/$id'
-    | '/transfer/podgorica-kotor'
+    | '/transfer/$slug'
   id:
     | '__root__'
     | '/'
@@ -144,7 +144,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/trip'
     | '/booking/$id'
-    | '/transfer/podgorica-kotor'
+    | '/transfer/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -157,7 +157,7 @@ export interface RootRouteChildren {
   ProfileRoute: typeof ProfileRoute
   TripRoute: typeof TripRoute
   BookingIdRoute: typeof BookingIdRoute
-  TransferPodgoricaKotorRoute: typeof TransferPodgoricaKotorRoute
+  TransferSlugRoute: typeof TransferSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -225,11 +225,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BookingIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/transfer/podgorica-kotor': {
-      id: '/transfer/podgorica-kotor'
-      path: '/transfer/podgorica-kotor'
-      fullPath: '/transfer/podgorica-kotor'
-      preLoaderRoute: typeof TransferPodgoricaKotorRouteImport
+    '/transfer/$slug': {
+      id: '/transfer/$slug'
+      path: '/transfer/$slug'
+      fullPath: '/transfer/$slug'
+      preLoaderRoute: typeof TransferSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -245,7 +245,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileRoute: ProfileRoute,
   TripRoute: TripRoute,
   BookingIdRoute: BookingIdRoute,
-  TransferPodgoricaKotorRoute: TransferPodgoricaKotorRoute,
+  TransferSlugRoute: TransferSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

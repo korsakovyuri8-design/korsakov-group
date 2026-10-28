@@ -2,6 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { sitemapResponse } from "./lib/revenue/transferRoutes";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -46,9 +47,12 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const sitemap = sitemapResponse(request);
+    if (sitemap) return sitemap;
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
+      if (response.status === 404) response.headers.set("X-Robots-Tag", "noindex");
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);

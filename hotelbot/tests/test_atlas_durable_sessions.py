@@ -95,12 +95,15 @@ def test_default_app_store_uses_configured_database_url(
     monkeypatch,
 ):
     from types import SimpleNamespace
+    from unittest.mock import Mock
 
     from app.atlas_web import app as atlas_app
 
     seen = {}
 
     class FakeStore:
+        factory = Mock()  # Revenue ingestion uses the store's independent DB factory.
+
         def __init__(self, **kwargs):
             seen.update(kwargs)
 

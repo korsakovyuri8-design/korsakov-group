@@ -1,0 +1,327 @@
+[
+  {
+    "slug": "podgorica-kotor",
+    "origin": "Podgorica",
+    "destination": "Kotor",
+    "country": "Montenegro",
+    "title": "Podgorica to Kotor Transfer — Atlas",
+    "description": "Plan a Podgorica city pickup for Kotor: agree the address, luggage needs and arrival meeting point before comparing partner transfer options.",
+    "intro": "A city-to-coast journey starts with the right pickup address. Podgorica city and Podgorica Airport are different origins; use this guide when you are leaving accommodation or another address in the city.",
+    "sections": [
+      {
+        "title": "Choose the city pickup",
+        "body": "Give the provider your accommodation entrance or an agreed meeting point in Podgorica. A city name alone is not a pickup instruction. If you are arriving by air, use the separate Podgorica Airport guide."
+      },
+      {
+        "title": "Match the drop-off to your stay in Kotor",
+        "body": "Check the accommodation address and ask the host where a vehicle can meet you. If your stay is inside the Old Town, agree how to cover any final walking section with luggage."
+      },
+      {
+        "title": "Keep the coastal leg in your itinerary",
+        "body": "Compare a private transfer with the current intercity transport options for your date. Check departure points separately and leave flexibility before a fixed activity in Kotor; Atlas has no live traffic forecast."
+      }
+    ],
+    "checklist": [
+      "Exact Podgorica pickup address",
+      "Kotor meeting point agreed with your host",
+      "Passenger count, luggage and any child-seat request"
+    ],
+    "related": [
+      "tivat-airport-kotor",
+      "podgorica-airport-kotor",
+      "podgorica-airport-budva",
+      "tivat-airport-budva",
+      "dubrovnik-airport-kotor",
+      "podgorica-budva"
+    ],
+    "indexable": true
+  },
+  {
+    "slug": "tivat-airport-kotor",
+    "origin": "Tivat Airport",
+    "destination": "Kotor",
+    "country": "Montenegro",
+    "title": "Tivat Airport to Kotor Transfer — Atlas",
+    "description": "Prepare a Tivat Airport arrival for Kotor: check flight details, airport meeting instructions and the final approach to your accommodation.",
+    "intro": "For an arrival into Tivat, the useful question is how to get from the terminal to the specific part of Kotor where you are staying. Arrange the meeting details before choosing an onward transfer.",
+    "sections": [
+      {
+        "title": "Use the arrival flight details",
+        "body": "Share the arrival date and flight number with the provider when requesting an airport pickup. Ask how the meeting time is set and what happens if the flight or baggage collection is delayed."
+      },
+      {
+        "title": "Identify the Kotor destination",
+        "body": "Kotor can describe the Old Town or a wider stay around the bay. Use the property address rather than only the city label, and ask about the closest suitable vehicle meeting point."
+      },
+      {
+        "title": "Check the airport handoff",
+        "body": "Read the provider’s meeting instructions, contact method and waiting policy before paying. Keep these details available offline so a missing connection does not become an assumed confirmed pickup."
+      }
+    ],
+    "checklist": [
+      "Arrival flight and date",
+      "Airport meeting instructions and waiting policy",
+      "Precise Kotor accommodation address"
+    ],
+    "related": [
+      "podgorica-kotor",
+      "podgorica-airport-kotor",
+      "podgorica-airport-budva",
+      "tivat-airport-budva",
+      "dubrovnik-airport-kotor",
+      "podgorica-budva",
+      "tashkent-airport-tashkent"
+    ],
+    "indexable": true
+  },
+  {
+    "slug": "podgorica-airport-kotor",
+    "origin": "Podgorica Airport",
+    "destination": "Kotor",
+    "country": "Montenegro",
+    "title": "Podgorica Airport to Kotor Transfer — Atlas",
+    "description": "Plan Podgorica Airport to Kotor ground transport with flight-delay questions, a precise bay-area destination and a separate transfer confirmation.",
+    "intro": "Landing at Podgorica Airport and staying in Kotor creates an onward ground-transport leg. Keep that leg distinct from your flight and accommodation bookings until a provider confirms it.",
+    "sections": [
+      {
+        "title": "Start at the airport, not the city",
+        "body": "Select Podgorica Airport as the origin when checking options. A pickup in Podgorica city is a different arrangement and may require its own transport from the airport."
+      },
+      {
+        "title": "Plan around arrival uncertainty",
+        "body": "Ask the provider how flight changes, baggage delays and late arrivals affect the offer. Check the waiting and cancellation terms rather than building the rest of the day around an assumed pickup time."
+      },
+      {
+        "title": "Finish at the right part of Kotor",
+        "body": "Give the accommodation address and agree the practical drop-off point with your host. If you have a timed activity after arrival, check that plan separately once the transfer arrangement is confirmed."
+      }
+    ],
+    "checklist": [
+      "Airport origin selected explicitly",
+      "Flight-change and cancellation terms reviewed",
+      "Kotor drop-off and onward plans checked"
+    ],
+    "related": [
+      "podgorica-kotor",
+      "tivat-airport-kotor",
+      "podgorica-airport-budva",
+      "tivat-airport-budva",
+      "dubrovnik-airport-kotor",
+      "podgorica-budva"
+    ],
+    "indexable": true
+  },
+  {
+    "slug": "podgorica-airport-budva",
+    "origin": "Podgorica Airport",
+    "destination": "Budva",
+    "country": "Montenegro",
+    "title": "Podgorica Airport to Budva Transfer — Atlas",
+    "description": "Prepare a Podgorica Airport to Budva transfer: separate airport pickup from city pickup, specify your coastal stay and review arrival-day terms.",
+    "intro": "An airport arrival and a stay in Budva are two separate parts of your trip. Use the flight details and the full accommodation address to request a transfer that matches both.",
+    "sections": [
+      {
+        "title": "Name the actual Budva-area stay",
+        "body": "Use the full property address when comparing options. A stay described as Budva may have a different meeting point from a stay in the Old Town or a nearby coastal resort; confirm it with your host."
+      },
+      {
+        "title": "Review the arrival-day conditions",
+        "body": "Ask what the offer includes for airport waiting, flight delays, luggage and child seats if needed. Check how to contact the provider after landing and whether changes need a new confirmation."
+      },
+      {
+        "title": "Keep check-in independent",
+        "body": "Tell the accommodation about your expected arrival and its check-in procedure. A flight arrival time is not a hotel arrival time, and Atlas does not promise a road journey duration."
+      }
+    ],
+    "checklist": [
+      "Full coastal accommodation address",
+      "Waiting, baggage and child-seat conditions",
+      "Accommodation check-in instructions"
+    ],
+    "related": [
+      "podgorica-kotor",
+      "tivat-airport-kotor",
+      "podgorica-airport-kotor",
+      "tivat-airport-budva",
+      "dubrovnik-airport-kotor",
+      "podgorica-budva"
+    ],
+    "indexable": true
+  },
+  {
+    "slug": "tivat-airport-budva",
+    "origin": "Tivat Airport",
+    "destination": "Budva",
+    "country": "Montenegro",
+    "title": "Tivat Airport to Budva Transfer — Atlas",
+    "description": "Organize Tivat Airport to Budva transport with a clear resort address, baggage requirements and an agreed airport meeting procedure.",
+    "intro": "Use this guide for an arrival at Tivat Airport followed by a stay in Budva. Make the airport meeting and the final accommodation access explicit before accepting an external offer.",
+    "sections": [
+      {
+        "title": "Confirm the airport on the booking",
+        "body": "Check that the offer names Tivat Airport and the correct flight date. An offer for Podgorica Airport is a different route even if the destination is also Budva."
+      },
+      {
+        "title": "Resolve the last part of the journey",
+        "body": "Ask your Budva host for a vehicle-accessible meeting point and any instructions for carrying luggage to the property. This is especially useful when the accommodation entrance is not on a driveable street."
+      },
+      {
+        "title": "Compare terms for your party",
+        "body": "Enter the actual passenger and bag counts on the partner site. Review the quoted vehicle and any child-seat request there; a generic link from Atlas does not reserve capacity for your group."
+      }
+    ],
+    "checklist": [
+      "Tivat Airport and flight date matched",
+      "Budva property access checked",
+      "Passenger and luggage requirements confirmed by the provider"
+    ],
+    "related": [
+      "podgorica-kotor",
+      "tivat-airport-kotor",
+      "podgorica-airport-kotor",
+      "podgorica-airport-budva",
+      "dubrovnik-airport-kotor",
+      "podgorica-budva"
+    ],
+    "indexable": true
+  },
+  {
+    "slug": "dubrovnik-airport-kotor",
+    "origin": "Dubrovnik Airport",
+    "destination": "Kotor",
+    "country": "Croatia → Montenegro",
+    "title": "Dubrovnik Airport to Kotor Transfer — Atlas",
+    "description": "Plan a cross-border Dubrovnik Airport to Kotor journey: check travel documents, provider border arrangements and your final Montenegro destination.",
+    "intro": "This journey starts in Croatia and ends in Montenegro. Treat the border crossing as a planning requirement and ask the provider to confirm the full cross-border arrangement before paying.",
+    "sections": [
+      {
+        "title": "Check your own entry requirements",
+        "body": "Check current Croatia and Montenegro entry and transit requirements with official sources for each traveller’s nationality and documents. A transfer offer does not establish permission to cross the border."
+      },
+      {
+        "title": "Confirm the cross-border service explicitly",
+        "body": "Ask whether the offer covers Dubrovnik Airport through to your Kotor address, how the border is handled, and which costs and waiting conditions are included. Atlas does not assert that a partner serves this route."
+      },
+      {
+        "title": "Leave room for border uncertainty",
+        "body": "Border processing and road conditions can change. Avoid treating an estimated arrival as a guarantee for a same-day connection or activity; keep contact details for both the provider and your Kotor host."
+      }
+    ],
+    "checklist": [
+      "Official entry and transit requirements checked",
+      "Cross-border scope and terms confirmed externally",
+      "Flexible onward plans and Kotor contact details"
+    ],
+    "related": [
+      "podgorica-kotor",
+      "tivat-airport-kotor",
+      "podgorica-airport-kotor",
+      "podgorica-airport-budva",
+      "tivat-airport-budva",
+      "podgorica-budva"
+    ],
+    "indexable": true
+  },
+  {
+    "slug": "podgorica-budva",
+    "origin": "Podgorica",
+    "destination": "Budva",
+    "country": "Montenegro",
+    "title": "Podgorica to Budva Transfer — Atlas",
+    "description": "Plan Podgorica city to Budva transport: choose the right departure address, compare current travel options and agree your coastal drop-off.",
+    "intro": "Use this route when leaving Podgorica city for Budva. Choose a departure point that matches your actual plans, especially if you first arrive in Podgorica by train or bus.",
+    "sections": [
+      {
+        "title": "Connect to the right departure point",
+        "body": "For a hotel pickup, use the street address and entrance. If you are arriving at a station, agree the meeting point and allow for changes to that incoming leg instead of using a city-centre placeholder."
+      },
+      {
+        "title": "Compare the whole door-to-door journey",
+        "body": "Check current bus or private-transfer options for your date, including getting to the departure point and from the arrival point to your stay. Atlas does not publish live timetables or fares here."
+      },
+      {
+        "title": "Coordinate the Budva arrival",
+        "body": "Confirm whether the property is in Budva itself or elsewhere along the coast and use the full address on the partner site. Keep the transport plan unconfirmed in Atlas until the external booking is actually confirmed."
+      }
+    ],
+    "checklist": [
+      "City pickup or station meeting point",
+      "Any incoming connection accounted for",
+      "Exact Budva-area drop-off"
+    ],
+    "related": [
+      "podgorica-kotor",
+      "tivat-airport-kotor",
+      "podgorica-airport-kotor",
+      "podgorica-airport-budva",
+      "tivat-airport-budva",
+      "dubrovnik-airport-kotor"
+    ],
+    "indexable": true
+  },
+  {
+    "slug": "tashkent-airport-tashkent",
+    "origin": "Tashkent Airport",
+    "destination": "Tashkent",
+    "country": "Uzbekistan",
+    "title": "Tashkent Airport to Tashkent Transfer — Atlas",
+    "description": "Plan Tashkent Airport to your city accommodation: identify the arrival terminal, confirm the address and agree a clear meeting procedure.",
+    "intro": "An airport-to-city transfer in Tashkent still needs a specific destination. Prepare the accommodation address and the terminal details so the arrival handoff is clear even without a mobile connection.",
+    "sections": [
+      {
+        "title": "Match the terminal to your flight",
+        "body": "Check the arrival terminal on the current flight information and ask the provider where to meet. Do not assume that a generic Tashkent Airport label identifies the correct terminal entrance."
+      },
+      {
+        "title": "Make the city address usable",
+        "body": "Keep the property name, full address and host contact available offline. Ask the accommodation for a locally usable address or map pin to share with the provider if the street-name spelling differs between documents."
+      },
+      {
+        "title": "Check the arrival and payment terms",
+        "body": "Review the meeting instructions, waiting policy and payment conditions on the partner site. Arrange check-in separately with your host if your flight arrives outside their usual reception hours."
+      }
+    ],
+    "checklist": [
+      "Current arrival terminal and flight date",
+      "Offline property address and host contact",
+      "Meeting, waiting and payment conditions"
+    ],
+    "related": [
+      "tashkent-airport-samarkand",
+      "tivat-airport-kotor"
+    ],
+    "indexable": true
+  },
+  {
+    "slug": "tashkent-airport-samarkand",
+    "origin": "Tashkent Airport",
+    "destination": "Samarkand",
+    "country": "Uzbekistan",
+    "title": "Tashkent Airport to Samarkand Transfer — Atlas",
+    "description": "Plan an onward journey from Tashkent Airport to Samarkand: compare a direct road transfer with a separate rail connection and confirm each leg.",
+    "intro": "Samarkand is an onward destination beyond Tashkent, so arriving at the airport does not complete this journey. Compare the complete connection before choosing how to continue.",
+    "sections": [
+      {
+        "title": "Compare road and rail as complete plans",
+        "body": "If considering rail, check current train services and seat availability with the rail operator, plus transport from the airport to the correct departure station. Atlas does not provide a train timetable or guarantee a connection."
+      },
+      {
+        "title": "Ask about a direct transfer’s scope",
+        "body": "For a road transfer, request the full Samarkand accommodation address and discuss luggage, stops and driver contact with the provider. A generic affiliate link is only a way to check options, not evidence of route coverage."
+      },
+      {
+        "title": "Keep each confirmation separate",
+        "body": "A flight, a train ticket, a road transfer and a hotel booking have separate terms. Leave room for arrival delays and confirm what happens to the onward plan if the flight changes before committing to a fixed departure."
+      }
+    ],
+    "checklist": [
+      "Whole road or rail connection compared",
+      "Samarkand accommodation address",
+      "Separate confirmations and change conditions for every leg"
+    ],
+    "related": [
+      "tashkent-airport-tashkent"
+    ],
+    "indexable": true
+  }
+]

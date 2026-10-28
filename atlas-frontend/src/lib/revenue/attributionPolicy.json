@@ -1,0 +1,35 @@
+{
+  "utm_source": [
+    "instagram",
+    "tiktok",
+    "youtube",
+    "threads",
+    "google",
+    "bing",
+    "linkedin",
+    "facebook",
+    "newsletter",
+    "direct"
+  ],
+  "utm_medium": [
+    "organic",
+    "social",
+    "shorts",
+    "email",
+    "cpc",
+    "referral"
+  ],
+  "utm_campaign": [
+    "montenegro_launch",
+    "uzbekistan_launch",
+    "revenue_r2b",
+    "rollout_smoke"
+  ],
+  "utm_term": [
+    "airport_transfer",
+    "private_transfer",
+    "montenegro_transfer",
+    "uzbekistan_transfer"
+  ],
+  "utm_content_pattern": "(?:reel|post|story|short|video|link)_[0-9]{1,3}"
+}

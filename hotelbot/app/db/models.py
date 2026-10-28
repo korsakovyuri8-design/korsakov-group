@@ -27,7 +27,7 @@ from typing import Any
 
 from decimal import Decimal
 
-from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, DateTime, Enum, Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -41,6 +41,32 @@ def utcnow() -> datetime:
 
 class Base(DeclarativeBase):
     type_annotation_map = {dict[str, Any]: JSON, datetime: DateTime(timezone=True)}
+
+
+class RevenueClick(Base):
+    """Anonymous outbound activation, never a booking or partner confirmation.
+
+    Append-only through the ingestion API. No session/trip FK or cascade.
+    """
+
+    __tablename__ = "revenue_clicks"
+    __table_args__ = (
+        CheckConstraint("provider IN ('kiwitaxi', 'discovercars', 'viator', 'concierge')", name="ck_revenue_clicks_provider"),
+        CheckConstraint("placement IN ('missing_transport', 'route_landing', 'revenue_panel')", name="ck_revenue_clicks_placement"),
+        Index("ix_revenue_clicks_created_at", "created_at"),
+        Index("ix_revenue_clicks_provider_placement_route", "provider", "placement", "route_slug"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    provider: Mapped[str] = mapped_column(String(16))
+    placement: Mapped[str] = mapped_column(String(32))
+    route_slug: Mapped[str | None] = mapped_column(String(80))
+    utm_source: Mapped[str | None] = mapped_column(String(48))
+    utm_medium: Mapped[str | None] = mapped_column(String(48))
+    utm_campaign: Mapped[str | None] = mapped_column(String(48))
+    utm_content: Mapped[str | None] = mapped_column(String(48))
+    utm_term: Mapped[str | None] = mapped_column(String(48))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 def _enum(cls: type[enum.Enum]) -> Enum:

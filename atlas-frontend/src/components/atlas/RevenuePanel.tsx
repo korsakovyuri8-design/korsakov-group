@@ -1,4 +1,5 @@
 import { ExternalLink } from "lucide-react";
+import { RevenueOutboundLink } from "./RevenueOutboundLink";
 
 type RevenueOffer = {
   id: "kiwitaxi" | "discovercars" | "viator" | "concierge";
@@ -13,7 +14,7 @@ function safeHttpsUrl(raw: unknown): string | undefined {
 
   try {
     const url = new URL(raw.trim());
-    if (url.protocol !== "https:") return undefined;
+    if (url.protocol !== "https:" || url.username || url.password) return undefined;
     return url.toString();
   } catch {
     return undefined;
@@ -130,15 +131,12 @@ export function RevenuePanel() {
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {offers.map((offer) => (
-          <a
+          <RevenueOutboundLink
             key={offer.id}
             href={offer.url}
-            target="_blank"
-            rel={
-              offer.affiliate
-                ? "noopener noreferrer sponsored"
-                : "noopener noreferrer"
-            }
+            provider={offer.id}
+            placement="revenue_panel"
+            affiliate={offer.affiliate}
             className="rounded-xl border border-border px-4 py-4 transition-colors hover:bg-secondary"
           >
             <div className="flex items-start justify-between gap-3">
@@ -157,7 +155,7 @@ export function RevenuePanel() {
                 className="mt-0.5 size-4 shrink-0 text-muted-foreground"
               />
             </div>
-          </a>
+          </RevenueOutboundLink>
         ))}
       </div>
 
