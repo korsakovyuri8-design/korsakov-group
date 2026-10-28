@@ -9,7 +9,32 @@ Date: 2026-10-28 UTC. Development environment only.
 - Isolated worktree: `/workspace/atlas-r2b`; original checkout preserved.
 - Remote base SHA matched the requested commit at preflight and was rechecked
   before delivery. No production write, deployment, migration or service command
-  was performed. The pushed commit/PR identifiers are in the delivery message.
+  was performed. The local commit identifiers and publication status are in the delivery message.
+
+## GitHub publication — BLOCKED (not a test failure)
+
+The implementation is committed on the local working branch. No remote candidate
+branch or PR was created. A normal push returned:
+
+```text
+Permission to korsakovyuri8-design/korsakov-group.git denied to yurikorsakov.
+HTTP 403
+```
+
+The connected GitHub integration also rejected creation of the candidate branch
+at the exact base SHA:
+
+```text
+HTTP 403: Resource not accessible by integration
+```
+
+Earlier repository metadata reported `push: true`; the actual write operations
+prove the available credentials/integration cannot publish this candidate.
+Required remedy: authorize the integration for this repository with Contents write
+and Pull requests write permissions, or have an authorized operator push the local
+branch. Do not disclose tokens in chat. No force push or production branch update
+was attempted. A portable patch and Git bundle are supplied with the delivery.
+The prepared PR targets `ccr-b496a55d-mr7ho5`, never `main`.
 
 ## Executed results
 
