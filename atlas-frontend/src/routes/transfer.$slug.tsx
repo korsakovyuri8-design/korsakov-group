@@ -1,4 +1,6 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
+import { trackRevenuePageView } from "@/lib/revenue/pageViews";
 import { ArrowRight, ExternalLink } from "lucide-react";
 import { configuredRevenueOffers } from "@/components/atlas/RevenuePanel";
 import { RevenueOutboundLink } from "@/components/atlas/RevenueOutboundLink";
@@ -31,6 +33,12 @@ export const Route = createFileRoute("/transfer/$slug")({
 
 export function TransferPage({ route }: { route: TransferRoute }) {
   const kiwitaxi = configuredRevenueOffers().find((item) => item.id === "kiwitaxi");
+  const lastTracked = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastTracked.current === route.slug) return;
+    lastTracked.current = route.slug;
+    trackRevenuePageView(route.slug);
+  }, [route.slug]);
   return (
     <main className="min-h-dvh bg-background">
       <header className="border-b border-border px-5 py-5 md:px-10">

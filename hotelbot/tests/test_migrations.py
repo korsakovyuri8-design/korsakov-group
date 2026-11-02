@@ -50,7 +50,7 @@ def test_migrations_produce_the_model_schema(engine):
 
 
 def test_revenue_roundtrip_preserves_every_existing_table(engine):
-    assert head_revision() == "0013_revenue_clicks"
+    assert head_revision() == "0014_revenue_pageviews"
     _upgrade(engine, "0001_core_v1")
     with engine.begin() as conn:
         _seed_v1(conn)
@@ -59,21 +59,24 @@ def test_revenue_roundtrip_preserves_every_existing_table(engine):
         tables = set(sa.inspect(conn).get_table_names()) - {"alembic_version"}
         before = {name: _rows(conn, f'SELECT * FROM "{name}"') for name in tables}
     for _ in range(2):
-        _upgrade(engine, "0013_revenue_clicks")
+        _upgrade(engine, "0014_revenue_pageviews")
         assert _diff(engine) == []
         with engine.begin() as conn:
             inspector = sa.inspect(conn)
-            assert set(inspector.get_table_names()) == tables | {"alembic_version", "revenue_clicks"}
+            assert set(inspector.get_table_names()) == tables | {"alembic_version", "revenue_clicks", "revenue_page_views"}
             assert inspector.get_foreign_keys("revenue_clicks") == []
+            assert inspector.get_foreign_keys("revenue_page_views") == []
             assert {name: _rows(conn, f'SELECT * FROM "{name}"') for name in tables} == before
             conn.execute(sa.text("INSERT INTO revenue_clicks (id, provider, placement, created_at) VALUES ('test-event', 'kiwitaxi', 'revenue_panel', :now)"), {"now": NOW})
             assert conn.scalar(sa.text("SELECT count(*) FROM revenue_clicks")) == 1
+            conn.execute(sa.text("INSERT INTO revenue_page_views (id, route_slug, created_at) VALUES ('test-view', 'podgorica-kotor', :now)"), {"now": NOW})
+            assert conn.scalar(sa.text("SELECT count(*) FROM revenue_page_views")) == 1
         with engine.begin() as conn:
             command.downgrade(alembic_config(conn), "0012_provider_coverage")
         with engine.connect() as conn:
             assert set(sa.inspect(conn).get_table_names()) == tables | {"alembic_version"}
             assert {name: _rows(conn, f'SELECT * FROM "{name}"') for name in tables} == before
-    _upgrade(engine, "0013_revenue_clicks")
+    _upgrade(engine, "0014_revenue_pageviews")
     assert _diff(engine) == []
 
 

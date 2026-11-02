@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+vi.mock("@/lib/revenue/pageViews", () => ({ trackRevenuePageView: vi.fn() }));
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RevenueOutboundLink } from "@/components/atlas/RevenueOutboundLink";
 import { RevenuePanel } from "@/components/atlas/RevenuePanel";

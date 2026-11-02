@@ -69,6 +69,28 @@ class RevenueClick(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class RevenuePageView(Base):
+    """One browser-hydrated public transfer landing view; not a unique visitor.
+
+    No IP, user agent, referrer, cookie, URL, session ID, guest or trip FK.
+    """
+
+    __tablename__ = "revenue_page_views"
+    __table_args__ = (
+        Index("ix_revenue_page_views_created_at", "created_at"),
+        Index("ix_revenue_page_views_route_created", "route_slug", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    route_slug: Mapped[str] = mapped_column(String(80))
+    utm_source: Mapped[str | None] = mapped_column(String(48))
+    utm_medium: Mapped[str | None] = mapped_column(String(48))
+    utm_campaign: Mapped[str | None] = mapped_column(String(48))
+    utm_content: Mapped[str | None] = mapped_column(String(48))
+    utm_term: Mapped[str | None] = mapped_column(String(48))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 def _enum(cls: type[enum.Enum]) -> Enum:
     # Store enum values as plain strings (no native PG enum) to keep
     # migrations trivial while the vocabulary is still evolving.
