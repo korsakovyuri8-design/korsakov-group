@@ -2,7 +2,7 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { trackRevenuePageView } from "@/lib/revenue/pageViews";
 import { ArrowRight, ExternalLink } from "lucide-react";
-import { configuredRevenueOffers } from "@/components/atlas/RevenuePanel";
+import { configuredTransferKiwitaxiOffer } from "@/components/atlas/RevenuePanel";
 import { RevenueOutboundLink } from "@/components/atlas/RevenueOutboundLink";
 import {
   findTransferRoute,
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/transfer/$slug")({
 });
 
 export function TransferPage({ route }: { route: TransferRoute }) {
-  const kiwitaxi = configuredRevenueOffers().find((item) => item.id === "kiwitaxi");
+  const kiwitaxi = configuredTransferKiwitaxiOffer(route.slug);
   const lastTracked = useRef<string | null>(null);
   useEffect(() => {
     if (lastTracked.current === route.slug) return;
@@ -83,7 +83,7 @@ export function TransferPage({ route }: { route: TransferRoute }) {
           <p className="mt-4 max-w-2xl text-xs leading-relaxed text-muted-foreground">
             Kiwitaxi is an external partner. Its site is authoritative for live price, availability
             and booking. Atlas may earn a commission if you book through this link. This link opens
-            the partner’s general site; check whether it serves your route and date there.
+            Kiwitaxi; check whether it serves your route and date there.
           </p>
         )}
         <div className="mt-12 grid gap-4 md:grid-cols-3">

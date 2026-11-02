@@ -110,6 +110,58 @@ export function configuredRevenueOffers(): RevenueOffer[] {
   });
 }
 
+/**
+ * Approved route-specific Kiwitaxi links. Only two exact catalog slugs have
+ * generated deep links. All other routes and the generic revenue panel retain
+ * the existing approved partner URL. Never invent or synthesize deep links.
+ */
+const KIWITAXI_ROUTE_OVERRIDE: Record<string, {
+  env: string;
+  path: string;
+  channel: string;
+}> = {
+  "podgorica-kotor": {
+    env: "VITE_ATLAS_AFFILIATE_KIWITAXI_MNE_URL",
+    path: "/en/montenegro/podgorica-kotor",
+    channel: "atlas_mne",
+  },
+  "tashkent-airport-samarkand": {
+    env: "VITE_ATLAS_AFFILIATE_KIWITAXI_UZ_URL",
+    path: "/en/uzbekistan/tashkent-airport-samarkand",
+    channel: "atlas_uz",
+  },
+};
+
+export function configuredTransferKiwitaxiOffer(routeSlug: string): RevenueOffer | undefined {
+  const generic = configuredRevenueOffers().find((offer) => offer.id === "kiwitaxi");
+  if (!generic) return undefined;
+
+  const spec = KIWITAXI_ROUTE_OVERRIDE[routeSlug];
+  if (!spec) return generic;
+
+  const override = safeHttpsUrl(revenueEnv(spec.env));
+  if (!override) return generic;
+
+  const url = new URL(override);
+  const query = url.searchParams;
+  const keys = [...query.keys()].sort();
+  const pap = query.get("pap");
+
+  // The generator may accept a URL which later fails on the partner website.
+  // Validate that the link at least carries precisely the expected partner
+  // attribution and route. Actual partner-page behavior must be checked by
+  // an operator in Chrome before configuring the production build.
+  if (
+    url.hostname !== "kiwitaxi.com" || url.port || url.hash ||
+    url.pathname !== spec.path ||
+    keys.join(",") !== "chan,pap" ||
+    query.get("chan") !== spec.channel ||
+    !pap || !/^[A-Za-z0-9_-]{6,64}$/.test(pap)
+  ) return generic;
+
+  return { ...generic, url: url.toString() };
+}
+
 export function RevenuePanel() {
   const offers = configuredRevenueOffers();
 
